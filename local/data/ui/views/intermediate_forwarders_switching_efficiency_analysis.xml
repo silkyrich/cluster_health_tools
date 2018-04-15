@@ -1,0 +1,71 @@
+<form>
+  <label>Intermediate forwarders switching efficiency analysis</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-4h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="pool_size">
+      <label>Enter pool size</label>
+      <default>90</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>What percentage of the pool is an intermediate forwarder not connecting too</title>
+      <table>
+        <title>Once an forwarder hits the bozo bit it gives up on the indexer for 30 sec * size of the pool. We can see that forwarders are shrinking their pool and refreshing again. Red is bad, low numbers are better</title>
+        <search>
+          <query>index="_internal"  sourcetype=splunkd TcpOutputProcessor connect_try 
+    [| inputcsv hosts_to_roles.csv 
+    | where role="intermediate" 
+    | eval host="host=".host
+    | stats values(host) as hosts 
+    | eval search="(".mvjoin(hosts, " OR ").")"]
+| rex field=_raw "destIp=(?&lt;destIp&gt;[^,]+)," 
+| lookup ip_to_indexer_name.csv ips as destIp output indexer_name as target_indexer 
+| rex field=target_indexer "idx(?&lt;idx&gt;\d+).ppbf.splunkcloud.com" 
+| eval destIp=if(idx!="",idx,destIp) 
+| timechart limit=0 span=10min dc(destIp) as pool by host 
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=((1-round(('&lt;&lt;FIELD&gt;&gt;'/90),2))*100)]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">heatmap</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Forwarder removing stale URLs to indexer id</title>
+      <table>
+        <title>When a forwarder gives up on an indexer it takes a few hours before it reconnects to it again.</title>
+        <search>
+          <query>index="_internal" host=*suf* sourcetype=splunkd TcpOutputProc removing stale url 
+| rex field=_raw "stale url : (?&lt;destIp&gt;[^:]+):" 
+| lookup ip_to_indexer_name.csv ips as destIp output indexer_name as target_indexer 
+| rex field=target_indexer "idx(?&lt;idx&gt;\d+).ppbf.splunkcloud.com" 
+| rex field=host "^(?&lt;short_name&gt;.*)(-prd\.prd\.betfair)|(.betfair)"
+| timechart limit=0 values(idx) by short_name
+| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=mvjoin('&lt;&lt;FIELD&gt;&gt;',", ")]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

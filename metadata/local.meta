@@ -1,0 +1,42 @@
+[app/ui]
+version = 7.0.1
+modtime = 1523794851.944065000
+
+[app/launcher]
+version = 7.0.1
+modtime = 1523794851.948698000
+
+[savedsearches/Create%20endpoint%20classification%20table]
+access = read : [ * ], write : [ admin ]
+export = none
+owner = admin
+version = 7.0.1
+modtime = 1523796757.199542000
+
+[views/bursting_forwarders_and_indexing_delay]
+access = read : [ * ], write : [ admin ]
+export = none
+owner = admin
+version = 7.0.1
+modtime = 1523796790.162265000
+
+[views/event_distribution_measurements]
+access = read : [ * ], write : [ admin ]
+export = none
+owner = admin
+version = 7.0.1
+modtime = 1523796799.508039000
+
+[views/top_data_generating_source_forwarder_analysis]
+access = read : [ * ], write : [ admin ]
+export = none
+owner = admin
+version = 7.0.1
+modtime = 1523796810.220912000
+
+[views/intermediate_forwarders_switching_efficiency_analysis]
+access = read : [ * ], write : [ admin ]
+export = none
+owner = admin
+version = 7.0.1
+modtime = 1523796831.913665000

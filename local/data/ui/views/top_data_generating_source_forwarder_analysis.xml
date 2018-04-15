@@ -1,0 +1,144 @@
+<form>
+  <label>Top data generating source forwarder analysis</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time picker for analysis</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="forwarder_name">
+      <label>Filter forwarders by name</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="number_forwarders">
+      <label>Number of forwarders</label>
+      <default>50</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <input type="text" token="max_kbps_sourcetype_avg">
+        <label>Max kbps</label>
+        <default>200</default>
+      </input>
+      <chart>
+        <title>Top $number_forwarders$ source forwarders and their average event streams over $max_kbps_sourcetype_avg$ kbps by sourcetype</title>
+        <search>
+          <query>[search index=_internal $forwarder_name$ sourcetype=splunkd source="/opt/splunkforwarder/var/log/splunk/metrics.log" component=Metrics group=per_host_thruput host=*suf* 
+| stats avg(kbps) as max_kbps by series 
+| sort - max_kbps 
+| head $number_forwarders$ 
+| stats values(series) as host
+| eval search="(index=_internal sourcetype::splunkd source::/opt/splunkforwarder/var/log/splunk/metrics.log per_sourcetype_thruput host=$forwarder_name$) AND (".mvjoin(host," OR host::").")"]
+| stats avg(kbps) as max_kbps by series host
+| where max_kbps &gt; $max_kbps_sourcetype_avg$
+| xyseries host series max_kbps
+| addtotals
+| sort - Total 
+| fields - Total</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">2000</option>
+      </chart>
+    </panel>
+    <panel>
+      <input type="text" token="max_kbps_sourcetype_max">
+        <label>Max kbps</label>
+        <default>200</default>
+      </input>
+      <chart>
+        <title>Top $number_forwarders$ source forwarders with maximum throughput over $max_kbps_sourcetype_max$ kbps</title>
+        <search>
+          <query>[search index=_internal $forwarder_name$ sourcetype=splunkd source="/opt/splunkforwarder/var/log/splunk/metrics.log" component=Metrics group=per_host_thruput host=*suf* 
+| stats max(kbps) as max_kbps by series 
+| sort - max_kbps 
+| head $number_forwarders$ 
+| stats values(series) as host
+| eval search="(index=_internal sourcetype::splunkd source::/opt/splunkforwarder/var/log/splunk/metrics.log per_sourcetype_thruput host=$forwarder_name$) AND (".mvjoin(host," OR host::").")"]
+| stats max(kbps) as max_kbps by series host
+| where max_kbps &gt; $max_kbps_sourcetype_max$
+| xyseries host series max_kbps
+| addtotals
+| sort - Total 
+| fields - Total</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">2000</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="text" token="max_kbps_source">
+        <label>Max kbps</label>
+        <default>200</default>
+      </input>
+      <chart>
+        <title>Top $number_forwarders$ source forwarders and their average event streams over $max_kbps_source$ kbps by source</title>
+        <search>
+          <query>[search index=_internal $forwarder_name$ sourcetype=splunkd source="/opt/splunkforwarder/var/log/splunk/metrics.log" component=Metrics group=per_host_thruput host=*suf* 
+| stats avg(kbps) as max_kbps by series 
+| sort - max_kbps 
+| head $number_forwarders$ 
+| stats values(series) as host
+| eval search="(index=_internal sourcetype::splunkd source::/opt/splunkforwarder/var/log/splunk/metrics.log per_source_thruput host=$forwarder_name$) AND (".mvjoin(host," OR host::").")"]
+| stats avg(kbps) as max_kbps by series host
+| where max_kbps &gt; $max_kbps_source$
+| xyseries host series max_kbps
+| addtotals
+| sort - Total 
+| fields - Total</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">2000</option>
+      </chart>
+    </panel>
+    <panel>
+      <input type="text" token="max_kbps_index">
+        <label>Max kbps</label>
+        <default>200</default>
+      </input>
+      <chart>
+        <title>Top $number_forwarders$ source forwarders with maximum throughput over $max_kbps_index$ kbps by index</title>
+        <search>
+          <query>[search index=_internal $forwarder_name$ sourcetype=splunkd source="/opt/splunkforwarder/var/log/splunk/metrics.log" component=Metrics group=per_host_thruput host=*suf* 
+| stats max(kbps) as max_kbps by series 
+| sort - max_kbps 
+| head $number_forwarders$ 
+| stats values(series) as host
+| eval search="(index=_internal sourcetype::splunkd source::/opt/splunkforwarder/var/log/splunk/metrics.log per_index_thruput host=$forwarder_name$) AND (".mvjoin(host," OR host::").")"]
+| stats max(kbps) as max_kbps by series host
+| where max_kbps &gt; $max_kbps_index$
+| xyseries host series max_kbps
+| addtotals
+| sort - Total 
+| fields - Total</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">2000</option>
+      </chart>
+    </panel>
+  </row>
+</form>

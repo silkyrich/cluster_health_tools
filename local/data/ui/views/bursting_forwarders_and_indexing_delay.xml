@@ -1,0 +1,71 @@
+<form>
+  <label>Bursting forwarders and indexing delay</label>
+  <search id="baseSearch">
+    <query>
+[ search 
+        [ search _index_earliest=-60m@m _index_latest=now index=_internal * sourcetype=splunkd source="*metrics.log" component=Metrics group=per_host_thruput 
+            [| inputcsv hosts_to_roles.csv 
+            | where role="intermediate" 
+            | eval host="host=".host 
+            | stats values(host) as hosts 
+            | eval search="(".mvjoin(hosts, " OR ").")"] 
+        | stats max(kbps) as max_kbps by series 
+        | where max_kbps &gt; 4800 
+        | stats values(series) as host 
+        | eval search="(index=_internal sourcetype::splunkd source::/opt/splunkforwarder/var/log/splunk/metrics.log per_index_thruput host=*) AND (".mvjoin(host," OR host::").")"] 
+    | stats max(kbps) as max_kbps by series host 
+    | where max_kbps &gt; 4800 
+    | eval search="(index=".series." AND host=".host.")" 
+    | fields - max_kbps series host 
+    | stats values(search) as search 
+    | eval search="_index_earliest=-60m@m _index_latest=now AND (".mvjoin(search," OR ").")"] 
+| noop sample_ratio=10000
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>time range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <chart>
+        <title>Delay by timestamp</title>
+        <search base="baseSearch">
+          <query>
+| eval delay=_indextime-_time, series=host." indexing to  ".index 
+| timechart limit=50 max(delay) by series</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">817</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Delay by time indexed</title>
+        <search base="baseSearch">
+          <query>
+| eval delay=_indextime-_time, _time=_indextime, series=host." indexing to  ".index 
+| timechart limit=50 max(delay) by series</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">735</option>
+      </chart>
+    </panel>
+  </row>
+</form>
