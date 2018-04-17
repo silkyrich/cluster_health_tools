@@ -1,5 +1,5 @@
 <form>
-  <label>Event distribution measurements Clone</label>
+  <label>Event distribution measurements</label>
   <search id="baseSearch">
     <query>
       $generated_search$
@@ -105,20 +105,18 @@
 | mvexpand step 
 | eval step_size=$step_size$*pow(step,$power$) 
 | fields step step_size 
-| stats list(step_size) as period max(step_size) as final_step
+| stats max(step_size) as final_step
 | eval run=tostring(final_step,"duration") 
-| fields run period
+| fields  run
 ]
-| stats values(run) as run values(search) as search values(period) as period
-| fields run search period
-| eval period=mvjoin(period,",")</query>
+| stats values(run) as run values(search) as search
+| fields run search</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
         <option name="drilldown">all</option>
         <drilldown>
           <set token="generated_search">$row.search$</set>
-          <set token="period">$row.period$</set>
         </drilldown>
       </single>
     </panel>
@@ -129,22 +127,12 @@
       <chart>
         <title>Until all indexers have received data the standard deviation cannot be calculated</title>
         <search base="baseSearch">
-          <query>| stats count by period splunk_server $split_by$ 
-| append 
-    [| rest /services/data/indexes 
-    | eval index=title 
-    | fields splunk_server index 
-    | search $selected_index$
-    | eval period="$period$" 
-    | makemv delim="," period 
-    | mvexpand period 
-    | fields period splunk_server $split_by$ 
-    | eval count=0] 
-| stats sum(count) as count by period splunk_server $split_by$ 
-| stats avg(count) as avg stdev(count) as stdev by period $split_by$ 
+          <query>| stats count by period splunk_server $split_by$
+| stats values(count) as count by period splunk_server $split_by$
+| stats avg(count) as avg stdev(count) as stdev by period $split_by$
 | eval ratio=stdev/avg 
-| fields - stdev avg 
-| chart limit=100 values(ratio) as ratio by period $split_by$</query>
+| fields - stdev avg
+| chart limit=100 values(ratio) as ratio by  period $split_by$</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -204,6 +192,7 @@
         <valuePrefix>index="</valuePrefix>
         <valueSuffix>"</valueSuffix>
         <delimiter> OR </delimiter>
+        <default>*</default>
       </input>
       <chart>
         <title>Variation of events across the indexers</title>
