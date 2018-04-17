@@ -1,0 +1,114 @@
+<form>
+  <label>Bucket size analysis</label>
+  <fieldset submitButton="false">
+    <input type="radio" token="size">
+      <label>volume size</label>
+      <choice value="auto">auto</choice>
+      <choice value="auto_high_volume">auto_high_volume</choice>
+      <default>auto_high_volume</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Distribution of bucket sizes by index for auto_high_volume indexes (max size=10GB)</title>
+      <input type="time" token="time">
+        <label></label>
+        <default>
+          <earliest>0</earliest>
+          <latest></latest>
+        </default>
+      </input>
+      <chart>
+        <search>
+          <query>| dbinspect 
+    [| rest /services/data/indexes 
+    | eval index=title 
+    | stats values(maxDataSize) as maxDataSize by index 
+    | where maxDataSize="$size$" 
+    | eval index="index=".index 
+    | stats values(index) as indexes 
+    | mvcombine delim=" " indexes 
+    | eval search=indexes ] 
+| bin sizeOnDiskMB span=2log4 
+| chart limit=0 count by sizeOnDiskMB index</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">505</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Span, bucket size and number of rolls per index as per "HotBucketRoller" for auto_high_volume indexes</title>
+      <chart>
+        <search>
+          <query>index=_internal source=*splunkd.log sourcetype=splunkd component=HotBucketRoller caller=* 
+    [| rest /services/data/indexes 
+    | eval index=title 
+    | stats values(maxDataSize) as maxDataSize by index 
+    | where maxDataSize="$size$" 
+    | eval index="idx=\"".index."\"" 
+    | stats values(index) as indexes 
+    | eval search="(".mvjoin(indexes," OR ").")" ] 
+| eval makeEpochs=split(to,"_") 
+| eval a=mvindex(makeEpochs,1),b=mvindex(makeEpochs,2),c=a-b, idx=idx+":"+caller 
+| eval c=c/86400 
+| stats avg(c) As BucketSpanDays, avg(size) As BucketSizeGb, count AS BucketRolls by idx 
+| eval BucketSizeGb=round(((BucketSizeGb/1024)/1024)/1024,3)</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">647</option>
+      </chart>
+    </panel>
+  </row>
+</form>
