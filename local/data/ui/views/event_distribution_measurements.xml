@@ -92,25 +92,27 @@
 | eval step=mvrange(1,$steps$,1) 
 | mvexpand step 
 | eval step_size=$step_size$*pow(step,$power$) 
-| eval jump=step_size+$offset$ 
+| eval jump=step_size+60 
 | fields step_size jump step 
-| eval preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t")
-| eval search=preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".jump."sec latest=-$offset$sec $selected_host$ $selected_index$  by splunk_server $split_by$ 
-| eval period=if(isNull(period),\"".step_size."\",period)"
-| stats list(search) as search 
-| eval search=mvjoin(search,"") 
-| append [
-| makeresults 
-| eval step=mvrange(1,$steps$,1) 
-| mvexpand step 
-| eval step_size=$step_size$*pow(step,$power$) 
-| fields step step_size 
-| stats max(step_size) as final_step
-| eval run=tostring(final_step,"duration") 
-| fields  run
-]
-| stats values(run) as run values(search) as search
-| fields run search</query>
+| eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
+| eval tstats_search="
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".jump."sec latest=-$offset$sec $selected_host$ $selected_index$  by splunk_server $split_by$ 
+| eval period=if(isNull(period),\"".step_size."\",period)
+", step_string=tostring(step_size,"duration")
+| fields - jump tstats_preamble
+| stats last(step_string) as max_history list(*) as * 
+| eval tstats_search="[".mvjoin(tstats_search," ")." | stats count by period splunk_server index ]"
+| eventstats last(step_string) as max_history_str last(step_size) as max_history
+| eval step_string=mvjoin(step_string,","), step_size=mvjoin(step_size,","), step=mvjoin(step,",")
+| eval post_process="| stats sum(count) as count by period splunk_server index"
+| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_host$ $selected_index$ by splunk_server $split_by$ 
+    | stats count by splunk_server index 
+    | eval count=0 
+    | eval period=\"".step_size."\" 
+    | makemv delim=\",\" period 
+    | mvexpand period]"
+| eval search="| union ".padding_search.tstats_search.post_process
+| fields max_history_str search step_string</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
@@ -127,9 +129,7 @@
       <chart>
         <title>Until all indexers have received data the standard deviation cannot be calculated</title>
         <search base="baseSearch">
-          <query>| stats count by period splunk_server $split_by$
-| stats values(count) as count by period splunk_server $split_by$
-| stats avg(count) as avg stdev(count) as stdev by period $split_by$
+          <query>| stats avg(count) as avg stdev(count) as stdev by period $split_by$
 | eval ratio=stdev/avg 
 | fields - stdev avg
 | chart limit=100 values(ratio) as ratio by  period $split_by$</query>
@@ -145,8 +145,8 @@
       <chart>
         <title>We need this to ramp up as quickly as possible</title>
         <search base="baseSearch">
-          <query>| stats count by period splunk_server $split_by$ 
-| chart dc(splunk_server) by period  $split_by$ 
+          <query>| where count!=0
+| chart dc(splunk_server) by period $split_by$  
 | sort period</query>
         </search>
         <option name="charting.chart">line</option>
@@ -160,8 +160,7 @@
       <chart>
         <title>Events scanned goes up quickly</title>
         <search base="baseSearch">
-          <query>|  stats count by period splunk_server $split_by$
-| chart limit=100 sum(count) as ratio by  period $split_by$</query>
+          <query>| chart limit=100 sum(count) as ratio by  period $split_by$</query>
         </search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
