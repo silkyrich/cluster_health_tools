@@ -1,0 +1,215 @@
+<form>
+  <label>Event distribution measurements</label>
+  <search id="baseSearch">
+    <query>
+      $generated_search$
+    </query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="multiselect" token="selected_index">
+      <label>1. Select indexes to sample (be patient)</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount index=* index=_* summarize=false | stats sum(count) as size by index | sort - size | eval label=index."(".size.")"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>main</default>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>index=</valuePrefix>
+      <delimiter> OR </delimiter>
+    </input>
+    <input type="multiselect" token="selected_host">
+      <label>2. Filter to hosts in index</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>host</fieldForValue>
+      <search>
+        <query>| tstats count where $selected_index$ by host | eval label=host."(".count.")"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>host=</valuePrefix>
+      <delimiter> OR </delimiter>
+      <choice value="*">All</choice>
+      <default>*</default>
+    </input>
+    <input type="text" token="step_size">
+      <label>3. Enter starting duration in seconds</label>
+      <default>10</default>
+    </input>
+    <input type="text" token="power">
+      <label>4. Enter the power</label>
+      <default>4</default>
+    </input>
+    <input type="text" token="offset" searchWhenChanged="true">
+      <label>5. Set the delay before starting sampling in seconds</label>
+      <default>60</default>
+      <initialValue>60</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>6. Rate of increase of time based on power, select number of iterations</title>
+      <input type="text" token="max_samples_to_offer">
+        <label>Set maximum sample size</label>
+        <default>10</default>
+      </input>
+      <chart>
+        <title>Rate of time increase in seconds - click on column</title>
+        <search>
+          <query>| makeresults 
+| eval step=mvrange(1,$max_samples_to_offer$,1) 
+| mvexpand step 
+| eval "time range in seconds"=$step_size$*pow(step,$power$)
+| fields step "time range in seconds"
+| fields - _time</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <drilldown>
+          <set token="steps">$click.value$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>7. Click on the duration to execute the search</title>
+      <input type="dropdown" token="split_by">
+        <label>8. Split by</label>
+        <choice value="host">host</choice>
+        <choice value="index">index</choice>
+        <default>index</default>
+      </input>
+      <single>
+        <title>The format is "days+hours:minutes:seconds" i.e 10+6:30:00 = 10 days and 6 hours</title>
+        <search>
+          <query>| makeresults 
+| eval step=mvrange(1,$steps$,1) 
+| mvexpand step 
+| eval step_size=round($step_size$*pow(step,$power$)) 
+| eval jump=step_size+60 
+| fields step_size jump step 
+| eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
+| eval tstats_search="
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_host$ $selected_index$  by splunk_server $split_by$ 
+| eval period=if(isNull(period),\"".step_size."\",period)
+", step_string=tostring(step_size,"duration")
+| fields - jump tstats_preamble
+| stats last(step_string) as max_history list(*) as * 
+| eval tstats_search=mvjoin(tstats_search," ")." | stats count by period splunk_server index"
+| eventstats last(step_string) as max_history_str last(step_size) as max_history
+| eval step_string=mvjoin(step_string,","), step_size=mvjoin(step_size,","), step=mvjoin(step,",")
+| eval post_process="| stats sum(count) as count by period splunk_server index"
+| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_host$ $selected_index$ by splunk_server $split_by$ 
+    | stats count by splunk_server index 
+    | eval count=0 
+    | eval period=\"".step_size."\" 
+    | makemv delim=\",\" period 
+    | mvexpand period]"
+| eval search=tstats_search
+| fields max_history_str search step_string</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="underLabel">Scan backwards in history until ...</option>
+        <drilldown>
+          <set token="generated_search">$row.search$</set>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>What was the normalised standard deviation over time?</title>
+      <chart>
+        <title>Until all indexers have received data the standard deviation cannot be calculated</title>
+        <search base="baseSearch">
+          <query>| stats avg(count) as avg stdev(count) as stdev by period $split_by$
+| eval ratio=stdev/avg 
+| fields - stdev avg
+| chart limit=100 values(ratio) as ratio by  period $split_by$
+| eval period="-".period."sec (".tostring(period,"duration").")"</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">378</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>How many indexers received data during each period?</title>
+      <chart>
+        <title>We need this to ramp up as quickly as possible</title>
+        <search base="baseSearch">
+          <query>| where count!=0
+| chart dc(splunk_server) by period $split_by$  
+| eval period="-".period."sec (".tostring(period,"duration").")"</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">376</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Events scanned in each step</title>
+      <chart>
+        <title>Events scanned goes up quickly</title>
+        <search base="baseSearch">
+          <query>| chart limit=100 sum(count) as ratio by  period $split_by$
+| eval period="-".period."sec (".tostring(period,"duration").")"</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">372</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Variation of events across the indexers $selected_index$</title>
+      <input type="multiselect" token="filter_index">
+        <label>Filter by index</label>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+        <search>
+          <query>| rest /services/data/indexes
+| rename title as index 
+| fields + index
+| search $selected_index$
+| stats count by index
+| fields - count</query>
+        </search>
+        <choice value="*">*</choice>
+        <prefix>(</prefix>
+        <suffix>)</suffix>
+        <valuePrefix>index="</valuePrefix>
+        <valueSuffix>"</valueSuffix>
+        <delimiter> OR </delimiter>
+        <default>*</default>
+      </input>
+      <chart>
+        <title>Variation of events across the indexers</title>
+        <search base="baseSearch">
+          <query>| search $filter_index$
+| eval period="-".period."sec (".tostring(period,"duration").")"
+| stats sum(count) as count by period splunk_server
+| xyseries splunk_server period count</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">573</option>
+      </chart>
+    </panel>
+  </row>
+</form>
