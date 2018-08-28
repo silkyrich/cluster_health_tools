@@ -1,0 +1,120 @@
+<form>
+  <label>Event delay by index and sourcetype</label>
+  <init>
+    <set></set>
+  </init>
+  <search id="event_delay">
+    <query>
+
+| tstats max(_indextime) as indexed_time count where $filter_sourcetypes$ $filter_indexes$ latest=$time.latest$ earliest=$time.earliest$ _index_latest=$time.latest$ _index_earliest=$time.earliest$ by index sourcetype _time span=1s
+| eval _time=round(_time), delay=indexed_time-_time, delay_str=tostring(delay,"duration"), index_sourcetype=index."+".sourcetype
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range (keep to a few seconds)</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="multiselect" token="filter_indexes">
+      <label>select indexes</label>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>index="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR </delimiter>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount summarize=f index=* index=_* | stats sum(count) as count by index | eval label=index." (".count.")" | sort - count | fields + index label</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="multiselect" token="filter_sourcetypes">
+      <label>Select sourcetypes</label>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>sourcetype="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR </delimiter>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>sourcetype</fieldForValue>
+      <search>
+        <query>| tstats count  where $filter_indexes$ latest=+100day earliest=-300day _index_latest=-1sec _index_earliest=-2sec   by sourcetype
+| eval label=sourcetype." (".count.")"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <choice value="*">All</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>P95 delay by _time</title>
+      <chart>
+        <search base="event_delay">
+          <query>| timechart limit=30 bins=600 p95(delay) by index_sourcetype</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <drilldown>
+          <set token="selected_index_sourcetype">$row.index_sourcetype</set>
+          <set token="selected_time">$row._time$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>P95 delay by indexed_time</title>
+      <chart>
+        <search base="event_delay">
+          <query>| eval _time=indexed_time | timechart limit=30 bins=600 p95(delay) by index_sourcetype</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <drilldown>
+          <set token="selected_index">$row.index_sourcetype</set>
+          <set token="selected_time">$row._time$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_index$">
+    <panel>
+      <title>Hosts sending to $selected_index$ and at $selected_time$ with the delay and number of events sent during period</title>
+      <input type="text" token="host_filter">
+        <label>Wildcard search for endpoints</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search base="event_delay">
+          <query>| where index="$selected_index$"
+| search host=$host_filter$</query>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <link target="_blank">/app/search/event_delay_for_host?form.selected_host=$row.host$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
