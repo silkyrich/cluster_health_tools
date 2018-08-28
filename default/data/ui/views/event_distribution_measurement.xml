@@ -1,5 +1,8 @@
 <form>
   <label>Event distribution measurements</label>
+  <init>
+    <set token="steps">19</set>
+  </init>
   <search id="baseSearch">
     <query>
       $generated_search$
@@ -39,11 +42,11 @@
     </input>
     <input type="text" token="step_size">
       <label>3. Enter starting duration in seconds</label>
-      <default>10</default>
+      <default>1</default>
     </input>
     <input type="text" token="power">
       <label>4. Enter the power</label>
-      <default>4</default>
+      <default>4.2</default>
     </input>
     <input type="text" token="offset" searchWhenChanged="true">
       <label>5. Set the delay before starting sampling in seconds</label>
@@ -56,7 +59,7 @@
       <title>6. Rate of increase of time based on power, select number of iterations</title>
       <input type="text" token="max_samples_to_offer">
         <label>Set maximum sample size</label>
-        <default>10</default>
+        <default>20</default>
       </input>
       <chart>
         <title>Rate of time increase in seconds - click on column</title>
@@ -86,7 +89,7 @@
         <default>index</default>
       </input>
       <single>
-        <title>The format is "days+hours:minutes:seconds" i.e 10+6:30:00 = 10 days and 6 hours</title>
+        <title>The format is "days+hours:minutes:seconds" i.e 10+6:30:00 = 10 days and 6 hours 30 mins</title>
         <search>
           <query>| makeresults 
 | eval step=mvrange(1,$steps$,1) 
@@ -126,16 +129,28 @@
   </row>
   <row>
     <panel>
+      <html>
+      You are viewing $steps$ steps starting with a period of $step_size$ seconds increasing at the power $power$ and spliting the data by $split_by$
+    </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <title>What was the normalised standard deviation over time?</title>
       <chart>
-        <title>Until all indexers have received data the standard deviation cannot be calculated</title>
+        <title>We want this to bottom out ASAP</title>
         <search base="baseSearch">
-          <query>| stats avg(count) as avg stdev(count) as stdev by period $split_by$
-| eval ratio=stdev/avg 
-| fields - stdev avg
-| chart limit=100 values(ratio) as ratio by  period $split_by$
+          <query>| eventstats dc(splunk_server) as known_servers 
+| stats dc(splunk_server) as servers_in_period avg(count) as avg var(count) as varience  by period index known_servers 
+| eval missing_servers_in_period = known_servers - servers_in_period,
+     fixed_variance=(servers_in_period*varience+pow(missing_servers_in_period*avg,2))/known_servers,
+     fixed_stdev=sqrt(fixed_variance)
+| eval normalized_stdev=fixed_stdev/avg 
+| fields -  avg fixed_stdev fixed_variance varience
+| chart limit=100 values(normalized_stdev) as normalized_stdev by  period $split_by$
 | eval period="-".period."sec (".tostring(period,"duration").")"</query>
         </search>
+        <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
