@@ -1,0 +1,215 @@
+<form>
+  <label>Event delay for host</label>
+  <init>
+    <set></set>
+  </init>
+  <search id="per_host">
+    <query>
+| tstats max(_indextime) AS indexed_time count where host=$selected_host$ (index=* OR index=_*) latest=now earliest=$time.earliest$ _index_latest=$time.latest$ _index_earliest=$time.earliest$  by index host splunk_server _time source span=$seconds_for_bin$
+| eval _time=round(_time), bin_delay=indexed_time-_time
+| bin span=2log5 bin_delay 
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;60,60,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400))</eval>
+        <eval token="tweaked_earliest">relative_time(now(), $time.earliest$)</eval>
+        <eval token="tweaked_latest">relative_time(now(), $time.latest$)</eval>
+      </change>
+    </input>
+    <input type="text" token="selected_host">
+      <label>Selected Host</label>
+      <default></default>
+    </input>
+    <input type="multiselect" token="index_filter">
+      <label>Filter indexes</label>
+      <choice value="*">All</choice>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>index="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR </delimiter>
+      <search base="per_host">
+        <query>| stats count by index
+| eval label=index." (".count.")"</query>
+      </search>
+      <default>*</default>
+      <fieldForLabel>index</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+    </input>
+  </fieldset>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Delay of events by received time (_time)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by index</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">530</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Reload this dashboard for period</title>
+      <single>
+        <search>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    selection_earliest_blocked="$selection_earliest$", 
+    label=strftime("$selection_earliest$","%c")." to ".strftime("$selection_latest$","%c") 
+| where $selection_earliest$ != info_min_time AND $selection_latest$ != info_max_time 
+| table label 
+| eval earliest=round($selection_earliest$),
+    latest=round($selection_latest$)</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">/app/search/event_delay_per_host?form.time.earliest=$row.earliest$&amp;form.time.latest=$row.latest$&amp;form.selected_host=$selected_host$</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Delay of events by received time (_time)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| eval _time=indexed_time
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by index</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">530</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Delay of events by received time (_time)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by bin_delay</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">530</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Delay of events by generation time (_indexedtime)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| eval _time=indexed_time
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by bin_delay</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">511</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Number of events going into each index by received time (_time)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by index</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">617</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Number of events each index by generation time (_indexedtime)</title>
+      <chart>
+        <search base="per_host">
+          <query>| search $index_filter$
+| eval _time=indexed_time
+| timechart limit=0 bins=600 span=$seconds_for_bin$sec sum(count) by index</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">483</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
