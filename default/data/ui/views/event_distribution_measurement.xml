@@ -136,60 +136,6 @@
   </row>
   <row>
     <panel>
-      <title>What was the normalised standard deviation over time?</title>
-      <chart>
-        <title>We want this to bottom out ASAP</title>
-        <search base="baseSearch">
-          <query>| eventstats dc(splunk_server) as known_servers 
-| stats dc(splunk_server) as servers_in_period avg(count) as avg var(count) as varience  by period index known_servers 
-| eval missing_servers_in_period = known_servers - servers_in_period,
-     fixed_variance=(servers_in_period*varience+pow(missing_servers_in_period*avg,2))/known_servers,
-     fixed_stdev=sqrt(fixed_variance)
-| eval normalized_stdev=fixed_stdev/avg 
-| fields -  avg fixed_stdev fixed_variance varience
-| chart limit=100 values(normalized_stdev) as normalized_stdev by  period $split_by$
-| eval period="-".period."sec (".tostring(period,"duration").")"</query>
-        </search>
-        <option name="charting.axisY.scale">linear</option>
-        <option name="charting.chart">line</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">378</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>How many indexers received data during each period?</title>
-      <chart>
-        <title>We need this to ramp up as quickly as possible</title>
-        <search base="baseSearch">
-          <query>| where count!=0
-| chart dc(splunk_server) by period $split_by$  
-| eval period="-".period."sec (".tostring(period,"duration").")"</query>
-        </search>
-        <option name="charting.chart">line</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">376</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Events scanned in each step</title>
-      <chart>
-        <title>Events scanned goes up quickly</title>
-        <search base="baseSearch">
-          <query>| chart limit=100 sum(count) as ratio by  period $split_by$
-| eval period="-".period."sec (".tostring(period,"duration").")"</query>
-        </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">line</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">372</option>
-      </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
       <title>Variation of events across the indexers $selected_index$</title>
       <input type="multiselect" token="filter_index">
         <label>Filter by index</label>
@@ -215,7 +161,7 @@
         <title>Variation of events across the indexers</title>
         <search base="baseSearch">
           <query>| search $filter_index$
-| eval period="-".period."sec (".tostring(period,"duration").")"
+| eval period=tostring(period,"duration")
 | stats sum(count) as count by period splunk_server
 | xyseries splunk_server period count</query>
         </search>
@@ -224,6 +170,64 @@
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">573</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>What was the normalised standard deviation over time?</title>
+      <chart>
+        <title>We want this to bottom out ASAP</title>
+        <search base="baseSearch">
+          <query>| eventstats dc(splunk_server) as known_servers 
+| stats dc(splunk_server) as servers_in_period avg(count) as avg var(count) as varience  by period index known_servers 
+| eval missing_servers_in_period = known_servers - servers_in_period,
+     fixed_variance=(servers_in_period*varience+pow(missing_servers_in_period*avg,2))/known_servers,
+     fixed_stdev=sqrt(fixed_variance)
+| eval normalized_stdev=fixed_stdev/avg 
+| fields -  avg fixed_stdev fixed_variance varience
+| chart limit=100 values(normalized_stdev) as normalized_stdev by  period $split_by$
+| eval period=tostring(period,"duration")</query>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">378</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>How many indexers received data during each period?</title>
+      <chart>
+        <title>We need this to ramp up as quickly as possible</title>
+        <search base="baseSearch">
+          <query>| where count!=0
+| chart dc(splunk_server) by period $split_by$  
+| eval period=tostring(period,"duration")</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">376</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events scanned in each step</title>
+      <chart>
+        <title>Events scanned goes up quickly</title>
+        <search base="baseSearch">
+          <query>| chart limit=100 sum(count) as ratio by  period $split_by$
+| eval period=tostring(period,"duration")</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">372</option>
       </chart>
     </panel>
   </row>
