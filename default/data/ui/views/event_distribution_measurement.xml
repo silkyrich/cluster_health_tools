@@ -95,7 +95,7 @@
 | eval step=mvrange(1,$steps$,1) 
 | mvexpand step 
 | eval step_size=round($step_size$*pow(step,$power$)) 
-| eval jump=step_size+60 
+| eval jump=step_size
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
