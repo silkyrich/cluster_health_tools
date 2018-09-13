@@ -33,7 +33,7 @@
       <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
       <chart>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal )[ | rest /services/server/introspection/indexer 
+          <query>index=_internal [ | rest /services/server/introspection/indexer 
 | sort - splunk_server 
 | fields + splunk_server
 | eval search="host=\"".splunk_server."\"" 
