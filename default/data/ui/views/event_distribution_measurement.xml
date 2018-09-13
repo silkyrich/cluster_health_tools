@@ -231,4 +231,23 @@
       </chart>
     </panel>
   </row>
+  <row>
+    <panel>
+      <table>
+        <title>Coverage of indexes to servers</title>
+        <search base="baseSearch">
+          <query>| stats count by splunk_server index
+| xyseries splunk_server index count
+| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=if("&lt;&lt;FIELD&gt;&gt;"!="splunk_server",if(isnull(&lt;&lt;FIELD&gt;&gt;),1,0),&lt;&lt;FIELD&gt;&gt;)]</query>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="bds_dev_nagios">
+          <colorPalette type="list">[#D93F3C,#65A637]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+      </table>
+    </panel>
+  </row>
 </form>
