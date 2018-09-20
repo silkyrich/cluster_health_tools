@@ -1,0 +1,168 @@
+<form>
+  <label>Tstats vs search performance using TERM, not indexed fields</label>
+        <init>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+      </init>  
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+        <unset token="improvement"></unset>
+      </change>
+    </input>
+    <input type="text" token="divisions">
+      <label>divisions</label>
+      <default>400</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+        <unset token="improvement"></unset>
+      </change>
+    </input>
+  </fieldset>
+  <row depends="$improvement$">
+    <panel>
+      <html>
+       <h1>
+          <center>TSTATS is $improvement$ times faster</center>
+        </h1>
+     </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Summary</h1>
+        If you have a data set that has variables that are in semantic form that does not contain major separators you can search for that term.  <br/>In this example we are able to apply the method to because the log files are of the form alert_severity=something.  <br/>This means you can search for TERM(alert_severity=something) and count the event which contain that term.  <br/>However if the log lines were alert_severity="something" we wouldn't be able to use the method because " is a major separator. <br/>
+          In the example we have the traditional search and a tstats search that execute multiple tstats, one for each possible value of alert_severity.  <br/>As this page runs it compares the execution speed of the approaches. <br/>
+          Note that approach works best when the cardinality is small, but it is very flexiable. For instance if you were dealing with percentages you might use wildcards for instance TERM(value=9*)
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search returned $search_progress$ events in $search_runtime$ seconds</title>
+      <input type="text" token="sample_ratio">
+        <label>Sample ratio</label>
+        <default>1</default>
+      </input>
+      <chart>
+        <search>
+          <query>index=itsi_summary alert_severity=* | timechart span=$seconds_for_bin$sec count by alert_severity</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+          <progress>
+            <eval token="search_progress">$job.eventCount$</eval>
+            <eval token="search_runtime">$job.runDuration$</eval>
+          </progress>
+          <done>
+            <eval token="improvement">round($search_runtime$/$tstats_runtime$,0)</eval>
+          </done>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <h1>The normal search</h1>
+index=itsi_summary alert_severity=* <br/>
+| timechart span=$seconds_for_bin$sec count by alert_severity
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Tstats returned $tstats_progress$ events in $tstats_runtime$ seconds</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t count where index=itsi_summary TERM(alert_severity=critical) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "critical", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=disabled) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "disabled", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=high) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "high", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=info) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "info", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=low) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "low", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=medium) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "medium", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=normal) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "normal", alert_severity)
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=unknown) by _time host span=$seconds_for_bin$sec
+| eval alert_severity=if(isnull(alert_severity), "unknown", alert_severity)
+| timechart span=$seconds_for_bin$sec count by alert_severity</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <progress>
+            <eval token="tstats_progress">$job.eventCount$</eval>
+            <eval token="tstats_runtime">$job.runDuration$</eval>
+          </progress>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">auto</option>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+<h1>The tstats search</h1>
+| tstats prestats=t count where index=itsi_summary TERM(alert_severity=critical) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "critical", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=disabled) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "disabled", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=high) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "high", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=info) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "info", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=low) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "low", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=medium) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "medium", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=normal) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "normal", alert_severity)<br/>
+| tstats prestats=t append=t count where index=itsi_summary TERM(alert_severity=unknown) by _time host span=$seconds_for_bin$sec<br/>
+| eval alert_severity=if(isnull(alert_severity), "unknown", alert_severity)<br/>
+| timechart span=$seconds_for_bin$sec count by alert_severity <br/> </html>
+    </panel>
+  </row>
+</form>
