@@ -103,14 +103,31 @@
   </row>
   <row>
     <panel>
-      <title>Columns detected from orginal search</title>
+      <event>
+        <title>Events matched</title>
+        <search>
+          <query>$search_prefix$ TERM($split_by$=*) $regex$</query>
+          <earliest>$sampling_time.earliest$</earliest>
+          <latest>$sampling_time.latest$</latest>
+        </search>
+        <option name="list.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <single>
-        <title>Click link to run search!</title>
+        <title>$columns_dynamic$</title>
         <search>
           <progress>
             <set token="columns_dynamic">$result.columns$</set>
           </progress>
-          <query>$search_prefix$ TERM($split_by$=*) | regex $split_by$!="\s" | stats values($split_by$) as columns</query>
+          <query>$search_prefix$ TERM($split_by$=*) 
+| regex $split_by$!="\s" 
+| stats dc($split_by$) as count values($split_by$) as columns 
+| eval click="Generate tstats search for ".count." columns" 
+| table click columns</query>
           <earliest>$sampling_time.earliest$</earliest>
           <latest>$sampling_time.latest$</latest>
           <sampleRatio>1</sampleRatio>
@@ -125,7 +142,6 @@
   </row>
   <row depends="$hide_me$">
     <panel>
-      <title>$columns$</title>
       <table>
         <search>
           <progress>
