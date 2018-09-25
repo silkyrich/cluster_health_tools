@@ -101,22 +101,25 @@
   </html>
     </panel>
   </row>
-  <row depends="$hide_me$">
+  <row>
     <panel>
-      <title>Extract the columns from the original search</title>
+      <title>Columns detected from orginal search</title>
       <single>
-        <title>Columns detected</title>
+        <title>Click link to run search!</title>
         <search>
           <progress>
-            <set token="columns">$result.columns$</set>
+            <set token="columns_dynamic">$result.columns$</set>
           </progress>
           <query>$search_prefix$ TERM($split_by$=*) | regex $split_by$!="\s" | stats values($split_by$) as columns</query>
           <earliest>$sampling_time.earliest$</earliest>
           <latest>$sampling_time.latest$</latest>
           <sampleRatio>1</sampleRatio>
         </search>
-        <option name="drilldown">none</option>
+        <option name="drilldown">all</option>
         <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="columns">$row.columns$</set>
+        </drilldown>
       </single>
     </panel>
   </row>
