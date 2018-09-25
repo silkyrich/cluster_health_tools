@@ -1,0 +1,203 @@
+<form theme="light">
+  <label>Build your own tstats accelerated search</label>
+  <init>
+    <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+  </init>
+  <init>
+    <set token="original_search">$search_prefix$ TERM($split_by$=*)</set>
+  </init>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+        <unset token="improvement"></unset>
+      </change>
+    </input>
+    <input type="text" token="divisions">
+      <label>divisions</label>
+      <default>400</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$divisions$))</eval>
+        <unset token="improvement"></unset>
+      </change>
+    </input>
+    <input type="text" token="search_prefix">
+      <label>Search prefix</label>
+      <default>index=itsi_summary</default>
+    </input>
+    <input type="text" token="regex">
+      <label>Add regex to extract variable</label>
+      <default>| noop</default>
+    </input>
+    <input type="text" token="split_by">
+      <label>Split by field</label>
+      <default>alert_severity</default>
+    </input>
+    <input type="text" token="sample_ratio">
+      <label>Sample ratio</label>
+      <default>1</default>
+    </input>
+    <input type="time" token="sampling_time">
+      <label>Sample period for extracting columns</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$improvement$">
+    <panel>
+      <html>
+       <h1>
+          <center>TSTATS is $improvement$ times faster</center>
+        </h1>
+     </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Summary</h1>
+        If you have a data set that has variables that are in semantic form that does not contain major separators you can search for that term.  <br/>In this example we are able to apply the method to because the log files are of the form alert_severity=something.  <br/>This means you can search for TERM(alert_severity=something) and count the event which contain that term.  <br/>However if the log lines were alert_severity="something" we wouldn't be able to use the method because " is a major separator. <br/>
+          In the example we have the traditional search and a tstats search that execute multiple tstats, one for each possible value of alert_severity.  <br/>As this page runs it compares the execution speed of the approaches. <br/>
+          Note that approach works best when the cardinality is small, but it is very flexiable. For instance if you were dealing with percentages you might use wildcards for instance TERM(value=9*)
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search returned $search_progress$ events in $search_runtime$ seconds</title>
+      <chart>
+        <search>
+          <progress>
+            <eval token="search_progress">$job.eventCount$</eval>
+            <eval token="search_runtime">$job.runDuration$</eval>
+          </progress>
+          <done>
+            <eval token="improvement">round($search_runtime$/$tstats_runtime$,0)</eval>
+          </done>
+          <query>$search_prefix$ TERM($split_by$=*) $regex$
+| timechart limit=50 span=$seconds_for_bin$sec count by $split_by$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <h1>The normal search</h1>
+      $search_prefix$ TERM($split_by$=*)<br/>
+      $regex$
+        | timechart span=$seconds_for_bin$sec count by $split_by$
+  </html>
+    </panel>
+  </row>
+  <row depends="$hide_me$">
+    <panel>
+      <title>Extract the columns from the original search</title>
+      <single>
+        <title>Columns detected</title>
+        <search>
+          <progress>
+            <set token="columns">$result.columns$</set>
+          </progress>
+          <query>$search_prefix$ TERM($split_by$=*) | regex $split_by$!="\s" | stats values($split_by$) as columns</query>
+          <earliest>$sampling_time.earliest$</earliest>
+          <latest>$sampling_time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$hide_me$">
+    <panel>
+      <title>$columns$</title>
+      <table>
+        <search>
+          <progress>
+            <set token="tstats_search">$result.search$</set>
+          </progress>
+          <query>| makeresults 
+| eval columns="$columns$"
+| makemv delim="," columns 
+| mvexpand columns
+| streamstats count
+| eval search=if(count=1, "| tstats prestats=t ", "| tstats prestats=t append=t ")." count where $search_prefix$ TERM($split_by$=".columns.") by _time span=$seconds_for_bin$sec | eval $split_by$=if(isnull($split_by$),\"".columns."\",$split_by$)"
+| sort + count
+| stats values(search) as search 
+| eval search=mvjoin(search," ")."| timechart limit=50 span=$seconds_for_bin$sec count by $split_by$"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Tstats returned $tstats_progress$ events in $tstats_runtime$ seconds</title>
+      <chart>
+        <search>
+          <progress>
+            <eval token="tstats_progress">$job.eventCount$</eval>
+            <eval token="tstats_runtime">$job.runDuration$</eval>
+          </progress>
+          <query>$tstats_search$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">auto</option>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+<h1>The tstats search</h1>
+$tstats_search$<br/>
+| timechart span=$seconds_for_bin$sec count by alert_severity <br/> </html>
+    </panel>
+  </row>
+</form>
