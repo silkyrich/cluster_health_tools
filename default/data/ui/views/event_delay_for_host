@@ -219,8 +219,8 @@
       <event>
         <search>
           <query>index=* host=$selected_host$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
         <option name="count">100</option>
         <option name="list.drilldown">none</option>
