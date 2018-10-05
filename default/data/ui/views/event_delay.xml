@@ -1,0 +1,192 @@
+<form>
+  <label>Event delay</label>
+  <init>
+    <set></set>
+  </init>
+  <search base="event_delay">
+    <query/>
+  </search>
+  <search id="event_delay">
+    <query>
+
+| tstats max(_indextime) as indexed_time count where $filter_indexes$ latest=+100day earliest=-300day _index_latest=$time.latest$ _index_earliest=$time.earliest$  by index host splunk_server _time span=1s
+| eval _time=round(_time), delay=indexed_time-_time, delay_str=tostring(delay,"duration")
+| eventstats max(delay) as max_delay max(_time) as max_time count as eps by host index
+| where max_delay = delay
+| eval max_time=_time
+| sort - delay
+
+
+
+</query>
+    <earliest>-100d@d</earliest>
+    <latest>now</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <search id="per_host">
+    <query>| tstats max(_indextime) AS indexed_time count where host=$selected_endpoint$ index=* latest=now earliest=-24hrs _index_latest=$time_indexer.latest$ _index_earliest=$time_indexer.earliest$  by index host splunk_server _time source span=10s
+| eval _time=round(_time), bin_delay=indexed_time-_time
+| bin bins=10 bin_delay
+
+
+</query>
+    <earliest>-4h@m</earliest>
+    <latest>now</latest>
+  </search>
+  <fieldset submitButton="true">
+    <input type="time" token="time">
+      <label>Select time range (keep to a few seconds)</label>
+      <default>
+        <earliest>-2sec</earliest>
+        <latest>-1sec</latest>
+      </default>
+    </input>
+    <input type="multiselect" token="filter_indexes">
+      <label>select indexes</label>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>index="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR </delimiter>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount summarize=f index=* index=_* | stats sum(count) as count by index | eval label=index." (".count.")" | sort - count | fields + index label</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>_internal</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>$aggregation_function_lhs$ delay by index</title>
+      <input type="dropdown" token="aggregation_function_lhs">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="mode">mode</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="event_delay">
+          <query>| stats mode(delay) by index</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <drilldown>
+          <set token="selected_index">$row.index$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>$aggregation_function_rhs$ delay by index</title>
+      <input type="dropdown" token="aggregation_function_rhs">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="mode">mode</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>p95</default>
+      </input>
+      <chart>
+        <search base="event_delay">
+          <query>| stats p95(delay) by index</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <drilldown>
+          <set token="selected_index">$row.index$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Event count per index (log scale)</title>
+      <chart>
+        <search base="event_delay">
+          <query>| sort - delay |  stats sum(count) by index</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <drilldown>
+          <set token="selected_index">$row.index$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Event distribution</title>
+      <chart>
+        <search base="event_delay">
+          <query>| stats sum(count) as events_per_indexer by splunk_server index
+| xyseries splunk_server index events_per_indexer</query>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">375</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_index$">
+    <panel>
+      <title>Hosts sending to $selected_index$ with the delay and number of events sent during period</title>
+      <input type="text" token="host_filter">
+        <label>Wildcard search for endpoints</label>
+        <default>*</default>
+      </input>
+      <input type="time" token="drilldown">
+        <label>Drill down period</label>
+        <default>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+      <table>
+        <search base="event_delay">
+          <query>| where index="$selected_index$"
+| search host=$host_filter$</query>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <link target="_blank">/app/search/event_delay_for_host?form.time.earliest=$drilldown.earliest$&amp;form.time.latest=$drilldown.latest$&amp;form.selected_host=$row.host$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
