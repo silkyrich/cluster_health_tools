@@ -33,7 +33,7 @@
     <earliest>-4h@m</earliest>
     <latest>now</latest>
   </search>
-  <fieldset submitButton="false">
+  <fieldset submitButton="true">
     <input type="time" token="time">
       <label>Select time range (keep to a few seconds)</label>
       <default>
@@ -146,13 +146,14 @@
       <title>Event distribution</title>
       <chart>
         <search base="event_delay">
-          <query>| stats sum(count) as events_per_indexer by splunk_server 
-| eventstats stdev(events_per_indexer) as stdev avg(events_per_indexer) as average</query>
+          <query>| stats sum(count) as events_per_indexer by splunk_server index
+| xyseries splunk_server index events_per_indexer</query>
         </search>
         <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">all</option>
         <option name="height">375</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
