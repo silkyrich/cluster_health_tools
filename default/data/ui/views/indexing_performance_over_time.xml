@@ -1,0 +1,191 @@
+<form>
+  <label>Indexing performance over time</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>RT indexing (refreshes very 30 seconds) we want this to be mostly flat and the stdev is low</title>
+      <chart>
+        <search>
+          <query>| rest /services/server/introspection/indexer 
+          | sort - splunk_server
+| table splunk_server average_KBps 
+| eventstats stdev(average_KBps) avg(average_KBps)</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <refresh>30</refresh>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(average_KBps),stdev(average_KBps)</option>
+        <option name="height">328</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
+      <chart>
+        <search>
+          <query>index=_internal [ | rest /services/server/introspection/indexer 
+| sort - splunk_server 
+| fields + splunk_server
+| eval search="host=\"".splunk_server."\"" 
+| stats values(search) as search 
+| eval search="(".mvjoin(search, " OR ").")" 
+| fields + search ] TERM(group=thruput) TERM(name=thruput) 
+| bin span=15sec _time
+| stats sum(instantaneous_kbps) as instantaneous_kbps  by host _time
+| timechart stdev(instantaneous_kbps) avg(instantaneous_kbps) span=1mins</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">1</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">812</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocking queues on indexers, we don't want this to happen has it creates uneven load. Blocking is starting at indexing which implies not enough IO for the indexing + search load</title>
+      <input type="dropdown" token="queue">
+        <label>Select blocking queue</label>
+        <choice value="aeq">aeq</choice>
+        <choice value="aggqueue">aggqueue</choice>
+        <choice value="aq">aq</choice>
+        <choice value="auditqueue">auditqueue</choice>
+        <choice value="exec">exec</choice>
+        <choice value="fschangemanager_queue">fschangemanager_queue</choice>
+        <choice value="indexqueue">indexqueue</choice>
+        <choice value="nullqueue">nullqueue</choice>
+        <choice value="parsingqueue">parsingqueue</choice>
+        <choice value="splunktcpin">splunktcpin</choice>
+        <choice value="stashparsing">stashparsing</choice>
+        <choice value="structuredparsingqueue">structuredparsingqueue</choice>
+        <choice value="tcpin_queue">tcpin_queue</choice>
+        <choice value="typingqueue">typingqueue</choice>
+        <default>indexqueue</default>
+      </input>
+      <chart>
+        <search>
+          <query>(index=_internal OR index=core_splunk_internal )[ | rest /services/server/introspection/indexer 
+| sort - splunk_server 
+| fields + splunk_server
+| eval search="host=\"".splunk_server."\"" 
+| stats values(search) as search 
+| eval search="(".mvjoin(search, " OR ").")" 
+| fields + search ] TERM(name=$queue$)   TERM(blocked=true) sourcetype=splunkd
+| timechart span=1min limit=0 count by host
+| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">446</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
+        <search>
+          <query>(index=_internal OR index=core_splunk_internal) 
+    [| rest /services/server/introspection/indexer 
+    | sort - splunk_server 
+    | fields + splunk_server 
+    | eval search="host=\"".splunk_server."\"" 
+    | stats values(search) as search 
+    | eval search="(".mvjoin(search, " OR ").")" 
+    | fields + search ]
+    sourcetype=splunkd source="*metrics.log" 
+| eval indexing_delay=_indextime-_time 
+| eval _time=_indextime 
+| timechart limit=0 minspan=1sec max(indexing_delay) by host</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="height">543</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
+      <chart>
+        <search>
+          <query>(index=_internal OR index=core_splunk_internal) [ | rest /services/server/introspection/indexer 
+| sort - splunk_server 
+| fields + splunk_server
+| eval search="host=\"".splunk_server."\"" 
+| stats values(search) as search 
+| eval search="(".mvjoin(search, " OR ").")" 
+| fields + search ]  TERM(eventtype=connect_done)
+| timechart limit=0 span=30s count by host
+| eval sum=0
+| foreach * [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;')]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">sum</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="height">439</option>
+      </chart>
+    </panel>
+  </row>
+</form>
