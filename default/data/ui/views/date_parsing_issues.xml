@@ -1,0 +1,48 @@
+<form>
+  <label>Date time parsing issues break down</label>
+  <search id="baseSearch">
+    <query>index=_internal sourcetype=splunkd WARN component=DateParserVerbose 
+| eval 
+    reason_accepted_time_format_has_changed=if(searchmatch("Accepted time format has changed possibly indicating a problem in extracting timestamps"),1,0), 
+    reason_time_format_outside_of_acceptable_window=if(searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),1,0), 
+    reason_outside_acceptable_time_window=if(searchmatch("A possible timestamp match is outside of the acceptable time window"),1,0), 
+    reason_failed_to_parse=if(searchmatch("Failed to parse timestamp. Defaulting to timestamp of previous event"),1,0), 
+    reason_time_parsed_too_far_away_from_previous_event=if(searchmatch("Time parsed is too far away from the previous time"),1,0), 
+    reason_time_parsed_suspicously_far_away=if(searchmatch("Accepted time is suspiciously far away from the previous time but still accepted because it was extracted by the same pattern"),1,0), 
+    reason_failed_to_parse_in_lookahead=if(searchmatch("Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD"),1,0), 
+    reason_time_format_outside_of_acceptable_window=if(searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),1,0), 
+    reason_timestamp_repeated_too_many_times=if(searchmatch("The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable"),1,0) 
+| rex field=_raw "Context:\s+source::(?&lt;naughty_source&gt;[^\|]+)\|host::(?&lt;naughty_host&gt;[^\|]+)\|(?&lt;naughty_sourcetype&gt;[^\|]+)\|(?&lt;number&gt;\d+)" 
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <table>
+        <search base="baseSearch">
+          <query>
+| stats dc(number) as naughty_events dc(naughty_source) as total_sources last(naughty_source) as last_source count as warnings_fired by naughty_host naughty_sourcetype 
+| sort - warnings_fired</query>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>
