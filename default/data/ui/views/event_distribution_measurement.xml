@@ -204,7 +204,7 @@
         <title>We need this to ramp up as quickly as possible</title>
         <search base="baseSearch">
           <query>| where count!=0
-| chart dc(splunk_server) by period $split_by$  
+| chart limit=100 dc(splunk_server) by period $split_by$  
 | eval period=tostring(period,"duration")</query>
         </search>
         <option name="charting.chart">line</option>
