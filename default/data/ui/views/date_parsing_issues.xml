@@ -149,7 +149,7 @@
         <title>$selected_bucket$</title>
         <search base="baseSearchEvents">
           <query>| where bucket="$selected_bucket$"
-| eval delay=_time-_index_time</query>
+| eval delay=_time-_indextime</query>
         </search>
         <option name="drilldown">none</option>
       </table>
