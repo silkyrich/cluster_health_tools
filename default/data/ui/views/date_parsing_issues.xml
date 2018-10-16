@@ -1,22 +1,29 @@
 <form>
   <label>Date time parsing issues break down</label>
   <search id="baseSearch">
-    <query>index=_internal sourcetype=splunkd WARN component=DateParserVerbose 
-| eval 
-    reason_accepted_time_format_has_changed=if(searchmatch("Accepted time format has changed possibly indicating a problem in extracting timestamps"),1,0), 
-    reason_time_format_outside_of_acceptable_window=if(searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),1,0), 
-    reason_outside_acceptable_time_window=if(searchmatch("A possible timestamp match is outside of the acceptable time window"),1,0), 
-    reason_failed_to_parse=if(searchmatch("Failed to parse timestamp. Defaulting to timestamp of previous event"),1,0), 
-    reason_time_parsed_too_far_away_from_previous_event=if(searchmatch("Time parsed is too far away from the previous time"),1,0), 
-    reason_time_parsed_suspicously_far_away=if(searchmatch("Accepted time is suspiciously far away from the previous time but still accepted because it was extracted by the same pattern"),1,0), 
-    reason_failed_to_parse_in_lookahead=if(searchmatch("Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD"),1,0), 
-    reason_time_format_outside_of_acceptable_window=if(searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),1,0), 
-    reason_timestamp_repeated_too_many_times=if(searchmatch("The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable"),1,0) 
+    <query>
+      index=_internal sourcetype=splunkd WARN component=DateParserVerbose 
+      | eval reason = case(searchmatch("Accepted time format has changed possibly indicating a problem in extracting timestamps"),"Accepted time format has changed possibly indicating a problem in extracting timestamps",
+    searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),"The TIME_FORMAT specified is matching timestamps outside of the acceptable time window",
+    searchmatch("A possible timestamp match is outside of the acceptable time window"),"A possible timestamp match is outside of the acceptable time window",
+    searchmatch("Failed to parse timestamp. Defaulting to timestamp of previous event"),"Failed to parse timestamp. Defaulting to timestamp of previous event",
+    searchmatch("Time parsed is too far away from the previous time"), "Time parsed is too far away from the previous time",
+    searchmatch("Accepted time is suspiciously far away from the previous time but still accepted because it was extracted by the same pattern"), "Accepted time is suspiciously far away from the previous time but still accepted because it was extracted by the same pattern",
+    searchmatch("Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD"), "Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD",
+    searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),"The TIME_FORMAT specified is matching timestamps outside of the acceptable time window",
+    searchmatch("The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable"), "The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable")
 | rex field=_raw "Context:\s+source::(?&lt;naughty_source&gt;[^\|]+)\|host::(?&lt;naughty_host&gt;[^\|]+)\|(?&lt;naughty_sourcetype&gt;[^\|]+)\|(?&lt;number&gt;\d+)" 
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
+  </search>
+  <search id="baseSearchEvents">
+    <query>index=* host::$selected_host$ sourcetype::$selected_sourcetype$ source::$selected_source$ _index_earliest=$selection_earliest$ _index_latest=$selection_latest$ 
+    | rename _bkt as bucket
+|</query>
+    <earliest>0</earliest>
+    <latest></latest>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -29,19 +36,122 @@
   </fieldset>
   <row>
     <panel>
-      <table>
+      <chart>
+        <title>Summary of date parsing errors</title>
         <search base="baseSearch">
-          <query>
-| stats dc(number) as naughty_events dc(naughty_source) as total_sources last(naughty_source) as last_source count as warnings_fired by naughty_host naughty_sourcetype 
-| sort - warnings_fired</query>
+          <query>| timechart count by reason</query>
         </search>
-        <option name="count">20</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">337</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Hosts and source types generating issues $selected_reason$</title>
+      <input type="dropdown" token="filter_reason">
+        <label>Filter reason</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>reason</fieldForValue>
+        <search base="baseSearch">
+          <query>| stats count by reason
+| sort - count
+| eval label=reason." (".count.")"
+| fields label reason</query>
+        </search>
+        <choice value="*">All</choice>
+        <default>*</default>
+        <prefix>reason="</prefix>
+        <suffix>"</suffix>
+      </input>
+      <table>
+        <title>Drilldown to see what is going on</title>
+        <search base="baseSearch">
+          <query>| search $filter_reason$
+| eval split_by=naughty_sourcetype."|".naughty_host."|".naughty_source
+| eventstats count as all_errors by split_by
+| chart
+    count as warnings_fired
+    by split_by reason
+| sort - warnings_fired
+| rex field=split_by "(?&lt;naughty_sourcetype&gt;[^|]+)\|(?&lt;naughty_host&gt;[^|]+)\|(?&lt;naughty_source&gt;.+)"
+| fields - split_by
+| table naughty_sourcetype naughty_host naughty_source *</query>
+        </search>
+        <option name="count">10</option>
         <option name="dataOverlayMode">none</option>
-        <option name="drilldown">none</option>
+        <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
+        <drilldown>
+          <set token="selected_sourcetype">$row.naughty_sourcetype$</set>
+          <set token="selected_host">$row.naughty_host$</set>
+          <set token="selected_source">$row.naughty_source$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Errors for $selected_host$ with source type $selected_sourcetype$ and source $selected_source$</title>
+      <input type="text" token="selected_delta">
+        <label>Drilldown seconds delta</label>
+        <default>1</default>
+      </input>
+      <chart>
+        <title>Click on an error to get the events being parsed at that time</title>
+        <search base="baseSearch">
+          <query>| search TERM($selected_host$) TERM($selected_sourcetype$) TERM($selected_source$)
+| timechart bins=1000 count by reason</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <search base="baseSearchEvents">
+          <query>| chart limit=0 count by  splunk_server bucket</query>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">303</option>
+        <drilldown>
+          <set token="selected_bucket">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events received by Splunk during the period from host=$selected_host$ with sourcetype=$selected_sourcetype$ and source=$selected_source$</title>
+      <input type="text" token="lookahead">
+        <label>Apply MAX_LOOKAHEAD</label>
+        <default>1000</default>
+      </input>
+      <input type="text" token="strptime">
+        <label>Apply strptime</label>
+        <initialValue></initialValue>
+      </input>
+      <table>
+        <title>$selected_bucket$</title>
+        <search base="baseSearchEvents">
+          <query>| where bucket="$selected_bucket$"
+| eval delay=_time-_index_time</query>
+        </search>
+        <option name="drilldown">none</option>
       </table>
     </panel>
   </row>
