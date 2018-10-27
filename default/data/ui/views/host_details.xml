@@ -1,0 +1,562 @@
+<form>
+  <label>Host OS detail</label>
+  <search id="ps_events">
+    <query>index=customer_os_metrics sourcetype=ps host=$indexer$</query>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
+    <sampleRatio>$sample_ratio$</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range</label>
+      <default>
+        <earliest>-15m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="stack">
+      <label>Select stack</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>stack_derived</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory  
+| stats count by stack instance_type aws_account_id 
+| rename stack AS stack_derived 
+| sort - count 
+| eval label=count." x ".mvjoin(instance_type,", ") 
+| stats sum(count) as count values(label) as label by stack_derived aws_account_id 
+| lookup aws_accounts aws_account_id
+| eval label=stack_derived." (".mvjoin(label,", ").") - ".aws_account_name 
+| stats sum(count) as count values(label) as label by stack_derived
+| sort - count
+| eval label=mvjoin(label,", ")</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="indexer">
+      <label>Select host</label>
+      <fieldForLabel>FQDN</fieldForLabel>
+      <fieldForValue>FQDN</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory where stack="$stack$"
+| rex field=FQDN "^(?&lt;short_name&gt;[^\.]+)+\."
+| eval label=short_name." (".instance_type.")"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="text" token="sample_ratio">
+      <label>Sample Ratio</label>
+      <default>1</default>
+    </input>
+  </fieldset>
+  <row depends="$indexer$">
+    <panel>
+      <title>Details for $indexer$</title>
+      <single>
+        <search>
+          <query>index=customer_introspection sourcetype=* host=$indexer$ component=Hostwide 
+| head 1 
+| lookup aws_inventory FQDN AS host output instance_type id
+| spath
+| rename "data.os_version" as os_version, "data.splunk_version" as splunk_version, "data.os_build" as os_build 
+| fields - data.* _* date*
+| stats count by os_build os_version splunk_version instance_type customer_type cloud_flavor bucket_location aws_account_name id
+| eval label=splunk_version." - ".instance_type." - ".customer_type." - ".cloud_flavor." - ".bucket_location." - ".aws_account_name." - ".os_build." - ".os_version." - ".id
+| table label</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Output from ps for $indexer$ pctSystem</title>
+      <chart>
+        <search>
+          <query>index=customer_os_metrics sourcetype=cpu host=$indexer$
+| rex max_match=100 field=_raw "\n(?&lt;line&gt;all|\d+.*)\n"
+| mvexpand line
+| rex field=line "(?&lt;CPU&gt;[\d\.]+|all)\s+(?&lt;pctUser&gt;[\d\.]+)\s+(?&lt;pctNice&gt;[\d\.]+)\s+(?&lt;pctSystem&gt;[\d\.]+)\s+(?&lt;pctIowait&gt;[\d\.]+)\s+(?&lt;pctIdle&gt;[\d\.]+)"
+| timechart limit=0 minspan=30sec bins=1000 avg(pctSystem) as pctSystem by CPU
+| eval sum=0
+| foreach * [| eval sum='sum'+if('&lt;&lt;FIELD&gt;&gt;'="_time",0,'&lt;&lt;FIELD&gt;&gt;')]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.overlayFields">sum</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">441</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <drilldown>
+          <set token="point_in_time1">$click.value$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Output from ps for $indexer$ pctUser</title>
+      <chart>
+        <search>
+          <query>index=customer_os_metrics sourcetype=cpu host=$indexer$
+| rex max_match=100 field=_raw "\n(?&lt;line&gt;all|\d+.*)\n"
+| mvexpand line
+| rex field=line "(?&lt;CPU&gt;[\d\.]+|all)\s+(?&lt;pctUser&gt;[\d\.]+)\s+(?&lt;pctNice&gt;[\d\.]+)\s+(?&lt;pctSystem&gt;[\d\.]+)\s+(?&lt;pctIowait&gt;[\d\.]+)\s+(?&lt;pctIdle&gt;[\d\.]+)"
+| timechart minspan=30sec bins=1000 limit=0 avg(pctUser) as pctUser by CPU
+| eval sum=0
+| foreach * [| eval sum='sum'+if('&lt;&lt;FIELD&gt;&gt;'="_time",0,'&lt;&lt;FIELD&gt;&gt;')]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.overlayFields">sum</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">417</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <drilldown>
+          <set token="point_in_time1">$click.value$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>The IO information on the host, we want to watch out for bandwidth saturation</title>
+      <input type="dropdown" token="iostats_field">
+        <label>Select IO stats field</label>
+        <choice value="avgSvcMillis">avgSvcMillis</choice>
+        <choice value="avgWaitMillis">avgWaitMillis</choice>
+        <choice value="bandwUtilPct">bandwUtilPct</choice>
+        <choice value="rKB_PS">rKB_PS</choice>
+        <choice value="rReq_PS">rReq_PS</choice>
+        <choice value="wKB_PS">wKB_PS</choice>
+        <choice value="wReq_PS">wReq_PS</choice>
+        <default>bandwUtilPct</default>
+      </input>
+      <input type="dropdown" token="aggregation_function">
+        <label>Aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <title>iostats info for $indexer$</title>
+        <search>
+          <query>index=customer_os_metrics sourcetype=iostat  host="$indexer$"
+| multikv
+| rex max_match=1 field=_raw "(?&lt;device&gt;[^\s]+)\s+(?&lt;iostats_rReq_PS&gt;[\d\.]+)\s+(?&lt;iostats_wReq_PS&gt;[\d\.]+)\s+(?&lt;iostats_rKB_PS&gt;[\d\.]+)\s+(?&lt;iostats_wKB_PS&gt;[\d\.]+)\s+(?&lt;iostats_avgWaitMillis&gt;[\d\.]+)\s+(?&lt;iostats_avgSvcMillis&gt;[\d\.]+)\s+(?&lt;iostats_bandwUtilPct&gt;[\d\.]+)"
+| timechart minspan=1min limit=0 bins=600 $aggregation_function$(iostats_$iostats_field$) as $iostats_field$ by device</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">309</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Splunk processes executing via introspection</title>
+      <input type="dropdown" token="ps_field">
+        <label>Field to analyse</label>
+        <choice value="eval(1=1)">no field</choice>
+        <choice value="data.elapsed">elapsed</choice>
+        <choice value="data.fd_used">fd_used</choice>
+        <choice value="data.mem_used">mem_used</choice>
+        <choice value="data.normalized_pct_cpu">normalized_pct_cpu</choice>
+        <choice value="data.page_faults">page_faults</choice>
+        <choice value="data.pct_cpu">pct_cpu</choice>
+        <choice value="data.pct_memory">pct_memory</choice>
+        <choice value="data.read_mb">read_mb</choice>
+        <choice value="data.t_count">t_count</choice>
+        <default>eval(1=1)</default>
+      </input>
+      <input type="dropdown" token="ps_aggregation_function">
+        <label>Aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <choice value="count">count</choice>
+        <default>count</default>
+      </input>
+      <input type="dropdown" token="ps_group_by">
+        <label>Group by</label>
+        <choice value="data.process_type">process type</choice>
+        <choice value="data.process">process</choice>
+        <choice value="data.args">args</choice>
+        <choice value="data.status">status</choice>
+        <default>data.process_type</default>
+      </input>
+      <chart>
+        <title>Select a narrow window to see what PS output was generated during that period</title>
+        <search>
+          <query>index=customer_introspection host=$indexer$ component=PerProcess 
+| timechart minspan=1min limit=0 bins=600 $ps_aggregation_function$($ps_field$) by $ps_group_by$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">337</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Splunkd logging activities per component (allows you to see what was actually running)</title>
+      <input type="multiselect" token="level">
+        <label>Select logging levels</label>
+        <choice value="INFO">INFO</choice>
+        <choice value="DEBUG">DEBUG</choice>
+        <choice value="FATAL">FATAL</choice>
+        <choice value="WARN">WARN</choice>
+        <choice value="ERROR">ERROR</choice>
+        <default>ERROR</default>
+        <prefix>log_level=</prefix>
+        <suffix>"</suffix>
+        <delimiter>" OR log_level=</delimiter>
+        <valuePrefix>"</valuePrefix>
+      </input>
+      <chart>
+        <title>$level$</title>
+        <search>
+          <query>(index=customer_splunkd OR index=customer_license OR index=customer_metrics OR index=customer_internal OR index=customer_introspection) host=$indexer$ sourcetype=splunkd $level$ | timechart bins=600 limit=0 count by component</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+        </search>
+        
+        <selection>
+          <set token="selection_component_earliest">$start$</set>
+          <set token="selection_component_latest">$end$</set>
+        </selection>
+
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">530</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_component">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_component$">
+    <panel>
+      <event>
+        <title>Events for $selected_component$ during selected period</title>
+        <search>
+          <query>(index=customer_splunkd OR index=customer_license OR index=customer_metrics OR index=customer_internal OR index=customer_introspection) TERM($selected_component$) component=$selected_component$</query>
+          <earliest>$selection_component_earliest$</earliest>
+          <latest>$selection_component_latest$</latest>
+        </search>
+        <option name="list.drilldown">none</option>
+      </event>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>PS output during selected period from customer_os_logs</title>
+      <chart>
+        <title>Click on the time of an event to see the breakdown on the RHS</title>
+        <search type="annotation">
+          <query>
+    index=customer_splunkd $indexer$ PeriodicReapingTimeout
+    eval annotation_label="PeriodicReapingTimeout on ".host, annotation_category="timeout", annotation_color="0xff3311"
+          </query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <search base="ps_events">
+          <query>| eval time=_time
+| table _time time</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">157</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="ps_event">$click.value$</set>
+          <set token="ps_value">$click.name$</set>
+          <set token="ps_time">$row.time$</set>
+          <set token="ps_time_unix">$row._time$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$ps_time$">
+    <panel>
+      <title>PS details for selected event</title>
+      <input type="dropdown" token="filter_process_state">
+        <label>Filter by process state</label>
+        <choice value="*">All states</choice>
+        <choice value="D">"D" uninterruptible sleep (usually IO)</choice>
+        <choice value="R">"R" running or runnable (on run queue)</choice>
+        <choice value="S">"S" interruptible sleep (waiting for an event to complete)</choice>
+        <choice value="T">"T" stopped, either by a job control signal or because it is being traced</choice>
+        <choice value="Z">"Z" defunct ('zombie') process, terminated but not reaped by its parent</choice>
+        <default>*</default>
+      </input>
+      <input type="multiselect" token="filter_command">
+        <label>Filter by COMMAND</label>
+        <choice value="*">All</choice>
+        <default>*</default>
+        <prefix>(</prefix>
+        <suffix>)</suffix>
+        <valuePrefix>COMMAND="</valuePrefix>
+        <valueSuffix>"</valueSuffix>
+        <delimiter> OR </delimiter>
+        <fieldForLabel>COMMAND</fieldForLabel>
+        <fieldForValue>COMMAND</fieldForValue>
+        <search base="ps_events">
+          <query>| where _time="$ps_time$"
+| multikv
+| table USER PID PSR pctCPU CPUTIME pctMEM RSZ_KB VSZ_KB TTY S ELAPSED  COMMAND ARGS
+| stats count by COMMAND
+| fields - count</query>
+        </search>
+      </input>
+      <table>
+        <search base="ps_events">
+          <query>| where _time="$ps_time$"
+| multikv
+| table USER PID PSR pctCPU CPUTIME pctMEM RSZ_KB VSZ_KB TTY S ELAPSED  COMMAND ARGS
+| sort - pctCPU
+| search S="$filter_process_state$" $filter_command$</query>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Introspection hostwide logging</title>
+      <chart>
+        <search>
+          <query>| tstats 
+    avg(data.cpu_idle_pct) as cpu_idle_pct
+    avg(data.cpu_system_pct) as cpu_system_pct 
+    avg(data.cpu_user_pct) as data.cpu_user_pct 
+    avg(data.mem) as mem 
+    avg(data.mem_used) as mem_used 
+    avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
+    avg(data.pg_paged_out) as pg_paged_out 
+    avg(data.pg_swapped_out) as pg_swapped_out
+    avg(data.runnable_process_count) as runnable_process_count 
+    avg(data.swap) as swap 
+    avg(data.swap_used) as swap_used 
+    where component=hostwide index=customer_introspection host=$indexer$ by host _time
+| table _time *</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">620</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$indexer$">
+    <panel>
+      <title>Output from vmstats for $indexer$</title>
+      <chart>
+        <search>
+          <query>index=customer_os_metrics sourcetype=vmstat host=$indexer$
+| rex field=_raw "\n\s+(?&lt;memTotalMB&gt;[\d\.]+)\s+(?&lt;memFreeMB&gt;[\d\.]+)\s+(?&lt;memUsedMB&gt;[\d\.]+)\s+(?&lt;memFreePct&gt;[\d\.]+)\s+(?&lt;memUsedPct&gt;[\d\.]+)\s+(?&lt;pgPageOut&gt;[\d\.]+)\s+(?&lt;swapUsedPct&gt;[\d\.]+)\s+(?&lt;pgSwapOut&gt;[\d\.]+)\s+(?&lt;cSwitches&gt;[\d\.]+)\s+(?&lt;interrupts&gt;[\d\.]+)\s+(?&lt;forks&gt;[\d\.]+)\s+(?&lt;processes&gt;[\d\.]+)\s+(?&lt;threads&gt;[\d\.]+)\s+(?&lt;loadAvg1mi&gt;[\d\.]+)" 
+| fields _time host memTotalMB memFreeMB memUsedMB memFreePct memUsedPct pgPageOut swapUsedPct pgSwapOut cSwitches interrupts forks processes threads loadAvg1mi 
+| fields - _raw host</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">541</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">small</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Output from netstat for $indexer$</title>
+      <chart>
+        <search>
+          <query>index=customer_os_metrics sourcetype=protocol host=$indexer$ 
+| rex field=_raw "\n\s+(?&lt;IPdropped&gt;\d+)\s+(?&lt;TCPrexmits&gt;\d+)\s+(?&lt;TCPreorder&gt;\d+)\s+(?&lt;TCPpktRecv&gt;\d+)\s+(?&lt;TCPpktSent&gt;\d+)\s+(?&lt;UDPpktLost&gt;\d+)\s+(?&lt;UDPunkPort&gt;\d+)\s+(?&lt;UDPpktRecv&gt;\d+)\s+(?&lt;UDPpktSent&gt;\d+)"
+| fields _time host IPdropped   TCPrexmits   TCPreorder   TCPpktRecv   TCPpktSent   UDPpktLost   UDPunkPort   UDPpktRecv   UDPpktSent
+| fields - _raw host</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">423</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">small</option>
+      </chart>
+    </panel>
+  </row>
+</form>
