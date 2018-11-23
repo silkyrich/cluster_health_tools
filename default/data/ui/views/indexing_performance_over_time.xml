@@ -22,6 +22,10 @@
       <choice value="750">High</choice>
       <choice value="999">Ultra</choice>
       <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+      
     </input>
   </fieldset>
   <row>
@@ -29,20 +33,26 @@
       <title>RT indexing (refreshes very 30 seconds) we want this to be mostly flat and the stdev is low</title>
       <chart>
         <search>
+          <progress>
+            <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+          </progress>
           <query>| rest /services/server/introspection/indexer 
-          | sort - splunk_server
+| sort - splunk_server 
+| eventstats stdev(average_KBps) avg(average_KBps) 
+| join splunk_server 
+    [| rest /services/server/info 
+    | where server_roles="indexer"] 
 | table splunk_server average_KBps 
 | eventstats stdev(average_KBps) avg(average_KBps)</query>
           <earliest>0</earliest>
           <latest></latest>
           <refresh>30</refresh>
-        <progress>
-    <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
-        </progress>
+          <refreshType>delay</refreshType>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">avg(average_KBps),stdev(average_KBps)</option>
         <option name="height">328</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -51,15 +61,16 @@
       <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
       <chart>
         <search>
-          <query>index=_internal [ | rest /services/server/introspection/indexer 
-| sort - splunk_server 
-| fields + splunk_server
-| eval search="host=\"".splunk_server."\"" 
-| stats values(search) as search 
-| eval search="(".mvjoin(search, " OR ").")" 
-| fields + search ] TERM(group=thruput) TERM(name=thruput) 
-| bin span=$seconds_for_bin$sec _time
-| stats sum(instantaneous_kbps) as instantaneous_kbps  by host _time
+          <query>index=_internal 
+    [| rest /services/server/info 
+    | where server_roles="indexer" 
+    | fields + splunk_server 
+    | eval search="host=\"".splunk_server."\"" 
+    | stats values(search) as search 
+    | eval search="(".mvjoin(search, " OR ").")" 
+    | fields + search ] TERM(group=thruput) TERM(name=thruput) 
+| bin span=$seconds_for_bin$sec _time 
+| stats sum(instantaneous_kbps) as instantaneous_kbps by host _time 
 | timechart stdev(instantaneous_kbps) avg(instantaneous_kbps) span=$seconds_for_bin$sec</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -89,6 +100,7 @@
         <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
         <option name="charting.legend.placement">right</option>
         <option name="height">812</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -115,15 +127,17 @@
       </input>
       <chart>
         <search>
-          <query>index=_internal [ | rest /services/server/introspection/indexer 
-| sort - splunk_server 
-| fields + splunk_server
-| eval search="host=\"".splunk_server."\"" 
-| stats values(search) as search 
-| eval search="(".mvjoin(search, " OR ").")" 
-| fields + search ] TERM(name=$queue$)   TERM(blocked=true) sourcetype=splunkd
-| timechart span=$seconds_for_bin$sec limit=0 count by host
-| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
+          <query>index=_internal 
+    [| rest /services/server/info 
+    | where server_roles="indexer" 
+    | fields + splunk_server 
+    | eval search="host=\"".splunk_server."\"" 
+    | stats values(search) as search 
+    | eval search="(".mvjoin(search, " OR ").")" 
+    | fields + search ] TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
+| timechart span=$seconds_for_bin$sec limit=0 count by host 
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
           <sampleRatio>1</sampleRatio>
@@ -152,6 +166,7 @@
         <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
         <option name="charting.legend.placement">right</option>
         <option name="height">446</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -160,9 +175,9 @@
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search>
-          <query>index=_internal
-    [| rest /services/server/introspection/indexer 
-    | sort - splunk_server 
+          <query>(index=_internal OR index=core_splunk_internal) 
+    [| rest /services/server/info 
+    | where server_roles="indexer" 
     | fields + splunk_server 
     | eval search="host=\"".splunk_server."\"" 
     | stats values(search) as search 
@@ -175,8 +190,10 @@
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="height">543</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -185,16 +202,18 @@
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
         <search>
-          <query>index=_internal [ | rest /services/server/introspection/indexer 
-| sort - splunk_server 
-| fields + splunk_server
-| eval search="host=\"".splunk_server."\"" 
-| stats values(search) as search 
-| eval search="(".mvjoin(search, " OR ").")" 
-| fields + search ]  TERM(eventtype=connect_done)
-| timechart limit=0 span=$seconds_for_bin$sec count by host
-| eval sum=0
-| foreach * [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;')]</query>
+          <query>(index=_internal OR index=core_splunk_internal) 
+    [| rest /services/server/info 
+    | where server_roles="indexer" 
+    | fields + splunk_server 
+    | eval search="host=\"".splunk_server."\"" 
+    | stats values(search) as search 
+    | eval search="(".mvjoin(search, " OR ").")" 
+    | fields + search ] TERM(eventtype=connect_done) 
+| timechart limit=0 span=$seconds_for_bin$sec count by host 
+| eval sum=0 
+| foreach * 
+    [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;')]</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
@@ -203,6 +222,36 @@
         <option name="charting.chart.overlayFields">sum</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="height">439</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <search>
+          <query>| tstats count where index=_internal sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
+    [| rest /services/server/info 
+    | where server_roles="indexer" 
+    | fields + splunk_server 
+    | eval search="host=\"".splunk_server."\"" 
+    | stats values(search) as search 
+    | eval search="(".mvjoin(search, " OR ").")" 
+    | fields + search ] by _time host span=$seconds_for_bin$sec 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| timechart limit=0 count span=$seconds_for_bin$sec by short_name 
+| eval active_indexers=0 
+| foreach * 
+    [| eval active_indexers=if(isnull('&lt;&lt;FIELD&gt;&gt;') OR "&lt;&lt;FIELD&gt;&gt;"="active_indexers",active_indexers,active_indexers+1)]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">active_indexers</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">349</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
