@@ -36,6 +36,9 @@
           <earliest>0</earliest>
           <latest></latest>
           <refresh>30</refresh>
+        <progress>
+    <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+        </progress>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">avg(average_KBps),stdev(average_KBps)</option>
