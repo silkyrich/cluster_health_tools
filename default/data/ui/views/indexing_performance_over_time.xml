@@ -115,7 +115,7 @@
       </input>
       <chart>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal )[ | rest /services/server/introspection/indexer 
+          <query>index=_internal [ | rest /services/server/introspection/indexer 
 | sort - splunk_server 
 | fields + splunk_server
 | eval search="host=\"".splunk_server."\"" 
@@ -160,7 +160,7 @@
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal) 
+          <query>index=_internal
     [| rest /services/server/introspection/indexer 
     | sort - splunk_server 
     | fields + splunk_server 
@@ -185,7 +185,7 @@
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal) [ | rest /services/server/introspection/indexer 
+          <query>index=_internal [ | rest /services/server/introspection/indexer 
 | sort - splunk_server 
 | fields + splunk_server
 | eval search="host=\"".splunk_server."\"" 
