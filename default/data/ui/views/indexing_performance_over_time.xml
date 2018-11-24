@@ -25,7 +25,10 @@
       <change>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
       </change>
-      
+    </input>
+    <input type="text" token="indexer_list">
+      <label>Replace the sub search with host=something</label>
+      <default>[| rest /services/server/info      | where server_roles="indexer"      | fields + splunk_server      | eval search="host=\"".splunk_server."\""      | stats values(search) as search      | eval search="(".mvjoin(search, " OR ").")"      | fields + search]</default>
     </input>
   </fieldset>
   <row>
@@ -38,10 +41,8 @@
           </progress>
           <query>| rest /services/server/introspection/indexer 
 | sort - splunk_server 
-| eventstats stdev(average_KBps) avg(average_KBps) 
-| join splunk_server 
-    [| rest /services/server/info 
-    | where server_roles="indexer"] 
+| rename splunk_server as host
+| search $indexer_list$
 | table splunk_server average_KBps 
 | eventstats stdev(average_KBps) avg(average_KBps)</query>
           <earliest>0</earliest>
@@ -61,14 +62,7 @@
       <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
       <chart>
         <search>
-          <query>index=_internal 
-    [| rest /services/server/info 
-    | where server_roles="indexer" 
-    | fields + splunk_server 
-    | eval search="host=\"".splunk_server."\"" 
-    | stats values(search) as search 
-    | eval search="(".mvjoin(search, " OR ").")" 
-    | fields + search ] TERM(group=thruput) TERM(name=thruput) 
+          <query>index=_internal $indexer_list$ TERM(group=thruput) TERM(name=thruput) 
 | bin span=$seconds_for_bin$sec _time 
 | stats sum(instantaneous_kbps) as instantaneous_kbps by host _time 
 | timechart stdev(instantaneous_kbps) avg(instantaneous_kbps) span=$seconds_for_bin$sec</query>
@@ -127,14 +121,7 @@
       </input>
       <chart>
         <search>
-          <query>index=_internal 
-    [| rest /services/server/info 
-    | where server_roles="indexer" 
-    | fields + splunk_server 
-    | eval search="host=\"".splunk_server."\"" 
-    | stats values(search) as search 
-    | eval search="(".mvjoin(search, " OR ").")" 
-    | fields + search ] TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
+          <query>index=_internal $indexer_list$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
 | timechart span=$seconds_for_bin$sec limit=0 count by host 
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
@@ -175,14 +162,7 @@
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal) 
-    [| rest /services/server/info 
-    | where server_roles="indexer" 
-    | fields + splunk_server 
-    | eval search="host=\"".splunk_server."\"" 
-    | stats values(search) as search 
-    | eval search="(".mvjoin(search, " OR ").")" 
-    | fields + search ]
+          <query>index=_internal $indexer_list$
     sourcetype=splunkd source="*metrics.log" 
 | eval indexing_delay=_indextime-_time 
 | eval _time=_indextime 
@@ -202,14 +182,7 @@
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
         <search>
-          <query>(index=_internal OR index=core_splunk_internal) 
-    [| rest /services/server/info 
-    | where server_roles="indexer" 
-    | fields + splunk_server 
-    | eval search="host=\"".splunk_server."\"" 
-    | stats values(search) as search 
-    | eval search="(".mvjoin(search, " OR ").")" 
-    | fields + search ] TERM(eventtype=connect_done) 
+          <query>index=_internal $indexer_list$ TERM(eventtype=connect_done) 
 | timechart limit=0 span=$seconds_for_bin$sec count by host 
 | eval sum=0 
 | foreach * 
