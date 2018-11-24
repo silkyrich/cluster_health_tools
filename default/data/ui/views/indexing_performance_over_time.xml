@@ -206,13 +206,35 @@
   </row>
   <row>
     <panel>
+      <title>HEC event distribution across indexers in $stack$</title>
+      <chart>
+        <title>Select window and indexer to drill in</title>
+        <search>
+          <query>| tstats sum(data.num_of_events) as events where $indexer_list$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| eval label=short_name." (".instance_type."+".os_version.")"
+| eval label=short_name
+| xyseries _time short_name events</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">377</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <chart>
         <search>
           <query>| tstats count where index=_internal sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
-    $indexer_list$
     by _time host span=$seconds_for_bin$sec 
+| search $indexer_list$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
-| timechart limit=0 count span=$seconds_for_bin$sec by short_name 
+| timechart limit=0 sum(count) as readings span=$seconds_for_bin$sec by short_name 
 | eval active_indexers=0 
 | foreach * 
     [| eval active_indexers=if(isnull('&lt;&lt;FIELD&gt;&gt;') OR "&lt;&lt;FIELD&gt;&gt;"="active_indexers",active_indexers,active_indexers+1)]</query>
