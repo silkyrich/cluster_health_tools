@@ -52,6 +52,7 @@
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">avg(average_KBps),stdev(average_KBps)</option>
+        <option name="charting.legend.placement">top</option>
         <option name="height">328</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -206,7 +207,7 @@
   </row>
   <row>
     <panel>
-      <title>HEC event distribution across indexers in $stack$</title>
+      <title>HEC event distribution across indexers</title>
       <chart>
         <title>Select window and indexer to drill in</title>
         <search>
@@ -228,11 +229,11 @@
   </row>
   <row>
     <panel>
+      <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
         <search>
-          <query>| tstats count where index=_internal sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
+          <query>| tstats count where index=_internal $indexer_list$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin$sec 
-| search $indexer_list$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
 | timechart limit=0 sum(count) as readings span=$seconds_for_bin$sec by short_name 
 | eval active_indexers=0 
@@ -248,6 +249,86 @@
         <option name="charting.legend.placement">top</option>
         <option name="height">425</option>
         <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Introspection metrics</title>
+      <input type="dropdown" token="hostwide_parameter">
+        <label>Selection hostwide variable function</label>
+        <choice value="cpu_idle_pct">cpu_idle_pct</choice>
+        <choice value="cpu_system_pct">cpu_system_pct</choice>
+        <choice value="cpu_user_pct">cpu_user_pct</choice>
+        <choice value="mem">mem</choice>
+        <choice value="mem_used">mem_used</choice>
+        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
+        <choice value="pg_paged_out">pg_paged_out</choice>
+        <choice value="pg_swapped_out">pg_swapped_out</choice>
+        <choice value="runnable_process_count">runnable_process_count</choice>
+        <choice value="swap">swap</choice>
+        <choice value="swap_used">swap_used</choice>
+        <default>cpu_idle_pct</default>
+      </input>
+      <input type="dropdown" token="hostwide_aggregation_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="overlay_option">
+        <label>Overlay options for stdev</label>
+        <choice value="| eval sum=0, count=0  | foreach idx*      [| eval sum=sum+'&lt;&lt;FIELD&gt;&gt;', count=count+1]  | eval avg=sum/count  | foreach idx*      [| eval variance=pow(avg-'&lt;&lt;FIELD&gt;&gt;',2)]  | eval stdev=sqrt(variance/count)  | fields - variance sum count avg">ON - with gaps</choice>
+        <choice value="| eval sum=0, count=0  | foreach idx*      [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;'), count=if(isnull('&lt;&lt;FIELD&gt;&gt;'),count,count+1)] | eval avg=sum/count  | foreach idx*      [| eval variance=if(isnull('&lt;&lt;FIELD&gt;&gt;'),variance,pow(avg-'&lt;&lt;FIELD&gt;&gt;',2))]  | eval stdev=sqrt(variance/count)  | fields - variance sum count avg">ON - no gaps</choice>
+        <choice value="| noop">OFF</choice>
+        <default>| noop</default>
+      </input>
+      <chart>
+        <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
+        <search>
+          <query>| tstats 
+    $hostwide_aggregation_function$(data.cpu_idle_pct) as cpu_idle_pct 
+    $hostwide_aggregation_function$(data.cpu_user_pct) as cpu_user_pct 
+    $hostwide_aggregation_function$(data.cpu_system_pct) as cpu_system_pct 
+    $hostwide_aggregation_function$(data.mem) as mem 
+    $hostwide_aggregation_function$(data.mem_used) as mem_used 
+    $hostwide_aggregation_function$(data.normalized_load_avg_1min) as normalized_load_avg_1min 
+    $hostwide_aggregation_function$(data.pg_paged_out) as pg_paged_out 
+    $hostwide_aggregation_function$(data.pg_swapped_out) as pg_swapped_out
+    $hostwide_aggregation_function$(data.runnable_process_count) as runnable_process_count 
+    $hostwide_aggregation_function$(data.swap) as swap 
+    $hostwide_aggregation_function$(data.swap_used) as swap_used 
+    where index=_introspection $indexer_list$ by host _time span=$seconds_for_bin$sec 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| eval label=short_name." (".instance_type."+".os_version.")"
+| eval label=short_name
+| xyseries _time short_name $hostwide_parameter$
+$overlay_option$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">stdev</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">389</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_shortname_blocked">$click.name2$</set>
+        </drilldown>
       </chart>
     </panel>
   </row>
