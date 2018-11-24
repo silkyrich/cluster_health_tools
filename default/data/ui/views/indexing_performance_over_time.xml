@@ -122,7 +122,8 @@
       <chart>
         <search>
           <query>index=_internal $indexer_list$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
-| timechart span=$seconds_for_bin$sec limit=0 count by host 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| timechart span=$seconds_for_bin$sec limit=0 count by short_name 
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
           <earliest>$time.earliest$</earliest>
@@ -151,8 +152,8 @@
         <option name="charting.layout.splitSeries">0</option>
         <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
         <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
-        <option name="charting.legend.placement">right</option>
-        <option name="height">446</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">632</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -164,15 +165,17 @@
         <search>
           <query>index=_internal $indexer_list$
     sourcetype=splunkd source="*metrics.log" 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
 | eval indexing_delay=_indextime-_time 
 | eval _time=_indextime 
-| timechart limit=0 span=$seconds_for_bin$sec max(indexing_delay) by host</query>
+| timechart limit=0 span=$seconds_for_bin$sec max(indexing_delay) by short_name</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
-        <option name="height">543</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">653</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -183,7 +186,8 @@
       <chart>
         <search>
           <query>index=_internal $indexer_list$ TERM(eventtype=connect_done) 
-| timechart limit=0 span=$seconds_for_bin$sec count by host 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| timechart limit=0 span=$seconds_for_bin$sec count by short_name 
 | eval sum=0 
 | foreach * 
     [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;')]</query>
@@ -194,7 +198,8 @@
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
         <option name="charting.chart.stackMode">stacked</option>
-        <option name="height">439</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">538</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
