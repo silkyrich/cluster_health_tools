@@ -209,13 +209,8 @@
       <chart>
         <search>
           <query>| tstats count where index=_internal sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
-    [| rest /services/server/info 
-    | where server_roles="indexer" 
-    | fields + splunk_server 
-    | eval search="host=\"".splunk_server."\"" 
-    | stats values(search) as search 
-    | eval search="(".mvjoin(search, " OR ").")" 
-    | fields + search ] by _time host span=$seconds_for_bin$sec 
+    $indexer_list$
+    by _time host span=$seconds_for_bin$sec 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
 | timechart limit=0 count span=$seconds_for_bin$sec by short_name 
 | eval active_indexers=0 
@@ -228,7 +223,8 @@
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">active_indexers</option>
         <option name="charting.drilldown">none</option>
-        <option name="height">349</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">425</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
