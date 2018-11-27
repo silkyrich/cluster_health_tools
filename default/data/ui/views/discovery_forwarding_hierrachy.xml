@@ -1,0 +1,38 @@
+<form>
+  <label>Discover forwarding hierrachy</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time period to extract</label>
+      <default>
+        <earliest>-15m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <table>
+        <title>Forwarders breakdown</title>
+        <search>
+          <query>| union 
+    [ search index=_internal Metrics (group=tcpin_connections OR group=tcpout_connections) sourcetype=splunkd 
+    | stats count(eval(group="tcpin_connections")) as tcp_in 
+        count(eval(group="tcpout_connections")) as tcp_out 
+        max(ingest_pipe) as pipelines dc(hostname) as clients by host 
+    | eval role=case(tcp_in&gt;0 and tcp_out&gt;0, "intermediate", tcp_in&gt;0 and tcp_out=0, "indexer", tcp_in=0 and tcp_out&gt;0, "endpoint") 
+    | fields + host role pipelines] 
+    [ search index=_internal Metrics group=tcpin_connections sourcetype=splunkd 
+    | stats dc(host) as target_count values(host) as target_list values(os) as endpoint_os values(arch) as endpoint_arch values(build) as endpoint_build values(version) as endpoint_version values(ssl) as ssl values(ack) as ack values(fwdType) as fwdType by hostname 
+    | rename hostname as host] 
+| stats values(*) as * by host
+| outputcsv hosts_to_roles.csv</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
