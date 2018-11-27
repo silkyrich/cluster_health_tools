@@ -1,20 +1,7 @@
 <form>
   <label>Discover forwarding hierrachy</label>
-  <fieldset submitButton="false">
-    <input type="time" token="time">
-      <label>Time period to extract</label>
-      <default>
-        <earliest>-15m</earliest>
-        <latest>now</latest>
-      </default>
-    </input>
-  </fieldset>
-  <row>
-    <panel>
-      <table>
-        <title>Forwarders breakdown</title>
-        <search>
-          <query>| union 
+  <search id="discover_forwarders">
+    <query>| union 
     [ search index=_internal Metrics (group=tcpin_connections OR group=tcpout_connections) sourcetype=splunkd 
     | stats count(eval(group="tcpin_connections")) as tcp_in 
         count(eval(group="tcpout_connections")) as tcp_out 
@@ -26,12 +13,28 @@
     | rename hostname as host] 
 | stats values(*) as * by host
 | outputcsv hosts_to_roles.csv</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time period to extract</label>
+      <default>
+        <earliest>-15m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Forwarders by version, host and connections</title>
+      <table>
+        <title>Note once run this search dumps out a lookup table called "hosts_to_roles.csv" for faster access</title>
+        <search base="discover_forwarders">
+          <query/>
         </search>
         <option name="count">100</option>
         <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
