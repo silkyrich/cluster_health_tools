@@ -1,0 +1,114 @@
+<form>
+  <search id="indexer_list_search">
+    <query>
+      $indexer_list_query$
+    </query>
+    <done>
+      <set token="indexer_list">$result.search$</set>
+    </done>
+    <earliest>0</earliest>
+    <latest></latest>
+  </search>
+  <label>Discovery queries</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="text" token="indexer_list_query">
+      <label>Replace the sub search with host=something</label>
+      <default>| rest /services/server/info  | where server_roles="indexer"  | fields + splunk_server  | eval search="\"".splunk_server."\""  | stats values(search) as search  | eval search="host IN (".mvjoin(search, ", ").")"  | fields + search</default>
+    </input>
+    <input type="text" token="indexer_list">
+      <label>indexer selection override</label>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Indexer discovery via REST</title>
+      <table>
+        <search base="indexer_list_search">
+          <query/>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Component discovery via roles found in Metrics</title>
+      <table>
+        <search>
+          <query>index=_internal INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
+| fields host instance_roles 
+| eval search_head=if(like(instance_roles,"%search_head%"),1,0),
+    cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
+    indexer=if(like(instance_roles,"%indexer%"),1,0) 
+| stats values(eval(if(search_head=1,host,""))) as search_heads 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer 
+| eval search_heads="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
+    cluster_master="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
+    indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Cluster master from Metrics</title>
+        <search>
+          <query>index=_internal Metrics Info TERM(name=cmmaster_service) sourcetype=splunkd TERM(group=subtask_counts)
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search</query>
+          <earliest>-2min</earliest>
+          <latest>-1min</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search head cluster members via Metrics</title>
+      <table>
+        <search>
+          <query>index=_internal host=sh* sourcetype=splunkd sched_dispatch
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
