@@ -1,0 +1,690 @@
+<form>
+  <label>Cluster Performance</label>
+  <description>Another groovy operations dashboard brought to you by Richard Morgan Productions</description>
+  <search id="introspection_hostwide">
+    <query>
+| tstats 
+    $hostwide_aggregation_function$(data.cpu_idle_pct) as cpu_idle_pct 
+    $hostwide_aggregation_function$(data.cpu_user_pct) as cpu_user_pct 
+    $hostwide_aggregation_function$(data.cpu_system_pct) as cpu_system_pct 
+    $hostwide_aggregation_function$(data.mem) as mem 
+    $hostwide_aggregation_function$(data.mem_used) as mem_used 
+    $hostwide_aggregation_function$(data.normalized_load_avg_1min) as normalized_load_avg_1min 
+    $hostwide_aggregation_function$(data.pg_paged_out) as pg_paged_out 
+    $hostwide_aggregation_function$(data.pg_swapped_out) as pg_swapped_out
+    $hostwide_aggregation_function$(data.runnable_process_count) as runnable_process_count 
+    $hostwide_aggregation_function$(data.swap) as swap 
+    $hostwide_aggregation_function$(data.swap_used) as swap_used 
+    where index=_introspection $indexer_list$ by host _time span=$seconds_for_bin$sec 
+</query>
+    <earliest>$tweaked_earliest$</earliest>
+    <latest>$tweaked_latest$</latest>
+  </search>
+  <search id="restart_annotation">
+    <query>| tstats count prestats=true where index=_internal host=*.splunkcloud.com sourcetype=splunkd TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s
+| eval type="startup"
+| tstats count prestats=true append=true where index=_internal host=*.splunkcloud.com sourcetype=splunkd TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s
+| eval type=if(isNull(type),"guid change",type)
+| tstats count prestats=true append=true where index=_internal host=*.splunkcloud.com sourcetype=splunkd TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s
+| eval type=if(isNull(type),"shutdown",type)
+| rex field=host "^(?&lt;host_short&gt;[^.]+)"
+| stats count by host_short type _time
+| rex field=queue "^(?&lt;queue_short&gt;[^q]+)queue"
+| eval annotation_label=type." on ".host_short,
+    annotation_category=type
+| sort - _time
+
+| fields _time host_short anno*</query>
+    <earliest>$tweaked_earliest$</earliest>
+    <latest>$tweaked_latest$</latest>
+  </search>
+  <search id="annotation_cm_events">
+    <query>
+index=_internal component=CMMaster host=c0m1*.splunkcloud.com  ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries))
+| eval annotation_label=
+    case(searchmatch("finished"),"Finished RR", 
+    searchmatch("rebalance"), "Trigger Rebalance",
+    searchmatch("Starting"),"Starting RR"),
+    annotation_category=
+    case(searchmatch("finished"),"Finished", 
+    searchmatch("rebalance"), "Rebalance",
+    searchmatch("Starting"),"Starting") 
+| table _time anno* _raw                 
+
+                      
+                    </query>
+    <earliest>$tweaked_earliest$</earliest>
+    <latest>$tweaked_latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  
+  <search id="crash_annotation">
+    <query>search index=_internal host=*.splunkcloud.com  source=/opt/splunk/var/log/splunk/crash* Crashing thread build 
+    | rex field=_raw "Crashing thread: (?&lt;thread&gt;[^\s]+)" 
+    | eval annotation_label="crash in ".thread."-".host, 
+           annotation_category=thread 
+    | sort - _time       
+    | table _time anno*
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <progress>
+        <eval token="sample_ratio">round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/86400)+1</eval>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;60,60,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+    </progress>
+    
+  </search>
+  
+  <search id="indexer_list_search">
+    <query>
+| rest /services/server/info  | where server_roles="indexer"  | fields + splunk_server  | eval search="\"".splunk_server."\""  | stats values(search) as search  | eval search="host IN (".mvjoin(search, ", ").")"  | fields + search
+    </query>
+    <done>
+      <set token="indexer_list">$result.search$</set>
+    </done>
+    <earliest>0</earliest>
+    <latest></latest>
+  </search>
+
+  
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="sample_ratio">round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/86400)+1</eval>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;60,60,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+        <eval token="tweaked_earliest">relative_time(now(), $time.earliest$)</eval>
+        <eval token="tweaked_latest">relative_time(now(), $time.latest$)</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+    </input>
+    <input type="text" token="indexer_list">
+      <label>Indexer filter override</label>
+    </input>
+    <input type="checkbox" token="show_cm_panels">
+      <label>Cluster master events</label>
+      <choice value="*">Show panels</choice>
+      <delimiter> </delimiter>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title></title>
+      <single>
+        <search>
+          <query>| makeresults 
+| addinfo 
+| eval label=strftime("$tweaked_earliest$","%c")." to ".strftime("$tweaked_latest$","%c")." with sample ratio $sample_ratio$"
+| fields + label</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Variation across the cluster, big spikes in "normalised" metrics show the cluster to be out of balance. Watch out for the maximum load average breaching 30.</title>
+      <chart>
+        <title>Using sample=$sample_ratio$ to speed up results, select an area and click the panel below to reload page for time range</title>
+        <search type="annotation" base="annotations_nagios">
+          <query>
+            
+| table _time stack nagios*
+| bin _time span=$seconds_for_bin$sec
+| stats values(nagios_host) as hosts_affected dc(nagios_host) as hosts_total values(nagios_co) as jira_tickets values(nagios_message) as nagios_messages by nagios_command nagios_user stack _time 
+| eval 
+    annotation_label=nagios_command." by ".nagios_user." on (".hosts_total.") ".mvjoin(hosts_affected,",")." ".if(isnull(jira_tickets),""," for ".jira_tickets),
+    annotation_category=nagios_command,
+    annotation_label=if(isnull(annotation_label),nagios_user." ".mvjoin(nagios_messages," + "),annotation_label)
+| fields + _time anno*
+| append [| makeresults | eval _time=0]
+          </query>
+        </search>
+        <search>
+          <progress>
+            <unset token="running_search">true</unset>
+          </progress>
+          <done>
+            <set token="running_search">false</set>
+          </done>
+          <query>index=_internal Metrics sourcetype=splunkd $indexer_list$ TERM(group=thruput) TERM(name=thruput) 
+| timechart span=$seconds_for_bin$sec 
+    avg(average_kbps) as avg_kbps_avg 
+    stdev(average_kbps) as avg_kbps_stdev 
+    avg(instantaneous_kbps) as instantaneous_kbps_avg 
+    stdev(instantaneous_kbps) as instantaneous_kbps_stdev 
+    stdev(load_average) as load_avg_stdev 
+    avg(load_average) as load_avg 
+    max(load_average) as max_load_average 
+| eval normalized_stdev_instantaneous_kbps=instantaneous_kbps_stdev/instantaneous_kbps_avg, 
+    normalized_stdev_average_kbps=avg_kbps_stdev/avg_kbps_avg, 
+    normalized_stdev_load_average=load_avg_stdev/load_avg 
+| fields + normalized_stdev_average_kbps normalized_stdev_load_average max_load_average normalized_stdev_instantaneous_kbps
+| table _time *</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <selection>
+          <set token="selection_earliest_load_average">$start$</set>
+          <set token="selection_latest_load_average">$end$</set>
+        </selection>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">max_load_average</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">472</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$show_reload_page$,$running_search$">
+      <title>Reload this page for the time range selected in the above panel</title>
+      <single>
+        <search>
+          <progress>
+            <condition match="'job.resultCount' != 0">
+              <set token="show_reload_page">true</set>
+            </condition>
+            <condition match="'job.resultCount' == 0">
+              <unset token="show_reload_page">true</unset>
+            </condition>
+          </progress>
+          <query>
+| makeresults 
+| addinfo
+| eval 
+    selection_earliest_load_average="$selection_earliest_load_average$", 
+    label=strftime("$selection_earliest_load_average$","%c")." to ".strftime("$selection_latest_load_average$","%c")
+| where $selection_earliest_load_average$ != info_min_time AND $selection_latest_load_average$ != info_max_time
+| fields label
+</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">/app/search/cluster_performance?form.time.earliest=$selection_earliest_load_average$&amp;form.time.latest=$selection_latest_load_average$&amp;form.stack=&amp;</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Ingestion metrics per indexer pipeline on </title>
+      <input type="dropdown" token="pipeline_metric">
+        <label>Select ingestion pipeline metric</label>
+        <choice value="instantaneous_kbps">instantaneous_kbps</choice>
+        <choice value="instantaneous_eps">instantaneous_eps</choice>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="total_k_processed">total_k_processed</choice>
+        <choice value="kb">kb</choice>
+        <choice value="ev">ev</choice>
+        <choice value="load_average">load_average</choice>
+        <default>instantaneous_eps</default>
+      </input>
+      <input type="dropdown" token="aggregation_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="overlay_option">
+        <label>Overlay options for stdev</label>
+        <choice value="| eval sum=0, count=0  | foreach idx*      [| eval sum=sum+'&lt;&lt;FIELD&gt;&gt;', count=count+1]  | eval avg=sum/count  | foreach idx*      [| eval variance=pow(avg-'&lt;&lt;FIELD&gt;&gt;',2)]  | eval stdev=sqrt(variance/count)  | fields - variance sum count avg">ON - with gaps</choice>
+        <choice value="| eval sum=0, count=0  | foreach idx*      [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;'), count=if(isnull('&lt;&lt;FIELD&gt;&gt;'),count,count+1)] | eval avg=sum/count  | foreach idx*      [| eval variance=if(isnull('&lt;&lt;FIELD&gt;&gt;'),variance,pow(avg-'&lt;&lt;FIELD&gt;&gt;',2))]  | eval stdev=sqrt(variance/count)  | fields - variance sum count avg">ON - no gaps</choice>
+        <choice value="| noop">OFF</choice>
+        <default>| noop</default>
+      </input>
+      <chart>
+        <title>Select an indexer and select a narrowed time range to drill down and find out what the indexer was processing</title>
+        <search>
+          <query>index=_internal Metrics sourcetype=splunkd $indexer_list$ TERM(group=thruput) TERM(name=thruput) 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| eval label=short_name
+| timechart limit=0 span=$seconds_for_bin$sec $aggregation_function$($pipeline_metric$) as $pipeline_metric$ by label
+$overlay_option$</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <selection>
+          <set token="selection_earliest_ingestion">$start$</set>
+          <set token="selection_latest_ingestion">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">stdev</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">668</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_shortname_ingestion">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>HEC event distribution across indexers in </title>
+      <chart>
+        <title>Select window and indexer to drill in</title>
+        <search>
+          <query>| tstats sum(data.num_of_events) as events where $indexer_list$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| eval label=short_name." (".instance_type."+".os_version.")"
+| eval label=short_name
+| xyseries _time short_name events</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$selected_shortname_ingestion$">
+      <title>Select ingestion data for $selected_shortname_ingestion$.splunkcloud.com</title>
+      <single>
+        <search>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    selection_earliest_blocked="$selection_earliest_ingestion$", 
+    label=strftime("$selection_earliest_ingestion$","%c")." to ".strftime("$selection_latest_ingestion$","%c") 
+| where $selection_earliest_ingestion$ != info_min_time AND $selection_latest_ingestion$ != info_max_time 
+| table label 
+| eval earliest=round($selection_earliest_ingestion$),
+    latest=round($selection_latest_ingestion$)</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">/app/search/throughput_analysis_for_indexer?form.time.earliest=$row.earliest$&amp;form.time.latest=$row.latest$&amp;form.indexer=$selected_shortname_ingestion$.splunkcloud.com&amp;form.stack=</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row depends="$show_cm_panels$,">
+    <panel>
+      <title>Cluster Master jobs being issued on </title>
+      <input type="multiselect" token="filter_jobs">
+        <label>Filter jobs</label>
+        <choice value="*">All</choice>
+        <prefix>(</prefix>
+        <suffix>)</suffix>
+        <valuePrefix>job="</valuePrefix>
+        <valueSuffix>"</valueSuffix>
+        <delimiter> OR </delimiter>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>job</fieldForValue>
+                <search type="annotation" base="annotation_cm_events">
+          <query>
+
+          </query>
+        </search>
+
+        <search>
+          <query>index=_internal $show_cm_panels$ host=c0m1.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMRepJob running job 
+| stats count by job
+| eval label='job'." (".count.")"</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <default>*</default>
+      </input>
+      <chart>
+                <search type="annotation" base="annotation_cm_events">
+          <query>
+
+          </query>
+        </search>
+
+        <search>
+          <query>index=_internal host=c0m1*.splunkcloud.com sourcetype=splunkd source=*splunkd.log TERM(CMRepJob) TERM(running) TERM(job=*) TERM(job=*)
+| timechart limit=50 span=$seconds_for_bin$sec count by job
+`comment($show_cm_panels$)`</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">354</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cm_panels$,">
+    <panel>
+      <title>Cluster Master events generated on </title>
+      <input type="multiselect" token="filter_events">
+        <label>Filter events</label>
+        <choice value="*">All</choice>
+        <prefix>(</prefix>
+        <suffix>)</suffix>
+        <valuePrefix>event="</valuePrefix>
+        <valueSuffix>"</valueSuffix>
+        <delimiter> OR </delimiter>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>job</fieldForValue>
+        <search>
+          <query>index=_internal $sample_ratio$ host=c0m1.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer)
+| stats count by event
+| eval label='event'." (".count.")"</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <default>*</default>
+      </input>
+      <chart>
+        <search>
+          <query>index=_internal host=c0m1*.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer) $filter_events$
+| rex field=_raw "event=(?&lt;event_type&gt;[^ \"]+)" 
+| where isNotNull(event_type) 
+| timechart limit=0 span=$seconds_for_bin$sec count by event_type
+|  noop `comment("$show_cm_panels$")`</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">354</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocked splunkd detection, this is implemented by looking at the frequency at which metrics are being generated (sampling very $seconds_for_bin$ seconds) on </title>
+      <chart>
+        <title>Select an indexer and a duration to drill down and see what the host details are CPU, memory, network and processes</title>
+        <search base="restart_annotation" type="annotation">
+          <query>| search host_short=idx*</query>
+        </search>
+        <search>
+          <query>| tstats count where index=_internal sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) host=idx*.* by _time host span=$seconds_for_bin$sec 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| xyseries _time short_name count
+| eval active_indexers=0
+| foreach * [| eval active_indexers=if(isnull('&lt;&lt;FIELD&gt;&gt;') OR "&lt;&lt;FIELD&gt;&gt;"="active_indexers",active_indexers,active_indexers+1)]</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <selection>
+          <set token="selection_earliest_blocked">$start$</set>
+          <set token="selection_latest_blocked">$end$</set>
+        </selection>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.minimumNumber">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.overlayFields">active_indexers</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">414</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_shortname_blocked">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Introspection metrics for </title>
+      <input type="dropdown" token="hostwide_parameter">
+        <label>Selection hostwide variable function</label>
+        <choice value="cpu_idle_pct">cpu_idle_pct</choice>
+        <choice value="cpu_system_pct">cpu_system_pct</choice>
+        <choice value="cpu_user_pct">cpu_user_pct</choice>
+        <choice value="mem">mem</choice>
+        <choice value="mem_used">mem_used</choice>
+        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
+        <choice value="pg_paged_out">pg_paged_out</choice>
+        <choice value="pg_swapped_out">pg_swapped_out</choice>
+        <choice value="runnable_process_count">runnable_process_count</choice>
+        <choice value="swap">swap</choice>
+        <choice value="swap_used">swap_used</choice>
+        <default>cpu_idle_pct</default>
+      </input>
+      <input type="dropdown" token="hostwide_aggregation_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
+        
+        <search type="annotation" base="crash_annotation">
+          <query>
+            
+            
+          </query>
+          
+        </search>        
+        
+        <search base="introspection_hostwide">
+          <query>| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| eval label=short_name." (".instance_type."+".os_version.")"
+| eval label=short_name
+| xyseries _time short_name $hostwide_parameter$</query>
+        </search>
+        <selection>
+          <set token="selection_earliest_blocked">$start$</set>
+          <set token="selection_latest_blocked">$end$</set>
+        </selection>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">333</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_shortname_blocked">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$selected_shortname_blocked$">
+      <title>Drilldown to host $selected_shortname_blocked$.splunkcloud.com</title>
+      <single>
+        <search>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    selection_earliest_blocked="$selection_earliest_blocked$", 
+    label=strftime("$selection_earliest_blocked$","%c")." to ".strftime("$selection_latest_blocked$","%c") 
+| where $selection_earliest_blocked$ != info_min_time AND $selection_latest_blocked$ != info_max_time 
+| table label 
+| eval earliest=round($selection_earliest_blocked$),
+    latest=round($selection_latest_blocked$)</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">/app/search/host_os_detail?form.time.earliest=$row.earliest$&amp;form.time.latest=$row.latest$&amp;form.indexer=$selected_shortname_blocked$.splunkcloud.com&amp;form.stack=</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search generated by the SHs on </title>
+      <input type="dropdown" token="search_head_filter">
+        <label>Select search head</label>
+        <choice value="*">All</choice>
+        <default>*</default>
+        <prefix>host=</prefix>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search>
+          <query>index=customer_btool earliest=-25hr latest=now host=sh*.splunkcloud.com 
+    (sourcetype=splunk:config:btool:app SplunkEnterpriseSecuritySuite package) 
+    OR (sourcetype=splunk:config:btool:app app=itsi is_visible) 
+    OR (mgmt_uri sourcetype=splunk:config:btool:server shclustering) 
+| rex field=_raw "shcluster_label\s+=\s*(?&lt;shcluster_label&gt;[\w_\d]+)" 
+| eval is_shc=if(searchmatch("shclustering"),1,0), 
+    is_itsi=if(app="itsi",1,0),
+    is_es=if(app="SplunkEnterpriseSecuritySuite",1,0) 
+| fields host is_itsi is_es shcluster_label 
+| append 
+    [| inputlookup aws_inventory where FQDN="sh*.splunkcloud.com" 
+    | stats count by FQDN 
+    | rename FQDN as host 
+    | eval is_search=1]
+| table host is_* shcluster_label
+| stats max(is_es) as app_enterprise_security max(is_itsi) as app_itsi max(is_search) as app_search values(shcluster_label) as shc_label by host
+| fillnull
+| rex field=host "(?&lt;short_name&gt;[^.]+)"
+| eval label=""
+| foreach app_* [| eval label=mvappend(label,if(&lt;&lt;FIELD&gt;&gt;=1,"&lt;&lt;MATCHSTR&gt;&gt;",""))]
+| eval label=short_name." (".mvjoin(mvfilter(label!=""),", ").")".if(shc_label!="0"," shc=".shc_label."","")
+| table host label</query>
+        </search>
+      </input>
+      <chart>
+        <title>Search load</title>
+        <search>
+          <query>index=customer_audit $search_head_filter$ search_id TERM(info=completed) OR TERM(info=canceled) OR TERM(info=cancel) OR TERM(info=failed) OR TERM(info=granted) host=sh*.splunkcloud.com
+| timechart span=$seconds_for_bin$sec limit=0 count by info 
+| eval delta=completed-cancel-failed-canceled,
+     completed=-completed,
+     cancel=-cancel,
+     failed=-failed,
+     canceled=-canceled
+| eventstats min(delta) as baseline 
+| eval delta=delta-baseline 
+| fields - baseline</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+          <sampleRatio>$sample_ratio$</sampleRatio>
+        </search>
+        <search base="restart_annotation" type="annotation">
+          <query>| search host_short=sh*</query>
+        </search>
+        <selection>
+          <set token="selection_earliest_search">$start$</set>
+          <set token="selection_latest_search">$end$</set>
+        </selection>
+        <option name="charting.annotation.categoryColors">{"restart": 0xffff00, "start": 0xff0000, "shutdown": 0x000000}</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">delta</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">535</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Open search details for timespan on </title>
+      <single>
+        <search>
+          <progress>
+            <condition match="'job.resultCount' != 0">
+              <set token="show_reload_page">true</set>
+            </condition>
+            <condition match="'job.resultCount' == 0">
+              <unset token="show_reload_page">true</unset>
+            </condition>
+          </progress>
+          <query>| makeresults 
+| addinfo
+| eval 
+    selection_earliest_load_average="$selection_earliest_search$", 
+    label=strftime("$selection_earliest_search$","%c")." to ".strftime("$selection_latest_search$","%c")
+| where $selection_earliest_search$ != info_min_time AND $selection_latest_search$ != info_max_time
+| fields label</query>
+          <earliest>$tweaked_earliest$</earliest>
+          <latest>$tweaked_latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">/app/search/cluster_search_history?form.time.earliest=$selection_earliest_search$&amp;form.time.latest=$selection_latest_search$&amp;form.stack=&amp;</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$debug$">
+      <title>Servers restarting, annotations</title>
+      <table>
+        <search base="annotation_cm_events">
+          <query>| noop sample_ratio=1</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
