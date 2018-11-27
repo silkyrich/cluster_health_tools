@@ -40,7 +40,7 @@
   </search>
   <search id="annotation_cm_events">
     <query>
-index=_internal component=CMMaster host=c0m1*.splunkcloud.com  ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries))
+index=_internal component=CMMaster $cluster_master_list$  ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries))
 | eval annotation_label=
     case(searchmatch("finished"),"Finished RR", 
     searchmatch("rebalance"), "Trigger Rebalance",
@@ -68,16 +68,31 @@ index=_internal component=CMMaster host=c0m1*.splunkcloud.com  ((Starting a roll
     </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
-    <progress>
+  </search>
+
+<search id="dummy_search_for_time">
+  <query>
+    | makeresults
+  </query>
+      <progress>
         <eval token="sample_ratio">round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/86400)+1</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;60,60,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+        <eval token="tweaked_earliest">relative_time(now(), $time.earliest$)</eval>
+        <eval token="tweaked_latest">relative_time(now(), $time.latest$)</eval>        
     </progress>
-    
-  </search>
+    <earliest>-2sec</earliest>
+    <latest>-1sec</latest>
+</search>
   
   <search id="indexer_list_search">
     <query>
-| rest /services/server/info  | where server_roles="indexer"  | fields + splunk_server  | eval search="\"".splunk_server."\""  | stats values(search) as search  | eval search="host IN (".mvjoin(search, ", ").")"  | fields + search
+| rest /services/server/info  
+| where server_roles="indexer"  
+| fields + splunk_server  
+| eval search="\"".splunk_server."\""  
+| stats values(search) as search  
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search
     </query>
     <done>
       <set token="indexer_list">$result.search$</set>
@@ -86,12 +101,52 @@ index=_internal component=CMMaster host=c0m1*.splunkcloud.com  ((Starting a roll
     <latest></latest>
   </search>
 
-  
+  <search id="clustermaster_list_search">
+    <query>
+
+index=_internal Metrics Info TERM(name=cmmaster_service) sourcetype=splunkd TERM(group=subtask_counts)
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search
+
+    </query>
+    <done>
+      <set token="cluster_master_list">$result.search$</set>
+    </done>
+    <earliest>-2min</earliest>
+    <latest>-1min</latest>
+  </search>
+
+  <search id="search_heads">
+    <query>
+
+index=_internal TERM(instance_roles=*) search_head sourcetype=splunkd TERM(group=instance)
+| table host
+
+    </query>
+    <earliest>-61min</earliest>
+    <latest>-1min</latest>
+  </search>
+
+
+  <search base="search_heads" id="search_head_list_search">
+    <query>
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search
+
+    </query>
+    <done>
+      <set token="search_head_list">$result.search$</set>
+    </done>
+  </search>
+
+
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label></label>
       <default>
-        <earliest>-7d@d</earliest>
+        <earliest>-7h@h</earliest>
         <latest>now</latest>
       </default>
       <change>
@@ -111,7 +166,13 @@ index=_internal component=CMMaster host=c0m1*.splunkcloud.com  ((Starting a roll
       <default>500</default>
     </input>
     <input type="text" token="indexer_list">
-      <label>Indexer filter override</label>
+      <label>Indexer override</label>
+    </input>
+    <input type="text" token="cluster_master_list">
+      <label>Cluster master override</label>
+    </input>
+    <input type="text" token="search_head_list">
+      <label>Search head override</label>
     </input>
     <input type="checkbox" token="show_cm_panels">
       <label>Cluster master events</label>
@@ -364,7 +425,7 @@ $overlay_option$</query>
         </search>
 
         <search>
-          <query>index=_internal $show_cm_panels$ host=c0m1.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMRepJob running job 
+          <query>index=_internal $show_cm_panels$ $cluster_master_list$ sourcetype=splunkd source="*splunkd.log" CMRepJob running job 
 | stats count by job
 | eval label='job'." (".count.")"</query>
           <earliest>$tweaked_earliest$</earliest>
@@ -381,7 +442,7 @@ $overlay_option$</query>
         </search>
 
         <search>
-          <query>index=_internal host=c0m1*.splunkcloud.com sourcetype=splunkd source=*splunkd.log TERM(CMRepJob) TERM(running) TERM(job=*) TERM(job=*)
+          <query>index=_internal $cluster_master_list$ sourcetype=splunkd source=*splunkd.log TERM(CMRepJob) TERM(running) TERM(job=*) TERM(job=*)
 | timechart limit=50 span=$seconds_for_bin$sec count by job
 `comment($show_cm_panels$)`</query>
           <earliest>$tweaked_earliest$</earliest>
@@ -411,7 +472,7 @@ $overlay_option$</query>
         <fieldForLabel>label</fieldForLabel>
         <fieldForValue>job</fieldForValue>
         <search>
-          <query>index=_internal $sample_ratio$ host=c0m1.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer)
+          <query>index=_internal $sample_ratio$ $cluster_master_list$ sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer)
 | stats count by event
 | eval label='event'." (".count.")"</query>
           <earliest>$tweaked_earliest$</earliest>
@@ -422,7 +483,7 @@ $overlay_option$</query>
       </input>
       <chart>
         <search>
-          <query>index=_internal host=c0m1*.splunkcloud.com sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer) $filter_events$
+          <query>index=_internal $cluster_master_list$ sourcetype=splunkd source="*splunkd.log" CMMaster event * NOT(addPeerpeer) NOT(handleBucketsNotificationpeer) $filter_events$
 | rex field=_raw "event=(?&lt;event_type&gt;[^ \"]+)" 
 | where isNotNull(event_type) 
 | timechart limit=0 span=$seconds_for_bin$sec count by event_type
@@ -574,7 +635,7 @@ $overlay_option$</query>
   </row>
   <row>
     <panel>
-      <title>Search generated by the SHs on </title>
+      <title>Search generated by the SHs $search_head_list$ </title>
       <input type="dropdown" token="search_head_filter">
         <label>Select search head</label>
         <choice value="*">All</choice>
@@ -582,35 +643,18 @@ $overlay_option$</query>
         <prefix>host=</prefix>
         <fieldForLabel>label</fieldForLabel>
         <fieldForValue>host</fieldForValue>
-        <search>
-          <query>index=customer_btool earliest=-25hr latest=now host=sh*.splunkcloud.com 
-    (sourcetype=splunk:config:btool:app SplunkEnterpriseSecuritySuite package) 
-    OR (sourcetype=splunk:config:btool:app app=itsi is_visible) 
-    OR (mgmt_uri sourcetype=splunk:config:btool:server shclustering) 
-| rex field=_raw "shcluster_label\s+=\s*(?&lt;shcluster_label&gt;[\w_\d]+)" 
-| eval is_shc=if(searchmatch("shclustering"),1,0), 
-    is_itsi=if(app="itsi",1,0),
-    is_es=if(app="SplunkEnterpriseSecuritySuite",1,0) 
-| fields host is_itsi is_es shcluster_label 
-| append 
-    [| inputlookup aws_inventory where FQDN="sh*.splunkcloud.com" 
-    | stats count by FQDN 
-    | rename FQDN as host 
-    | eval is_search=1]
-| table host is_* shcluster_label
-| stats max(is_es) as app_enterprise_security max(is_itsi) as app_itsi max(is_search) as app_search values(shcluster_label) as shc_label by host
-| fillnull
-| rex field=host "(?&lt;short_name&gt;[^.]+)"
-| eval label=""
-| foreach app_* [| eval label=mvappend(label,if(&lt;&lt;FIELD&gt;&gt;=1,"&lt;&lt;MATCHSTR&gt;&gt;",""))]
-| eval label=short_name." (".mvjoin(mvfilter(label!=""),", ").")".if(shc_label!="0"," shc=".shc_label."","")
-| table host label</query>
+        <search base="search_heads">
+          <query>
+| eval label=host
+| table host label
+
+</query>
         </search>
       </input>
       <chart>
         <title>Search load</title>
         <search>
-          <query>index=customer_audit $search_head_filter$ search_id TERM(info=completed) OR TERM(info=canceled) OR TERM(info=cancel) OR TERM(info=failed) OR TERM(info=granted) host=sh*.splunkcloud.com
+          <query>index=_audit $search_head_filter$ $search_head_list$ search_id TERM(info=completed) OR TERM(info=canceled) OR TERM(info=cancel) OR TERM(info=failed) OR TERM(info=granted)
 | timechart span=$seconds_for_bin$sec limit=0 count by info 
 | eval delta=completed-cancel-failed-canceled,
      completed=-completed,
@@ -645,7 +689,7 @@ $overlay_option$</query>
   </row>
   <row>
     <panel>
-      <title>Open search details for timespan on </title>
+      <title>Open search details for timespan</title>
       <single>
         <search>
           <progress>
