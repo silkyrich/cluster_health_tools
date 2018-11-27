@@ -3,6 +3,16 @@
   <init>
     <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
   </init>
+  <search id="indexer_list_search">
+    <query>
+| rest /services/server/info  | where server_roles="indexer"  | fields + splunk_server  | eval search="\"".splunk_server."\""  | stats values(search) as search  | eval search="host IN (".mvjoin(search, ", ").")"  | fields + search
+    </query>
+    <done>
+      <set token="indexer_list">$result.search$</set>
+    </done>
+    <earliest>0</earliest>
+    <latest></latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label></label>
@@ -27,8 +37,7 @@
       </change>
     </input>
     <input type="text" token="indexer_list">
-      <label>Replace the sub search with host=something</label>
-      <default>[| rest /services/server/info      | where server_roles="indexer"      | fields + splunk_server      | eval search="host=\"".splunk_server."\""      | stats values(search) as search      | eval search="(".mvjoin(search, " OR ").")"      | fields + search]</default>
+      <label>Indexer filter override</label>
     </input>
   </fieldset>
   <row>
