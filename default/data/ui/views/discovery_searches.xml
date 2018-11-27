@@ -1,52 +1,22 @@
-<form>
-  <search id="indexer_list_search">
-    <query>
-      $indexer_list_query$
-    </query>
-    <done>
-      <set token="indexer_list">$result.search$</set>
-    </done>
-    <earliest>0</earliest>
-    <latest></latest>
-  </search>
+<dashboard>
   <label>Discovery queries</label>
-  <fieldset submitButton="false">
-    <input type="time" token="time">
-      <label></label>
-      <default>
-        <earliest>-4h@m</earliest>
-        <latest>now</latest>
-      </default>
-      <change>
-        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
-      </change>
-    </input>
-    <input type="dropdown" token="time_resolution">
-      <label>Chart resolution</label>
-      <choice value="100">Crude</choice>
-      <choice value="250">Low</choice>
-      <choice value="500">Medium</choice>
-      <choice value="750">High</choice>
-      <choice value="999">Ultra</choice>
-      <default>500</default>
-      <change>
-        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
-      </change>
-    </input>
-    <input type="text" token="indexer_list_query">
-      <label>Replace the sub search with host=something</label>
-      <default>| rest /services/server/info  | where server_roles="indexer"  | fields + splunk_server  | eval search="\"".splunk_server."\""  | stats values(search) as search  | eval search="host IN (".mvjoin(search, ", ").")"  | fields + search</default>
-    </input>
-    <input type="text" token="indexer_list">
-      <label>indexer selection override</label>
-    </input>
-  </fieldset>
   <row>
     <panel>
       <title>Indexer discovery via REST</title>
       <table>
-        <search base="indexer_list_search">
-          <query/>
+        <search>
+          <query>
+| rest /services/server/info  
+| where server_roles="indexer"  
+| fields + splunk_server  
+| eval search="\"".splunk_server."\""  
+| stats values(search) as search  
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search            
+            
+          </query>
+          <earliest>-2min</earliest>
+          <latest>-1min</latest>          
         </search>
         <option name="drilldown">none</option>
       </table>
@@ -111,4 +81,4 @@
       </table>
     </panel>
   </row>
-</form>
+</dashboard>
