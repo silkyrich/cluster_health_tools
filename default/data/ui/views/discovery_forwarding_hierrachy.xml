@@ -1,18 +1,9 @@
 <form>
   <label>Discover forwarding hierrachy</label>
   <search id="discover_forwarders">
-    <query>| union 
-    [ search index=_internal Metrics (group=tcpin_connections OR group=tcpout_connections) sourcetype=splunkd 
-    | stats count(eval(group="tcpin_connections")) as tcp_in 
-        count(eval(group="tcpout_connections")) as tcp_out 
-        max(ingest_pipe) as pipelines dc(hostname) as clients by host 
-    | eval role=case(tcp_in&gt;0 and tcp_out&gt;0, "intermediate", tcp_in&gt;0 and tcp_out=0, "indexer", tcp_in=0 and tcp_out&gt;0, "endpoint") 
-    | fields + host role pipelines] 
-    [ search index=_internal Metrics group=tcpin_connections sourcetype=splunkd 
-    | stats dc(host) as target_count values(host) as target_list values(os) as endpoint_os values(arch) as endpoint_arch values(build) as endpoint_build values(version) as endpoint_version values(ssl) as ssl values(ack) as ack values(fwdType) as fwdType by hostname 
-    | rename hostname as host] 
-| stats values(*) as * by host
-| outputcsv hosts_to_roles.csv</query>
+    <query>
+      $search_method$
+    </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -24,17 +15,106 @@
         <latest>now</latest>
       </default>
     </input>
+    <input type="radio" token="search_method">
+      <label>Use dataset</label>
+      <choice value="| union      [ search index=_internal Metrics (group=tcpin_connections OR group=tcpout_connections) sourcetype=splunkd      | stats count(eval(group=&quot;tcpin_connections&quot;)) as tcp_in          count(eval(group=&quot;tcpout_connections&quot;)) as tcp_out          max(ingest_pipe) as pipelines dc(hostname) as clients by host      | eval role=case(tcp_in&gt;0 and tcp_out&gt;0, &quot;intermediate&quot;, tcp_in&gt;0 and tcp_out=0, &quot;indexer&quot;, tcp_in=0 and tcp_out&gt;0, &quot;endpoint&quot;)      | fields + host role pipelines]      [ search index=_internal Metrics group=tcpin_connections sourcetype=splunkd      | stats dc(host) as target_count values(host) as target_list values(os) as endpoint_os values(arch) as endpoint_arch values(build) as endpoint_build values(version) as endpoint_version values(ssl) as ssl values(ack) as ack values(fwdType) as fwdType by hostname      | rename hostname as host] | stats values(*) as * by host | outputcsv hosts_to_roles.csv">Use SPL search and save</choice>
+      <choice value="| inputcsv hosts_to_roles.csv">Use saved lookup</choice>
+      <default>| inputcsv hosts_to_roles.csv</default>
+    </input>
   </fieldset>
+  <row>
+    <panel>
+      <title>Forwarder versions detected in logs</title>
+      <chart>
+        <search base="discover_forwarders">
+          <query>| stats dc(host) by endpoint_version</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Reversed engineered role</title>
+      <chart>
+        <title>We consider an intermediate forwarder to have inputs and outputs, endpoints to have outputs only, and indexers inputs only</title>
+        <search base="discover_forwarders">
+          <query>| stats count by role</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Forwarders sending data with acknowledgements enabled</title>
+      <chart>
+        <search base="discover_forwarders">
+          <query>| stats count by ack</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Forwarders sending data with SSL enabled</title>
+      <chart>
+        <title>Using SSL</title>
+        <search base="discover_forwarders">
+          <query>| stats count by ssl</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Forwarders reporting CPU architecture</title>
+      <chart>
+        <search base="discover_forwarders">
+          <query>| stats dc(host) as count by endpoint_arch</query>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Forwarders by OS version</title>
+      <chart>
+        <search base="discover_forwarders">
+          <query>| stats count by endpoint_os</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
   <row>
     <panel>
       <title>Forwarders by version, host and connections</title>
       <table>
         <title>Note once run this search dumps out a lookup table called "hosts_to_roles.csv" for faster access</title>
         <search base="discover_forwarders">
-          <query/>
+          <query>| noop</query>
         </search>
-        <option name="count">100</option>
         <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
