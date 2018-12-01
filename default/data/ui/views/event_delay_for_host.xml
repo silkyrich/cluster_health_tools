@@ -5,6 +5,12 @@
       <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
     </set>
   </init>
+  <search id="dummy">
+    <query>| makeresults</query>
+    <done>
+      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+    </done>
+  </search>
   <search id="per_host">
     <query>
 | tstats max(_indextime) AS indexed_time count where host=$selected_host$ (index=* OR index=_*) latest=now earliest=$time.earliest$ _index_latest=$time.latest$ _index_earliest=$time.earliest$  by index host sourcetype splunk_server _time source span=$seconds_for_bin$
