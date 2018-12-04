@@ -237,7 +237,7 @@
           <set token="selection_latest">$end$</set>
         </selection>
         <option name="charting.axisY.scale">linear</option>
-        <option name="charting.chart">area</option>
+        <option name="charting.chart">column</option>
         <option name="charting.chart.nullValueMode">gaps</option>
         <option name="charting.chart.showDataLabels">none</option>
         <option name="charting.chart.stackMode">stacked</option>
