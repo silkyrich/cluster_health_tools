@@ -33,7 +33,6 @@
     </input>
     <input type="text" token="selected_host">
       <label>Selected Host</label>
-      <default></default>
     </input>
     <input type="multiselect" token="index_filter">
       <label>Filter indexes</label>
@@ -61,7 +60,18 @@
       <default>500</default>
     </input>
   </fieldset>
-  <row>
+  <row rejects="$selected_host$">
+    <panel>
+      <html>
+         <h1>
+          <center>
+           Please enter value for host
+           </center>
+           </h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
     <panel>
       <html>
          <h1>
@@ -69,7 +79,6 @@
            Event metadata for $selected_host$
            </center>
            </h1>
-           
       </html>
     </panel>
   </row>
@@ -178,7 +187,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_host$">
     <panel>
       <title>Count of events generated at transmission time (_time)</title>
       <chart>
@@ -238,20 +247,6 @@
         <option name="height">617</option>
         <option name="refresh.display">progressbar</option>
       </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Events generated during time range selected</title>
-      <event>
-        <search>
-          <query>index=* host=$selected_host$</query>
-          <earliest>$selection_earliest$</earliest>
-          <latest>$selection_latest$</latest>
-        </search>
-        <option name="count">100</option>
-        <option name="list.drilldown">none</option>
-      </event>
     </panel>
   </row>
 </form>
