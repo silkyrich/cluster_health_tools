@@ -52,7 +52,8 @@
 | sort - splunk_server 
 | rename splunk_server as host
 | search $indexer_list$
-| table splunk_server average_KBps 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| table short_name average_KBps 
 | eventstats stdev(average_KBps) avg(average_KBps)</query>
           <earliest>0</earliest>
           <latest></latest>
@@ -132,7 +133,7 @@
       <chart>
         <search>
           <query>index=_internal $indexer_list$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart span=$seconds_for_bin$sec limit=0 count by short_name 
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
@@ -175,7 +176,7 @@
         <search>
           <query>index=_internal $indexer_list$
     sourcetype=splunkd source="*metrics.log" 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval indexing_delay=_indextime-_time 
 | eval _time=_indextime 
 | timechart limit=0 span=$seconds_for_bin$sec max(indexing_delay) by short_name</query>
@@ -196,7 +197,7 @@
       <chart>
         <search>
           <query>index=_internal $indexer_list$ TERM(eventtype=connect_done) 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart limit=0 span=$seconds_for_bin$sec count by short_name 
 | eval sum=0 
 | foreach * 
@@ -221,7 +222,7 @@
         <title>Select window and indexer to drill in</title>
         <search>
           <query>| tstats sum(data.num_of_events) as events where $indexer_list$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval label=short_name." (".instance_type."+".os_version.")"
 | eval label=short_name
 | xyseries _time short_name events</query>
@@ -243,7 +244,7 @@
         <search>
           <query>| tstats count where index=_internal $indexer_list$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin$sec 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart limit=0 sum(count) as readings span=$seconds_for_bin$sec by short_name 
 | eval active_indexers=0 
 | foreach * 
@@ -320,7 +321,7 @@
     $hostwide_aggregation_function$(data.swap) as swap 
     $hostwide_aggregation_function$(data.swap_used) as swap_used 
     where index=_introspection $indexer_list$ by host _time span=$seconds_for_bin$sec 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)+\." 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval label=short_name." (".instance_type."+".os_version.")"
 | eval label=short_name
 | xyseries _time short_name $hostwide_parameter$
