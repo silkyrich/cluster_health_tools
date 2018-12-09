@@ -6,13 +6,14 @@
       <table>
         <title>This method is flawed in that the REST API doesn't normally query all the SHs or the CM</title>
         <search>
-          <query>| rest /services/server/info  
+          <query>| rest /services/server/info 
 | eval search_head=if(like(server_roles,"%search_head%"),1,0),
     cluster_master=if(like(server_roles,"%cluster_master%"),1,0),
     indexer=if(like(server_roles,"%indexer%"),1,0) 
 | stats values(eval(if(search_head=1,host,""))) as search_heads 
     values(eval(if(cluster_master=1,host,""))) as cluster_master 
     values(eval(if(indexer=1,host,""))) as indexer 
+    by cluster_label 
 | eval search_heads="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
     cluster_master="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
     indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
@@ -31,13 +32,13 @@
         <title>This requires over a 60 min scan to get all the events</title>
         <search>
           <query>index=_internal INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
-| fields host instance_roles 
+| fields host instance_roles index_cluster_label
 | eval search_head=if(like(instance_roles,"%search_head%"),1,0),
     cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
     indexer=if(like(instance_roles,"%indexer%"),1,0) 
 | stats values(eval(if(search_head=1,host,""))) as search_heads 
     values(eval(if(cluster_master=1,host,""))) as cluster_master 
-    values(eval(if(indexer=1,host,""))) as indexer 
+    values(eval(if(indexer=1,host,""))) as indexer by index_cluster_label
 | eval search_heads="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
     cluster_master="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
     indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
@@ -46,6 +47,7 @@
         </search>
         <option name="count">10</option>
         <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
@@ -75,6 +77,23 @@
 | stats values(host) as search
 | eval search="host IN (".mvjoin(search, ", ").")"  
 | fields + search</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>REST API</title>
+      <table>
+        <title>Site discovery</title>
+        <search>
+          <query>| rest /services/cluster/slave/info
+| stats values(splunk_server) by site</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
