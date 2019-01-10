@@ -21,16 +21,32 @@
       <choice value="| inputcsv hosts_to_roles.csv">Use saved lookup</choice>
       <default>| inputcsv hosts_to_roles.csv</default>
     </input>
+    <input type="dropdown" token="split_by">
+      <label>Split by</label>
+      <choice value="ack">ack</choice>
+      <choice value="endpoint_arch">endpoint_arch</choice>
+      <choice value="endpoint_build">endpoint_build</choice>
+      <choice value="endpoint_os">endpoint_os</choice>
+      <choice value="endpoint_version">endpoint_version</choice>
+      <choice value="fwdType">fwdType</choice>
+      <choice value="pipelines">pipelines</choice>
+      <choice value="role">role</choice>
+      <choice value="ssl">ssl</choice>
+      <choice value="sum_kb">sum_kb</choice>
+      <choice value="| noop">NONE</choice>
+      <default>| noop</default>
+    </input>
   </fieldset>
   <row>
     <panel>
       <title>Forwarders sending data with acknowledgements enabled</title>
       <chart>
         <search base="discover_forwarders">
-          <query>| stats count by ack</query>
+          <query>| chart count by ack $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">pie</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -39,10 +55,11 @@
       <title>Forwarders by OS version</title>
       <chart>
         <search base="discover_forwarders">
-          <query>| stats count by endpoint_os</query>
+          <query>| chart count by endpoint_os  $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">pie</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -51,10 +68,10 @@
       <title>Forwarders reporting CPU architecture</title>
       <chart>
         <search base="discover_forwarders">
-          <query>| stats dc(host) as count by endpoint_arch</query>
+          <query>| chart dc(host) as count by endpoint_arch  $split_by$</query>
         </search>
         <option name="charting.axisY.scale">linear</option>
-        <option name="charting.chart">pie</option>
+        <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -67,10 +84,11 @@
       <chart>
         <title>We consider an intermediate forwarder to have inputs and outputs, endpoints to have outputs only, and indexers inputs only</title>
         <search base="discover_forwarders">
-          <query>| stats count by role</query>
+          <query>| chart limit=100 count by role  $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">pie</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -80,10 +98,24 @@
       <chart>
         <title>Using SSL</title>
         <search base="discover_forwarders">
-          <query>| stats count by ssl</query>
+          <query>| chart limit=100 count by ssl  $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">pie</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Comparitive sizing of forwarders</title>
+      <chart>
+        <title>Not all forwarders are born equal MBs in period</title>
+        <search base="discover_forwarders">
+          <query>| eval sum_mb=sum_kb/1024 |  bin bins=50 sum_mb | chart limit=100 count  by sum_mb  $split_by$</query>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">area</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -94,10 +126,11 @@
       <title>Forwarder versions detected in logs</title>
       <chart>
         <search base="discover_forwarders">
-          <query>| stats count by endpoint_version</query>
+          <query>| chart count by endpoint_version $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
+        <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -108,11 +141,11 @@
       <title>How many targets did the forwarders connect to during the time period scanned?</title>
       <chart>
         <search base="discover_forwarders">
-          <query>| stats count by target_count</query>
+          <query>| chart count by target_count  $split_by$</query>
         </search>
-        <option name="charting.axisY.scale">log</option>
+        <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
