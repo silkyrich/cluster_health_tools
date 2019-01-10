@@ -1,5 +1,8 @@
 <form>
   <label>Date time parsing issues break down</label>
+  <init>
+    <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+  </init>
   <search id="baseSearch">
     <query>
       index=_internal sourcetype=splunkd WARN component=DateParserVerbose 
@@ -19,7 +22,7 @@
     <sampleRatio>1</sampleRatio>
   </search>
   <search id="baseSearchEvents">
-    <query>index=* splunk_server=$selected_indexer$ host::$selected_host$ sourcetype::$selected_sourcetype$ source::$selected_source$ _index_earliest=$selection_earliest$ _index_latest=$selection_latest$ 
+    <query>(index=* OR index=_*) host::$selected_host$ sourcetype::$selected_sourcetype$ source::$selected_source$ _index_earliest=$selected_earliest$ _index_latest=$selected_latest$ 
     | rename _bkt as bucket
 |</query>
     <earliest>$selected_earliest$</earliest>
@@ -32,6 +35,24 @@
         <earliest>-60m@m</earliest>
         <latest>now</latest>
       </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="text" token="indexer_list">
+      <label>Indexer filter override</label>
     </input>
   </fieldset>
   <row>
@@ -39,12 +60,16 @@
       <chart>
         <title>Summary of date parsing errors</title>
         <search base="baseSearch">
-          <query>| timechart count by reason</query>
+          <progress>
+            <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+          </progress>
+          <query>| timechart span=$seconds_for_bin$sec count by reason</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">337</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -102,24 +127,22 @@
   <row depends="$selected_host$">
     <panel>
       <title>Errors for $selected_host$ with source type $selected_sourcetype$ and source $selected_source$</title>
-      <input type="text" token="selected_delta">
-        <label>Drilldown seconds delta</label>
-        <default>1</default>
+      <input type="text" token="selected_span">
+        <label>Seconds to index error</label>
+        <default>5</default>
       </input>
       <chart>
         <title>Click on an error to get the events being parsed at that time</title>
         <search base="baseSearch">
           <query>| search TERM($selected_host$) TERM($selected_sourcetype$) TERM($selected_source$)
-| timechart bins=1000 count by reason</query>
+| timechart span=$seconds_for_bin$sec count by reason</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
         <drilldown>
-          <eval token="selected_latest">if(isnull($click.value$),$time.latest$,$click.value$+$row._span$)</eval>
-          <eval token="selected_earliest">if(isnull($click.value$),$time.earliest$,$click.value$)</eval>
-          <set token="selected_earliest_str">$selected_earliest$</set>
-          <set token="selected_latest_str">$selected_latest$</set>
-          <set token="selected_group">$click.name2$</set>
+          <eval token="selected_latest">$click.value$+$selected_span$</eval>
+          <eval token="selected_earliest">$click.value$</eval>
         </drilldown>
       </chart>
     </panel>
@@ -128,6 +151,7 @@
     <panel>
       <title>Buckets being populated during that time range</title>
       <chart>
+        <title>index=* splunk_server=$selected_indexer$ host::$selected_host$ sourcetype::$selected_sourcetype$ source::$selected_source$ _index_earliest=$selected_earliest$ _index_latest=$selected_latest$</title>
         <search base="baseSearchEvents">
           <query>| chart limit=0 count by  splunk_server bucket</query>
         </search>
