@@ -36,14 +36,31 @@
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
       </change>
     </input>
-    <input type="text" token="indexer_list">
-      <label>Indexer filter override</label>
+    <input type="checkbox" token="show_override_panel">
+      <label>Show override panel</label>
+      <choice value="*">Show panels</choice>
+      <delimiter> </delimiter>
     </input>
   </fieldset>
+  <row depends="$show_override_panel$">
+    <panel>
+      <input type="text" token="indexer_list">
+        <label>Indexer override</label>
+      </input>
+      <input type="text" token="index_to_search">
+        <label>Index override</label>
+        <default>_internal</default>
+      </input>
+      <html>
+This dashboard uses searches to discovery your topology, if you explicitly list your hosts here in the form "host=a OR host=b" or "host=idx*" you will activite the dashboard panels        
+      </html>
+    </panel>
+  </row>
   <row>
     <panel>
       <title>RT indexing (refreshes very 30 seconds) we want this to be mostly flat and the stdev is low</title>
       <chart>
+        <title>If no data appear here is it because the user doesn't have access to the REST API</title>
         <search>
           <progress>
             <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;30,30,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
@@ -73,7 +90,7 @@
       <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
       <chart>
         <search>
-          <query>index=_internal $indexer_list$ TERM(group=thruput) TERM(name=thruput) 
+          <query>index=$index_to_search$ $indexer_list$ TERM(group=thruput) TERM(name=thruput) 
 | bin span=$seconds_for_bin$sec _time 
 | stats sum(instantaneous_kbps) as instantaneous_kbps by host _time 
 | timechart stdev(instantaneous_kbps) avg(instantaneous_kbps) span=$seconds_for_bin$sec</query>
@@ -132,7 +149,7 @@
       </input>
       <chart>
         <search>
-          <query>index=_internal $indexer_list$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
+          <query>index=$index_to_search$ $indexer_list$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart span=$seconds_for_bin$sec limit=0 count by short_name 
 | foreach * 
@@ -174,7 +191,7 @@
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search>
-          <query>index=_internal $indexer_list$
+          <query>index=$index_to_search$ $indexer_list$
     sourcetype=splunkd source="*metrics.log" 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval indexing_delay=_indextime-_time 
@@ -196,7 +213,7 @@
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
         <search>
-          <query>index=_internal $indexer_list$ TERM(eventtype=connect_done) 
+          <query>index=$index_to_search$ $indexer_list$ TERM(eventtype=connect_done) 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart limit=0 span=$seconds_for_bin$sec count by short_name 
 | eval sum=0 
@@ -242,7 +259,7 @@
       <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
         <search>
-          <query>| tstats count where index=_internal $indexer_list$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
+          <query>| tstats count where index=$index_to_search$ $indexer_list$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin$sec 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart limit=0 sum(count) as readings span=$seconds_for_bin$sec by short_name 
