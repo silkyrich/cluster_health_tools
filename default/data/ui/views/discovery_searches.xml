@@ -109,4 +109,22 @@
       </table>
     </panel>
   </row>
+  <row>
+    <panel>
+      <table>
+        <title>Sites by CMMaster bucket creation messages</title>
+        <search>
+          <query>$selected_internal$ sourcetype=splunkd CMMaster status=success site*
+| rex field=_raw "site(?&lt;site_id&gt;\d+)"
+| stats values(peer_name) as peers by site_id
+| eval host_count=mvcount(peers)</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
 </form>
