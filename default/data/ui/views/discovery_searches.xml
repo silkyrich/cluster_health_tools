@@ -3,7 +3,7 @@
   <fieldset submitButton="false">
     <input type="text" token="selected_internal">
       <label>Override _internal index selection</label>
-      <default>_internal</default>
+      <default>index=_internal</default>
     </input>
   </fieldset>
   <row>
@@ -37,7 +37,7 @@
       <table>
         <title>This requires over a 60 min scan to get all the events</title>
         <search>
-          <query>index=$selected_internal$ INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
+          <query>$selected_internal$ INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
 | fields host instance_roles index_cluster_label
 | eval search_head=if(like(instance_roles,"%search_head%"),1,0),
     cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
@@ -63,7 +63,7 @@
       <table>
         <title>This is efficient in that is requires scanning over 30 seconds</title>
         <search>
-          <query>index=$selected_internal$ Metrics Info TERM(name=cmmaster_service) sourcetype=splunkd TERM(group=subtask_counts)
+          <query>$selected_internal$ Metrics Info TERM(name=cmmaster_service) sourcetype=splunkd TERM(group=subtask_counts)
 | stats values(host) as search
 | eval search="host IN (".mvjoin(search, ", ").")"  
 | fields + search</query>
@@ -79,7 +79,7 @@
       <title>Search head cluster members via Metrics</title>
       <table>
         <search>
-          <query>index=$selected_internal$ host=sh* sourcetype=splunkd sched_dispatch
+          <query>$selected_internal$ host=sh* sourcetype=splunkd sched_dispatch
 | stats values(host) as search
 | eval search="host IN (".mvjoin(search, ", ").")"  
 | fields + search</query>
