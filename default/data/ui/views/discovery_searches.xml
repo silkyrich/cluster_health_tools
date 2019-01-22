@@ -112,15 +112,29 @@
   </row>
   <row>
     <panel>
+      <title>Sites by CMMaster bucket creation messages</title>
+      <input type="time" token="time_site_cmmaster">
+        <label></label>
+        <default>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
       <table>
-        <title>Sites by CMMaster bucket creation messages</title>
+        <title>The time range may vary based on the number of bucket rolls</title>
         <search>
           <query>$selected_internal$ sourcetype=splunkd CMMaster status=success site*
-| rex field=_raw "site(?&lt;site_id&gt;\d+)"
-| stats values(peer_name) as indexer by site_id
+| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
+| fields + site_pair
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;indexer&gt;.*)"
+| stats values(indexer) as indexer by site_id
 | eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
-          <earliest>-7d@h</earliest>
-          <latest>now</latest>
+          <earliest>$time_site_cmmaster.earliest$</earliest>
+          <latest>$time_site_cmmaster.latest$</latest>
         </search>
         <option name="count">10</option>
         <option name="drilldown">none</option>
