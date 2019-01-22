@@ -99,7 +99,8 @@
         <title>Site discovery</title>
         <search>
           <query>| rest /services/cluster/slave/info
-| stats values(splunk_server) by site</query>
+| stats dc(splunk_server) as host_count values(splunk_server) as indexer by site
+| eval indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
@@ -116,8 +117,8 @@
         <search>
           <query>$selected_internal$ sourcetype=splunkd CMMaster status=success site*
 | rex field=_raw "site(?&lt;site_id&gt;\d+)"
-| stats values(peer_name) as peers by site_id
-| eval host_count=mvcount(peers)</query>
+| stats values(peer_name) as indexer by site_id
+| eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
         </search>
