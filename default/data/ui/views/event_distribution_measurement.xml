@@ -59,18 +59,11 @@
       <choice value="*">Show panels</choice>
       <delimiter> </delimiter>
     </input>
+    <input type="text" token="indexer_list">
+      <label>Indexers to target</label>
+      <default>splunk_server=*</default>
+    </input>
   </fieldset>
-  <row depends="$show_override_panel$">
-    <panel>
-      <title>$indexer_list$</title>
-      <input type="text" token="indexer_list">
-        <label>Indexer override</label>
-      </input>
-      <html>
-This dashboard uses searches to discovery your topology, if you explicitly list your hosts here in the form "host=a OR host=b" or "host=idx*" you will activite the dashboard panels        
-      </html>
-    </panel>
-  </row>
   <row>
     <panel>
       <title>6. Rate of increase of time based on power, select number of iterations</title>
