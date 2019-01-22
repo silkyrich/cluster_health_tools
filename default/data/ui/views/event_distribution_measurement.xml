@@ -46,7 +46,7 @@
     </input>
     <input type="text" token="power">
       <label>4. Enter the power</label>
-      <default>4.2</default>
+      <default>2.8</default>
     </input>
     <input type="text" token="offset" searchWhenChanged="true">
       <label>5. Set the delay before starting sampling in seconds</label>
