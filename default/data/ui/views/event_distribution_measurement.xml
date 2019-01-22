@@ -2,6 +2,7 @@
   <label>Event distribution measurements</label>
   <init>
     <set token="steps">19</set>
+    <set token="indexer_list">splunk_server=*</set>
   </init>
   <search id="baseSearch">
     <query>
@@ -53,7 +54,23 @@
       <default>60</default>
       <initialValue>60</initialValue>
     </input>
+    <input type="checkbox" token="show_override_panel">
+      <label>Show override panel</label>
+      <choice value="*">Show panels</choice>
+      <delimiter> </delimiter>
+    </input>
   </fieldset>
+  <row depends="$show_override_panel$">
+    <panel>
+      <title>$indexer_list$</title>
+      <input type="text" token="indexer_list">
+        <label>Indexer override</label>
+      </input>
+      <html>
+This dashboard uses searches to discovery your topology, if you explicitly list your hosts here in the form "host=a OR host=b" or "host=idx*" you will activite the dashboard panels        
+      </html>
+    </panel>
+  </row>
   <row>
     <panel>
       <title>6. Rate of increase of time based on power, select number of iterations</title>
@@ -99,7 +116,7 @@
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
-".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_host$ $selected_index$  by splunk_server $split_by$ 
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $indexer_list$ $selected_host$ $selected_index$  by splunk_server $split_by$ 
 | eval period=if(isNull(period),\"".step_size."\",period)
 ", step_string=tostring(step_size,"duration")
 | fields - jump tstats_preamble
@@ -120,6 +137,7 @@
           <latest>now</latest>
         </search>
         <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
         <option name="underLabel">Scan backwards in history until ...</option>
         <drilldown>
           <set token="generated_search">$row.search$</set>
