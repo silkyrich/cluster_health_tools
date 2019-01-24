@@ -140,6 +140,19 @@
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </table>
+      <table>
+        <title>The host as reported by dbinspect, great if you don't have access to internal logs or the REST API</title>
+        <search>
+          <query>| dbinspect index=* 
+| stats values(splunk_server) as indexer 
+| eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-1hr</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
     </panel>
   </row>
 </form>
