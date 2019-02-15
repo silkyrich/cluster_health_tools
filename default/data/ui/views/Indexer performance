@@ -1,0 +1,1326 @@
+<form>
+  <label>Indexer performance and stability</label>
+  <description>This dashboards is fixed to a time division of 31 seconds, if you extend the time range to more than one hour, you will have more divisions that sparkline can handle</description>
+  <search id="result_set">
+    <query>
+    | loadjob $broken_pipes_sid$  
+    | append [| loadjob $blocked_queues_sid$ ] 
+    | append [| loadjob $s2s_connections_sid$ ]
+    | append [| loadjob $hec_connections_sid$ ]
+    | append [| loadjob $ingestion_sid$ ]
+    | append [| loadjob $cpu_load_sid$ ]
+    | append [| loadjob $io_measure_sid$ ]
+    | append [| loadjob $concurrency_sid$ ]
+    | append [| loadjob $event_delay_sid$ ]
+    | append [| loadjob $s3_errors_sid$ ]
+    | append [| loadjob $cachemanager_sid$ ]
+| stats list(*) as * by host
+| lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type
+| rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
+| table 
+short_host_for_pretty_output 
+stack  
+splunk_version
+instance_type
+skipped_metrics
+current_delay
+instantaneous_kbps
+normalized_load_avg_1min 
+event_delay
+search_concurrency 
+cpu_used_pct
+mem_used 
+s2s_connections
+hec*  
+s3*
+cache*
+writes_* 
+reads_* 
+avg_service_ms 
+max_delay
+blocked_queues
+broken_pipes *
+
+cloud_flavor
+</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <progress>
+      <unset token="final_report"></unset>
+    </progress>
+    <done>
+      <set token="final_report">$job.sid$</set>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="s2s_connections_sid"></unset>
+    </progress>
+    <done>
+      <set token="s2s_connections_sid">$job.sid$</set>
+    </done>
+    <query>
+      | tstats count as s2s_connections where $all_indexers_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=31s 
+| eval s2s_connections=s2s_connections/31
+| stats 
+    avg(s2s_connections) as avg_s2s_connections_per_second 
+    sparkline(sum(s2s_connections),31s) as s2s_connections 
+    by host
+| eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)
+      
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <done>
+      <set token="event_delay_sid">$job.sid$</set>
+    </done>
+    <progress>
+      <unset token="event_delay_sid"></unset>
+    </progress>
+    <query>
+  | tstats max(_indextime) as _indextime where index=customer_splunkd  $all_indexers_IN$ sourcetype=splunkd by host _time span=1sec
+| eval delay=_indextime-round(_time,0) 
+| bin span=31s _time 
+| stats latest(delay) as current_delay max(delay) as max_delay sparkline(max(delay),31sec) as event_delay by host
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <done>
+      <set token="blocked_queues_sid">$job.sid$</set>
+    </done>
+    <progress>
+      <unset token="blocked_queues_sid"></unset>
+    </progress>
+    <query>| tstats count as blocked_queues where $all_indexers_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=31s 
+| eval blocked_queues=blocked_queues/31
+| stats 
+    avg(blocked_queues) as avg_blocked_queues 
+    sparkline(sum(blocked_queues),31s) as blocked_queues 
+    by host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="broken_pipes_sid"></unset>
+    </progress>
+    <done>
+      <set token="broken_pipes_sid">$job.sid$</set>
+    </done>
+    <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
+| eval broken_pipes=sum_broken_pipes/31
+| stats 
+    avg(broken_pipes) as avg_broken_pipes
+    sparkline(sum(broken_pipes),31s) as broken_pipes 
+    by host
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="hec_connections_sid"></unset>
+    </progress>
+    <done>
+      <set token="hec_connections_sid">$job.sid$</set>
+    </done>
+    <query>| tstats 
+    sum(data.num_of_requests) as hec_requests
+    sum(data.total_bytes_received) as hec_kb
+    where data.num_of_requests &gt; 0 
+    index=customer_introspection 
+    data.series::http_event_collector 
+    $all_indexers_IN$  by host _time span=1s
+| makecontinuous _time
+| stats 
+    avg(hec_requests) as avg_hec_requests 
+    avg(hec_kb) as avg_hec_kb 
+    sparkline(sum(hec_requests),62s) as hec_requests
+    sparkline(sum(hec_kb),62s) as hec_kb
+    by host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="s3_errors_sid"></unset>
+    </progress>
+    <done>
+      <set token="s3_errors_sid">$job.sid$</set>
+    </done>
+    <query>
+| tstats prestats=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=31sec 
+| eval command="get" 
+| tstats prestats=t append=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=put) by host _time span=31sec 
+| eval command=if(isnull(command),"put",command) 
+| stats count as s3_errors by host _time command 
+| eval s3_errors_ps=s3_errors/31
+| stats count 
+    max(eval(if(command="get",s3_errors_ps,0))) as max_s3_get_errors_ps 
+    max(eval(if(command="put",s3_errors_ps,0))) as max_s3_errors_put_ps 
+    sparkline(sum(eval(if(command="get",s3_errors_ps,0))),31sec) as s3_get_errors_ps 
+    sparkline(sum(eval(if(command="put",s3_errors_ps,0))),31sec) as s3_put_errors_ps
+    by host
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="cachemanager_sid"></unset>
+    </progress>
+    <done>
+      <set token="cachemanager_sid">$job.sid$</set>
+    </done>
+    <query>
+| tstats prestats=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=31sec 
+| eval action="upload" 
+| tstats prestats=t append=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=31sec 
+| eval action=if(isnull(action),"download",action) 
+| stats count as count by host _time action 
+| eval count=count/31
+| stats  
+    max(eval(if(action="download",count,0))) as max_cachemanager_download_ps 
+    max(eval(if(action="upload",count,0))) as max_cachemanager_upload_ps 
+    sparkline(sum(eval(if(action="download",count,0))),31sec) as cachemanager_download_ps 
+    sparkline(sum(eval(if(action="upload",count,0))),31sec) as cachemanager_upload_ps 
+    by host
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="ingestion_sid"></unset>
+    </progress>
+    <done>
+      <set token="ingestion_sid">$job.sid$</set>
+    </done>
+    <query>index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) 
+| fields - kb total_k_processed eps instantaneous_eps ev 
+| eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
+| fields _time instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev ingest_pipe host 
+| bin span=31s _time
+| stats 
+    sum(instantaneous_kbps) as instantaneous_kbps
+    sum(average_kbps) as average_kbps
+    by host _time
+| stats 
+    count as metrics_readings 
+    avg(instantaneous_kbps) as avg_instantaneous_kbps
+    avg(average_kbps) as average_kbps
+    stdevp(instantaneous_kbps) as stdev_instantaneous_kbps 
+    sparkline(avg(instantaneous_kbps),31s) as instantaneous_kbps
+    by  host
+| eval normalized_stdev_ingestion=stdev_instantaneous_kbps/avg_instantaneous_kbps
+| addinfo 
+| eval expected_metrics_readings=round(info_max_time-info_min_time,0)/31
+| eval skipped_metrics=expected_metrics_readings-metrics_readings
+| fields - info_* expected_metrics_readings</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="cpu_load_sid"></unset>
+    </progress>
+    <done>
+      <set token="cpu_load_sid">$job.sid$</set>
+    </done>
+    <query>| tstats 
+    avg(data.cpu_idle_pct) as cpu_idle_pct
+    avg(data.mem_used) as mem_used
+    avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
+    where component=hostwide index=customer_introspection 
+    $all_indexers_IN$ 
+    by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host _time span=1sec 
+| eval cpu_used_pct=100-cpu_idle_pct 
+| fields - cpu_idle_pct 
+| stats 
+    avg(cpu_used_pct) as avg_cpu_used_pct
+    sparkline(avg(cpu_used_pct),31sec) as cpu_used_pct 
+    avg(normalized_load_avg_1min) as avg_normalized_load_avg_1min
+    sparkline(avg(normalized_load_avg_1min),31sec) as normalized_load_avg_1min 
+    avg(mem_used) as avg_mem_used
+    sparkline(avg(mem_used),31sec) as mem_used     
+    by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host
+   | rename data.splunk_version as splunk_version
+    
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="io_measure_sid"></unset>
+    </progress>
+    <done>
+      <set token="io_measure_sid">$job.sid$</set>
+    </done>
+    <query>| tstats 
+    avg(data.avg_service_ms) as avg_service_ms 
+    avg(data.reads_ps) as reads_ps 
+    avg(data.writes_ps) as writes_ps 
+    avg(data.reads_kb_ps) as reads_kb_ps 
+    avg(data.writes_kb_ps) as writes_kb_ps 
+    where 
+    $all_indexers_IN$ 
+    index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=1sec 
+| stats 
+    avg(avg_service_ms) as avg_avg_service_ms
+    sparkline(avg(avg_service_ms),62sec) as avg_service_ms 
+    avg(reads_ps) as avg_reads_ps
+    sparkline(avg(reads_ps),62sec) as reads_ps 
+    avg(writes_ps) as avg_writes_ps
+    sparkline(avg(writes_ps),62sec) as writes_ps 
+    avg(reads_kb_ps) as avg_reads_kb_ps
+    sparkline(avg(reads_kb_ps),62sec) as reads_kb_ps 
+    avg(writes_kb_ps) as avg_writes_kb_ps
+    sparkline(avg(writes_kb_ps),62sec) as writes_kb_ps 
+    by host
+| eval read_write_ratio_ps=avg_reads_ps/avg_writes_ps
+| eval read_write_ratio_kb_ps=avg_reads_kb_ps/avg_writes_kb_ps</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search>
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="concurrency_sid"></unset>
+    </progress>
+    <done>
+      <set token="concurrency_sid">$job.sid$</set>
+    </done>
+    <query>| tstats count as search_concurrency where 
+    index=customer_introspection $all_indexers_IN$ 
+    component=PerProcess 
+    data.search_props.sid=* by host _time span=1sec
+| stats 
+    avg(search_concurrency) as avg_search_concurrency
+    sparkline(avg(search_concurrency),31sec) as search_concurrency 
+    by host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="get_lists">
+    <progress>
+      <unset token="StackNames_IN"></unset>
+      <unset token="all_indexers_IN"></unset>
+    </progress>
+    <done>
+      <set token="StackNames_IN">$result.stackNameFilter_IN$</set>
+      <set token="all_indexers_IN">$result.all_indexers_IN$</set>
+    </done>
+    <query>| inputlookup aws_inventory where $selected_stacks$ $selected_regions$ customer_type="Customer"
+| stats 
+    values(eval(if(role="indexer",FQDN,""))) as all_indexers by stack 
+| stats values(*) as * 
+| eval
+    stackNameFilter_IN="(".mvjoin(StackNameFilter," OR ").")",
+    all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")"
+| fields - all_indexers</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range</label>
+      <default>
+        <earliest>-40m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="multiselect" token="selected_stacks">
+      <label>Select stacks to chart</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>stack_derived</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory where role="indexer" 
+| stats count by stack instance_type aws_account_id 
+| rename stack AS stack_derived 
+| sort - count 
+| eval label=count." x ".mvjoin(instance_type,", ") 
+| stats sum(count) as count values(label) as label by stack_derived aws_account_id 
+| lookup aws_accounts aws_account_id
+| eval label=stack_derived." (".mvjoin(label,", ").")"
+| stats sum(count) as count values(label) as label by stack_derived
+| sort - count
+| eval label=mvjoin(label,", ")</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <delimiter> OR </delimiter>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <change>
+        <unset token="StackNames_IN"></unset>
+        <unset token="sample_indexers_OR"></unset>
+        <unset token="sample_indexers_IN"></unset>
+      </change>
+      <valuePrefix>stack=</valuePrefix>
+      <choice value="*">*</choice>
+    </input>
+    <input type="multiselect" token="selected_regions">
+      <label>Select region</label>
+      <choice value="*">*</choice>
+      <choice value="ap-southeast*">ap-southeast*</choice>
+      <choice value="ca-central*">ca-central*</choice>
+      <choice value="eu-west*">eu-west*</choice>
+      <choice value="sa-east*">sa-east*</choice>
+      <choice value="us-east*">us-east*</choice>
+      <choice value="ap-southeast-1">ap-southeast-1</choice>
+      <choice value="ap-southeast-2">ap-southeast-2</choice>
+      <choice value="ca-central-1">ca-central-1</choice>
+      <choice value="eu-central-1">eu-central-1</choice>
+      <choice value="eu-west-1">eu-west-1</choice>
+      <choice value="eu-west-2">eu-west-2</choice>
+      <choice value="sa-east-1">sa-east-1</choice>
+      <choice value="us-east-1">us-east-1</choice>
+      <choice value="us-west-2">us-west-2</choice>
+      <default>*</default>
+      <valuePrefix>region=</valuePrefix>
+      <delimiter> OR </delimiter>
+    </input>
+    <input type="dropdown" token="refresh_rate_seconds">
+      <label>Refresh rate in seconds</label>
+      <choice value="60">1min</choice>
+      <choice value="300">5min</choice>
+      <choice value="420">7min</choice>
+      <choice value="900">15min</choice>
+      <default>900</default>
+    </input>
+    <input type="checkbox" token="show_chart">
+      <label>Show population distribution chart</label>
+      <choice value="show">Show</choice>
+    </input>
+  </fieldset>
+  <row depends="$selected_stacks$,$show_chart$">
+    <panel>
+      <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
+      <input type="dropdown" token="selected_field">
+        <label>Analyse field distribution</label>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
+        <choice value="avg_blocked_queues">avg_blocked_queues</choice>
+        <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
+        <choice value="avg_load_average">avg_load_average</choice>
+        <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
+        <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
+        <choice value="avg_mem_used">avg_mem_used</choice>
+        <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
+        <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
+        <choice value="avg_reads_ps">avg_reads_ps</choice>
+        <choice value="avg_search_concurrency">avg_search_concurrency</choice>
+        <choice value="avg_writes_kb_ps">avg_writes_kb_ps</choice>
+        <choice value="avg_writes_ps">avg_writes_ps</choice>
+        <choice value="metrics_readings">metrics_readings</choice>
+        <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
+        <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
+        <choice value="s2s_connections_per_second">s2s_connections_per_second</choice>
+        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="avg_broken_pipes">avg_broken_pipes</choice>
+        <choice value="avg_hec_requests">avg_hec_requests</choice>
+        <choice value="avg_hec_kb">avg_hec_kb</choice>
+        <choice value="avg_s2s_connections_per_second">avg_s2s_connections_per_second</choice>
+        <choice value="max_delay">max_delay</choice>
+        <choice value="current_delay">current_delay</choice>
+        <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
+        <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
+        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <default>average_kbps</default>
+      </input>
+      <input type="dropdown" token="split_by">
+        <label>Split the chart by</label>
+        <choice value="stack">Stack</choice>
+        <choice value="| noop">No split by</choice>
+        <default>stack</default>
+        <change>
+          <set token="selected_stack">*</set>
+        </change>
+      </input>
+      <input type="dropdown" token="selected_bins">
+        <label>Select number of bins</label>
+        <choice value="10">10</choice>
+        <choice value="50">50</choice>
+        <choice value="100">100</choice>
+        <choice value="250">250</choice>
+        <choice value="500">500</choice>
+        <choice value="750">750</choice>
+        <choice value="1000">1000</choice>
+        <prefix>bins=</prefix>
+        <default>500</default>
+      </input>
+      <input type="checkbox" token="filter">
+        <label>Toggle to clear filters</label>
+        <choice value="clear">clear</choice>
+        <change>
+          <set token="selected_stack">*</set>
+        </change>
+      </input>
+      <chart>
+        <title>Distribution of $selected_field$</title>
+        <search base="result_set">
+          <query>| fields host $selected_field$ $split_by$ 
+| bin $selected_bins$ $selected_field$ 
+| rex field=$selected_field$ "^(?&lt;lower&gt;[\d\.]+)-(?&lt;upper&gt;[\d\.]+)" 
+
+| eval 
+    $selected_field$=if(isnull(lower),$selected_field$."-".$selected_field$, $selected_field$),
+    lower=if(isnull(lower),$selected_field$,lower),
+    upper=if(isnull(upper),$selected_field$,upper)
+
+| sort + lower 
+| makecontinuous lower
+| eventstats mode(eval(upper-lower)) as delta
+| eval upper=if(isnull(upper),lower+delta,upper),stack=if(isnull(stack),"NULL",stack), $selected_field$=if(isnull($selected_field$),lower."-".upper,$selected_field$)
+| chart count limit=100 by $selected_field$ stack
+| fields - NULL upper lower</query>
+        </search>
+        <selection>
+          <eval token="filter_lower_bound">mvindex(split($start$,"-"),0)</eval>
+          <eval token="filter_upper_bound">mvindex(split($end$,"-"),1)</eval>
+        </selection>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-90</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">338</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_stack">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_stacks$">
+    <panel>
+      <html>
+
+<style>
+#legend {
+    display: grid;
+    grid: auto / auto auto auto;
+    padding: 10px;
+    font-family: sans-serif;
+    font-size: x-large;
+    background: linear-gradient(to right, #e9ffd2, #e5fecf, #ddfdc8,
+                                #d2fcbd, #c2faad, #a9f79a, #88f582,
+                                #65f171, #46ed6f, #25e979, #03e495,
+                                #00dec6, #00b1d7, #006bcf, #0023c7,
+                                #2200bd, #6300b3, #9c00a9, #9e0070,
+                                #920034, #870002);
+}
+
+</style>
+
+<div id="legend">
+    <div class="low">Very Low</div>
+    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt; $selected_field$ &lt; $filter_upper_bound$ AND selected_stack=$selected_stack$</div>
+    <div style="color:white" align="right">Very High</div>
+</div>
+
+</html>
+      <table>
+        <title>The selected of indexers based on the chart configuration above</title>
+        <search base="result_set">
+          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND stack="$selected_stack$"
+| fields - data.os_version data.instance_guid data.os_build host
+| sort - $selected_field$</query>
+        </search>
+        <option name="count">50</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <format type="number" field="indexer_cluster_size">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="average_kbps">
+          <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
+          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,4722.4</scale>
+        </format>
+        <format type="number" field="average_kbps">
+          <option name="precision">0</option>
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_writes_kb_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">14.2,41,69.8,118.6,201.6,342.7,582.6,990.5,1683.8,2862.4,4866.1,8272.4,14063.1,23907.2,40642.3,69091.9,117456.3,199675.7,339448.7,577062.7,99999999999</scale>
+        </format>
+        <format type="number" field="avg_writes_kb_ps">
+          <option name="precision">0</option>
+          <option name="unit">kb ps</option>
+        </format>
+        <format type="color" field="avg_reads_kb_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.004096,0.01024,0.0256,0.064,0.16,0.4,1,2.5,6.2,15.6,39.1,97.7,244.1,610.4,1525.9,3814.7,9536.7,23841.9,59604.6,149011.6,999999999999</scale>
+        </format>
+        <format type="number" field="avg_writes_kb_ps">
+          <option name="precision">0</option>
+          <option name="unit">kb ps</option>
+        </format>
+        <format type="color" field="avg_reads_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,1668</scale>
+        </format>
+        <format type="number" field="avg_reads_ps">
+          <option name="precision">0</option>
+          <option name="unit">kb ps</option>
+        </format>
+        <format type="color" field="avg_instantaneous_kbps">
+          <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
+          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,99999.4</scale>
+        </format>
+        <format type="number" field="avg_instantaneous_kbps">
+          <option name="precision">0</option>
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_cpu_used_pct">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,40.5,56.7,79.4,999999</scale>
+        </format>
+        <format type="number" field="avg_average_kbps">
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="avg_mem_used">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">917.3,1192.5,1550.3,2015.4,2620,3406,4427.8,5756.1,7483,9727.9,12646.2,16440.1,21372.1,27783.7,36118.9,46954.5,61040.9,103159.1,174338.9,999999999</scale>
+        </format>
+        <format type="color" field="avg_writes_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070]</colorPalette>
+          <scale type="threshold">2.2,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,3325.3,4987.9</scale>
+        </format>
+        <format type="number" field="avg_writes_ps">
+          <option name="precision">0</option>
+          <option name="unit">ps</option>
+        </format>
+        <format type="color" field="avg_avg_service_ms">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.006086,0.008216,0.011092,0.014974,0.020214,0.027289,0.036841,0.049735,0.067142,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1,1.35,9999.82</scale>
+        </format>
+        <format type="number" field="avg_avg_service_ms">
+          <option name="precision">3</option>
+          <option name="unit">ms</option>
+        </format>
+        <format type="number" field="avg_average_kbps">
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_normalized_load_avg_1min">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.000867,0.001388,0.00222,0.003553,0.005684,0.009095,0.014552,0.023283,0.037253,0.059605,0.095367,0.152588,0.244141,0.390625,0.625,1,1.6,2.6,4.1,6.6,99999</scale>
+        </format>
+        <format type="number" field="avg_normalized_load_avg_1min">
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_search_concurrency">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.2,1.4,1.7,2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,999.3</scale>
+        </format>
+        <format type="number" field="avg_search_concurrency">
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_s2s_connections_per_second">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.030016,0.046524,0.072112,0.111774,0.17325,0.268537,0.416233,0.645161,1,1.55,2.4,3.72,5.77,8.95,13.87,21.49,33.32,51.64,80.04,124.06</scale>
+        </format>
+        <format type="number" field="avg_s2s_connections_per_second">
+          <option name="precision">3</option>
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_hec_kb">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">85.8,180.1,378.2,794.3,1668,3502.8,7355.8,15447.2,32439.2,68122.3,143056.9,300419.4,630880.8,1324849.7,2782184.3,5842587,12269432.7,25765808.8,54108198.4,113627216.6,238617154.8</scale>
+        </format>
+        <format type="number" field="avg_s2s_connections_per_second">
+          <option name="precision">3</option>
+          <option name="unit">kbps</option>
+        </format>
+        <format type="color" field="avg_hec_requests">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,6746.6,12144,21859.1,39346.4,70823.5</scale>
+        </format>
+        <format type="number" field="avg_hec_requests">
+          <option name="precision">0</option>
+          <option name="unit">ps</option>
+        </format>
+        <format type="color" field="avg_blocked_queues">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.031328,0.033834,0.036541,0.039464,0.042621,0.046031,0.049713,0.05369,0.062625,0.067635,0.073045,0.0852,0.092016,0.099377,0.107328,0.146018,0.157699,0.198656,0.214548,0.250249</scale>
+        </format>
+        <format type="number" field="avg_blocked_queues">
+          <option name="precision">3</option>
+          <option name="unit">ps</option>
+        </format>
+        <format type="color" field="current_delay">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.5,2.2,3.4,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,25251.2</scale>
+        </format>
+        <format type="number" field="current_delay">
+          <option name="precision">0</option>
+          <option name="unit">s</option>
+        </format>
+        <format type="color" field="max_delay">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.5,2.2,3.4,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,25251.2</scale>
+        </format>
+        <format type="color" field="max_cachemanager_download_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
+        </format>
+        <format type="color" field="max_cachemanager_upload_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
+        </format>
+        <format type="color" field="max_s3_get_errors_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.052922,0.09526,0.171468,0.308642,0.555556,1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,99999999</scale>
+        </format>
+        <format type="number" field="max_s3_get_errors_ps">
+          <option name="unit">s</option>
+        </format>
+        <format type="number" field="max_delay">
+          <option name="precision">0</option>
+          <option name="unit">s</option>
+        </format>
+        <format type="number" field="avg_cpu_used_pct">
+          <option name="precision">1</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="number" field="avg_hec_kb">
+          <option name="precision">0</option>
+          <option name="unit">kb</option>
+        </format>
+        <format type="number" field="avg_mem_used">
+          <option name="precision">0</option>
+          <option name="unit">MB</option>
+        </format>
+        <format type="number" field="avg_reads_kb_ps">
+          <option name="unit">KB</option>
+        </format>
+        <format type="number" field="stdev_instantaneous_kbps">
+          <option name="precision">0</option>
+          <option name="unit">kbps</option>
+        </format>
+        <format type="number" field="read_write_ratio_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format type="color" field="read_write_ratio_ps">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="read_write_ratio_kb_ps">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="read_write_ratio_kb_ps"></format>
+        <format type="color" field="normalized_stdev_ingestion">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="normalized_stdev_ingestion"></format>
+        <format type="color" field="metrics_readings">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="stdev_instantaneous_kbps">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="skipped_metrics">
+          <colorPalette type="list">[#A2CC3E,#D93F3C]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+        <format type="color" field="data.cpu_count">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="data.cpu_count">
+          <option name="precision">0</option>
+          <option name="unit">cores</option>
+        </format>
+        <format type="number" field="data.mem">
+          <option name="precision">0</option>
+          <option name="unit">MB</option>
+        </format>
+        <format type="color" field="data.mem">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="splunk_version"></format>
+        <format type="color" field="splunk_version">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="skipped_metrics">
+          <option name="precision">0</option>
+          <option name="unit">skipped</option>
+        </format>
+        <format type="number" field="max_cachemanager_upload_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="max_cachemanager_download_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format field="s3_get_errors_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.052922">#e9ffd2</option>
+            <option name="0.052922:0.095260">#e5fecf</option>
+            <option name="0.095260:0.171468">#ddfdc8</option>
+            <option name="0.171468:0.308642">#d2fcbd</option>
+            <option name="0.308642:0.555556">#c2faad</option>
+            <option name="0.555556:1.000000">#a9f79a</option>
+            <option name="1.0:1.8">#88f582</option>
+            <option name="1.8:3.2">#65f171</option>
+            <option name="3.2:5.8">#46ed6f</option>
+            <option name="5.8:10.5">#25e979</option>
+            <option name="10.5:18.9">#03e495</option>
+            <option name="18.9:34.0">#00dec6</option>
+            <option name="34.0:61.2">#00b1d7</option>
+            <option name="61.2:110.2">#006bcf</option>
+            <option name="110.2:198.4">#0023c7</option>
+            <option name="198.4:357.0">#2200bd</option>
+            <option name="357.0:642.7">#6300b3</option>
+            <option name="642.7:1156.8">#9c00a9</option>
+            <option name="1156.8:2082.3">#9e0070</option>
+            <option name="2082.3:3748.1">#920034</option>
+            <option name="3748.1:99999999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="cachemanager_upload_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.034572">#e9ffd2</option>
+            <option name="0.048400:0.067760">#e5fecf</option>
+            <option name="0.094865:0.132810">#ddfdc8</option>
+            <option name="0.132810:0.185934">#d2fcbd</option>
+            <option name="0.185934:0.260308">#c2faad</option>
+            <option name="0.260308:0.364431">#a9f79a</option>
+            <option name="0.364431:0.510204">#88f582</option>
+            <option name="0.510204:0.714286">#65f171</option>
+            <option name="0.714286:1.000000">#46ed6f</option>
+            <option name="1.0:1.4">#25e979</option>
+            <option name="1.4:2.0">#03e495</option>
+            <option name="2.0:2.7">#00dec6</option>
+            <option name="2.7:3.8">#00b1d7</option>
+            <option name="3.8:5.4">#006bcf</option>
+            <option name="5.4:7.5">#0023c7</option>
+            <option name="7.5:10.5">#2200bd</option>
+            <option name="10.5:14.8">#6300b3</option>
+            <option name="14.8:20.7">#9c00a9</option>
+            <option name="20.7:28.9">#9e0070</option>
+            <option name="28.9:40.5">#920034</option>
+            <option name="56.7:999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="cachemanager_download_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.034572">#e9ffd2</option>
+            <option name="0.048400:0.067760">#e5fecf</option>
+            <option name="0.094865:0.132810">#ddfdc8</option>
+            <option name="0.132810:0.185934">#d2fcbd</option>
+            <option name="0.185934:0.260308">#c2faad</option>
+            <option name="0.260308:0.364431">#a9f79a</option>
+            <option name="0.364431:0.510204">#88f582</option>
+            <option name="0.510204:0.714286">#65f171</option>
+            <option name="0.714286:1.000000">#46ed6f</option>
+            <option name="1.0:1.4">#25e979</option>
+            <option name="1.4:2.0">#03e495</option>
+            <option name="2.0:2.7">#00dec6</option>
+            <option name="2.7:3.8">#00b1d7</option>
+            <option name="3.8:5.4">#006bcf</option>
+            <option name="5.4:7.5">#0023c7</option>
+            <option name="7.5:10.5">#2200bd</option>
+            <option name="10.5:14.8">#6300b3</option>
+            <option name="14.8:20.7">#9c00a9</option>
+            <option name="20.7:28.9">#9e0070</option>
+            <option name="28.9:40.5">#920034</option>
+            <option name="40.5:999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="blocked_queues" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.033834">#e9ffd2</option>
+            <option name="0.033834:0.036541">#e5fecf</option>
+            <option name="0.036541:0.039464">#ddfdc8</option>
+            <option name="0.039464:0.042621">#d2fcbd</option>
+            <option name="0.042621:0.046031">#c2faad</option>
+            <option name="0.046031:0.049713">#a9f79a</option>
+            <option name="0.049713:0.053690">#88f582</option>
+            <option name="0.053690:0.057986">#65f171</option>
+            <option name="0.062625:0.067635">#46ed6f</option>
+            <option name="0.067635:0.073045">#25e979</option>
+            <option name="0.073045:0.078889">#03e495</option>
+            <option name="0.085200:0.092016">#00dec6</option>
+            <option name="0.092016:0.099377">#00b1d7</option>
+            <option name="0.099377:0.107328">#006bcf</option>
+            <option name="0.107328:0.115914">#0023c7</option>
+            <option name="0.146018:0.157699">#2200bd</option>
+            <option name="0.157699:0.170315">#6300b3</option>
+            <option name="0.198656:0.214548">#9c00a9</option>
+            <option name="0.214548:0.231712">#9e0070</option>
+            <option name="0.250249:0.270269">#920034</option>
+            <option name="0.270269:99999999999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="event_delay" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1.5">#e9ffd2</option>
+            <option name="1.5:2.2">#e5fecf</option>
+            <option name="2.2:3.4">#ddfdc8</option>
+            <option name="3.4:5.1">#d2fcbd</option>
+            <option name="5.1:7.6">#c2faad</option>
+            <option name="7.6:11.4">#a9f79a</option>
+            <option name="11.4:17.1">#88f582</option>
+            <option name="17.1:25.6">#65f171</option>
+            <option name="25.6:38.4">#46ed6f</option>
+            <option name="38.4:57.7">#25e979</option>
+            <option name="57.7:86.5">#03e495</option>
+            <option name="86.5:129.7">#00dec6</option>
+            <option name="129.7:194.6">#00b1d7</option>
+            <option name="194.6:291.9">#006bcf</option>
+            <option name="291.9:437.9">#0023c7</option>
+            <option name="437.9:656.8">#2200bd</option>
+            <option name="656.8:985.3">#6300b3</option>
+            <option name="985.3:1477.9">#9c00a9</option>
+            <option name="1477.9:2216.8">#9e0070</option>
+            <option name="2216.8:3325.3">#920034</option>
+            <option name="25251.2:99999999999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="s2s_connections" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.046524">#e9ffd2</option>
+            <option name="0.046524:0.072112">#e5fecf</option>
+            <option name="0.072112:0.111774">#ddfdc8</option>
+            <option name="0.111774:0.173250">#d2fcbd</option>
+            <option name="0.173250:0.268537">#c2faad</option>
+            <option name="0.268537:0.416233">#a9f79a</option>
+            <option name="0.416233:0.645161">#88f582</option>
+            <option name="0.645161:1.000000">#65f171</option>
+            <option name="1.00:1.55">#46ed6f</option>
+            <option name="1.55:2.40">#25e979</option>
+            <option name="2.40:3.72">#03e495</option>
+            <option name="3.72:5.77">#00dec6</option>
+            <option name="5.77:8.95">#00b1d7</option>
+            <option name="8.95:13.87">#006bcf</option>
+            <option name="13.87:21.49">#0023c7</option>
+            <option name="21.49:33.32">#2200bd</option>
+            <option name="33.32:51.64">#6300b3</option>
+            <option name="51.64:80.04">#9c00a9</option>
+            <option name="80.04:124.06">#9e0070</option>
+            <option name="124.06:192.30">#920034</option>
+            <option name="192.30:10000000">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="mem_used" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1192.5">#e9ffd2</option>
+            <option name="1192.5:1550.3">#e5fecf</option>
+            <option name="1550.3:2015.4">#ddfdc8</option>
+            <option name="2015.4:2620.0">#d2fcbd</option>
+            <option name="2620.0:3406.0">#c2faad</option>
+            <option name="3406.0:4427.8">#a9f79a</option>
+            <option name="4427.8:5756.1">#88f582</option>
+            <option name="5756.1:7483.0">#65f171</option>
+            <option name="7483.0:9727.9">#46ed6f</option>
+            <option name="9727.9:12646.2">#25e979</option>
+            <option name="12646.2:16440.1">#03e495</option>
+            <option name="16440.1:21372.1">#00dec6</option>
+            <option name="21372.1:27783.7">#00b1d7</option>
+            <option name="27783.7:36118.9">#006bcf</option>
+            <option name="36118.9:46954.5">#0023c7</option>
+            <option name="46954.5:61040.9">#2200bd</option>
+            <option name="61040.9:79353.1">#6300b3</option>
+            <option name="103159.1:134106.8">#9c00a9</option>
+            <option name="174338.9:226640.5">#9e0070</option>
+            <option name="226640.5:999999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="reads_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.001259">#e9ffd2</option>
+            <option name="0.001259:0.002644">#e5fecf</option>
+            <option name="0.002644:0.005552">#ddfdc8</option>
+            <option name="0.005552:0.011660">#d2fcbd</option>
+            <option name="0.011660:0.024485">#c2faad</option>
+            <option name="0.024485:0.051419">#a9f79a</option>
+            <option name="0.051419:0.107980">#88f582</option>
+            <option name="0.107980:0.226757">#65f171</option>
+            <option name="0.226757:0.476190">#46ed6f</option>
+            <option name="0.476190:1.000000">#25e979</option>
+            <option name="1.0:2.1">#03e495</option>
+            <option name="2.1:4.4">#00dec6</option>
+            <option name="4.4:9.3">#00b1d7</option>
+            <option name="9.3:19.4">#006bcf</option>
+            <option name="19.4:40.8">#0023c7</option>
+            <option name="40.8:85.8">#2200bd</option>
+            <option name="85.8:180.1">#6300b3</option>
+            <option name="180.1:378.2">#9c00a9</option>
+            <option name="378.2:794.3">#9e0070</option>
+            <option name="794.3:1668.0">#920034</option>
+            <option name="1668.0:9999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="hec_kb" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:180.1">#e9ffd2</option>
+            <option name="180.1:378.2">#e5fecf</option>
+            <option name="378.2:794.3">#ddfdc8</option>
+            <option name="794.3:1668.0">#d2fcbd</option>
+            <option name="1668.0:3502.8">#c2faad</option>
+            <option name="3502.8:7355.8">#a9f79a</option>
+            <option name="7355.8:15447.2">#88f582</option>
+            <option name="15447.2:32439.2">#65f171</option>
+            <option name="32439.2:68122.3">#46ed6f</option>
+            <option name="68122.3:143056.9">#25e979</option>
+            <option name="143056.9:300419.4">#03e495</option>
+            <option name="300419.4:630880.8">#00dec6</option>
+            <option name="630880.8:1324849.7">#00b1d7</option>
+            <option name="1324849.7:2782184.3">#006bcf</option>
+            <option name="2782184.3:5842587.0">#0023c7</option>
+            <option name="5842587.0:12269432.7">#2200bd</option>
+            <option name="12269432.7:25765808.8">#6300b3</option>
+            <option name="25765808.8:54108198.4">#9c00a9</option>
+            <option name="54108198.4:113627216.6">#9e0070</option>
+            <option name="113627216.6:238617154.8">#920034</option>
+            <option name="238617154.8:999999999999.2">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="writes_kb_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:24.1">#e9ffd2</option>
+            <option name="41.0:69.8">#e5fecf</option>
+            <option name="69.8:118.6">#ddfdc8</option>
+            <option name="118.6:201.6">#d2fcbd</option>
+            <option name="201.6:342.7">#c2faad</option>
+            <option name="342.7:582.6">#a9f79a</option>
+            <option name="582.6:990.5">#88f582</option>
+            <option name="990.5:1683.8">#65f171</option>
+            <option name="1683.8:2862.4">#46ed6f</option>
+            <option name="2862.4:4866.1">#25e979</option>
+            <option name="4866.1:8272.4">#03e495</option>
+            <option name="8272.4:14063.1">#00dec6</option>
+            <option name="14063.1:23907.2">#00b1d7</option>
+            <option name="23907.2:40642.3">#006bcf</option>
+            <option name="40642.3:69091.9">#0023c7</option>
+            <option name="69091.9:117456.3">#2200bd</option>
+            <option name="117456.3:199675.7">#6300b3</option>
+            <option name="199675.7:339448.7">#9c00a9</option>
+            <option name="339448.7:577062.7">#9e0070</option>
+            <option name="577062.7:981006.7">#920034</option>
+            <option name="981006.7:999999999999.2">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="reads_kb_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.010240">#e9ffd2</option>
+            <option name="0.010240:0.025600">#e5fecf</option>
+            <option name="0.025600:0.064000">#ddfdc8</option>
+            <option name="0.064000:0.160000">#d2fcbd</option>
+            <option name="0.160000:0.400000">#c2faad</option>
+            <option name="0.400000:1.000000">#a9f79a</option>
+            <option name="1.0:2.5">#88f582</option>
+            <option name="2.5:6.2">#65f171</option>
+            <option name="6.2:15.6">#46ed6f</option>
+            <option name="15.6:39.1">#25e979</option>
+            <option name="39.1:97.7">#03e495</option>
+            <option name="97.7:244.1">#00dec6</option>
+            <option name="244.1:610.4">#00b1d7</option>
+            <option name="610.4:1525.9">#006bcf</option>
+            <option name="1525.9:3814.7">#0023c7</option>
+            <option name="3814.7:9536.7">#2200bd</option>
+            <option name="9536.7:23841.9">#6300b3</option>
+            <option name="23841.9:59604.6">#9c00a9</option>
+            <option name="59604.6:149011.6">#9e0070</option>
+            <option name="149011.6:372529.0">#920034</option>
+            <option name="372529.0:999999999999.2">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="avg_service_ms" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.008216">#e9ffd2</option>
+            <option name="0.008216:0.011092">#e5fecf</option>
+            <option name="0.011092:0.014974">#ddfdc8</option>
+            <option name="0.014974:0.020214">#d2fcbd</option>
+            <option name="0.020214:0.027289">#c2faad</option>
+            <option name="0.027289:0.036841">#a9f79a</option>
+            <option name="0.036841:0.049735">#88f582</option>
+            <option name="0.049735:0.067142">#65f171</option>
+            <option name="0.067142:0.090642">#46ed6f</option>
+            <option name="0.090642:0.122367">#25e979</option>
+            <option name="0.122367:0.165195">#03e495</option>
+            <option name="0.165195:0.223014">#00dec6</option>
+            <option name="0.223014:0.301068">#00b1d7</option>
+            <option name="0.301068:0.406442">#006bcf</option>
+            <option name="0.406442:0.548697">#0023c7</option>
+            <option name="0.548697:0.740741">#2200bd</option>
+            <option name="0.740741:1.000000">#6300b3</option>
+            <option name="1.00:1.35">#9c00a9</option>
+            <option name="1.35:1.82">#9e0070</option>
+            <option name="1.82:2.46">#920034</option>
+            <option name="2.46:99999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="cpu_used_pct" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.185934">#e9ffd2</option>
+            <option name="0.185934:0.260308">#e5fecf</option>
+            <option name="0.260308:0.364431">#ddfdc8</option>
+            <option name="0.364431:0.510204">#d2fcbd</option>
+            <option name="0.510204:0.714286">#c2faad</option>
+            <option name="0.714286:1.000000">#a9f79a</option>
+            <option name="1.0:1.4">#88f582</option>
+            <option name="1.4:2.0">#65f171</option>
+            <option name="2.0:2.7">#46ed6f</option>
+            <option name="2.7:3.8">#25e979</option>
+            <option name="3.8:5.4">#03e495</option>
+            <option name="5.4:7.5">#00dec6</option>
+            <option name="7.5:10.5">#00b1d7</option>
+            <option name="10.5:14.8">#006bcf</option>
+            <option name="14.8:20.7">#0023c7</option>
+            <option name="20.7:28.9">#2200bd</option>
+            <option name="28.9:40.5">#6300b3</option>
+            <option name="40.5:56.7">#9c00a9</option>
+            <option name="56.7:79.4">#9e0070</option>
+            <option name="79.4:111.1">#920034</option>
+            <option name="111.1:1110000.1">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="instantaneous_kbps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1.6">#e9ffd2</option>
+            <option name="1.6:2.6">#e4fece</option>
+            <option name="2.6:4.1">#dbfdc6</option>
+            <option name="4.1:6.6">#cdfbb8</option>
+            <option name="6.6:10.5">#b8f9a5</option>
+            <option name="10.5:16.8">#98f68d</option>
+            <option name="16.8:26.8">#6ff274</option>
+            <option name="26.8:42.9">#4dee6e</option>
+            <option name="42.9:68.7">#28e977</option>
+            <option name="68.7:110.0">#03e495</option>
+            <option name="110.0:175.9">#00ddcc</option>
+            <option name="175.9:281.5">#00a2d5</option>
+            <option name="281.5:450.4">#0053cd</option>
+            <option name="450.4:720.6">#0004c3</option>
+            <option name="720.6:1152.9">#4700b8</option>
+            <option name="1152.9:1844.7">#8a00ac</option>
+            <option name="1844.7:2951.5">#a0007e</option>
+            <option name="2951.5:4722.4">#94003a</option>
+            <option name="4722.4:10000000.8">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="writes_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:3.4">#e9ffd2</option>
+            <option name="5.1:7.6">#e5fecf</option>
+            <option name="7.6:11.4">#ddfdc8</option>
+            <option name="11.4:17.1">#d2fcbd</option>
+            <option name="17.1:25.6">#c2faad</option>
+            <option name="25.6:38.4">#a9f79a</option>
+            <option name="38.4:57.7">#88f582</option>
+            <option name="57.7:86.5">#65f171</option>
+            <option name="86.5:129.7">#46ed6f</option>
+            <option name="129.7:194.6">#25e979</option>
+            <option name="194.6:291.9">#03e495</option>
+            <option name="291.9:437.9">#00dec6</option>
+            <option name="437.9:656.8">#00b1d7</option>
+            <option name="656.8:985.3">#006bcf</option>
+            <option name="985.3:1477.9">#0023c7</option>
+            <option name="1477.9:2216.8">#2200bd</option>
+            <option name="2216.8:3325.3">#6300b3</option>
+            <option name="3325.3:4987.9">#9c00a9</option>
+            <option name="4987.9:7481.8">#9e0070</option>
+            <option name="7481.8:999997481.8">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="normalized_load_avg_1min" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.001388">#e9ffd2</option>
+            <option name="0.001388:0.002220">#e5fecf</option>
+            <option name="0.002220:0.003553">#ddfdc8</option>
+            <option name="0.003553:0.005684">#d2fcbd</option>
+            <option name="0.005684:0.009095">#c2faad</option>
+            <option name="0.009095:0.014552">#a9f79a</option>
+            <option name="0.014552:0.023283">#88f582</option>
+            <option name="0.023283:0.037253">#65f171</option>
+            <option name="0.037253:0.059605">#46ed6f</option>
+            <option name="0.059605:0.095367">#25e979</option>
+            <option name="0.095367:0.152588">#03e495</option>
+            <option name="0.152588:0.244141">#00dec6</option>
+            <option name="0.244141:0.390625">#00b1d7</option>
+            <option name="0.390625:0.625000">#006bcf</option>
+            <option name="0.625000:1.000000">#0023c7</option>
+            <option name="1.0:1.6">#2200bd</option>
+            <option name="1.6:2.6">#6300b3</option>
+            <option name="2.6:4.1">#9c00a9</option>
+            <option name="4.1:6.6">#9e0070</option>
+            <option name="6.6:10.5">#920034</option>
+            <option name="10.5:10000000">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="search_concurrency" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1.2">#e9ffd2</option>
+            <option name="1.2:1.4">#e5fecf</option>
+            <option name="1.4:1.7">#ddfdc8</option>
+            <option name="1.7:2.1">#d2fcbd</option>
+            <option name="2.1:2.5">#c2faad</option>
+            <option name="2.5:3.0">#a9f79a</option>
+            <option name="3.0:3.6">#88f582</option>
+            <option name="3.6:4.3">#65f171</option>
+            <option name="4.3:5.2">#46ed6f</option>
+            <option name="5.2:6.2">#25e979</option>
+            <option name="6.2:7.4">#03e495</option>
+            <option name="7.4:8.9">#00dec6</option>
+            <option name="8.9:10.7">#00b1d7</option>
+            <option name="10.7:12.8">#006bcf</option>
+            <option name="12.8:15.4">#0023c7</option>
+            <option name="15.4:18.5">#2200bd</option>
+            <option name="18.5:22.2">#6300b3</option>
+            <option name="22.2:26.6">#9c00a9</option>
+            <option name="26.6:31.9">#9e0070</option>
+            <option name="31.9:38.3">#920034</option>
+            <option name="38.3:9999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="hec_requests" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1.8">#e9ffd2</option>
+            <option name="1.8:3.2">#e5fecf</option>
+            <option name="3.2:5.8">#ddfdc8</option>
+            <option name="5.8:10.5">#d2fcbd</option>
+            <option name="10.5:18.9">#c2faad</option>
+            <option name="18.9:34.0">#a9f79a</option>
+            <option name="34.0:61.2">#88f582</option>
+            <option name="61.2:110.2">#65f171</option>
+            <option name="110.2:198.4">#46ed6f</option>
+            <option name="198.4:357.0">#25e979</option>
+            <option name="357.0:642.7">#03e495</option>
+            <option name="642.7:1156.8">#00dec6</option>
+            <option name="1156.8:2082.3">#00b1d7</option>
+            <option name="2082.3:3748.1">#006bcf</option>
+            <option name="3748.1:6746.6">#0023c7</option>
+            <option name="6746.6:12144.0">#2200bd</option>
+            <option name="12144.0:21859.1">#6300b3</option>
+            <option name="21859.1:39346.4">#9c00a9</option>
+            <option name="39346.4:70823.5">#9e0070</option>
+            <option name="70823.5:127482.4">#920034</option>
+            <option name="27482.4:99999999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <drilldown>
+          <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack$&amp;form.selected_host=$row.short_host_for_pretty_output$.$row.stack$.splunkcloud.com</link>
+        </drilldown>
+      </table>
+      <html>
+      <style>
+  
+
+
+#sid {
+  text-align: center;
+  font: sans-serif;
+  font-size: 10px;
+  padding:20px
+}
+
+</style>
+<div id="sid">
+<p/> broken pipes=$broken_pipes_sid$  
+<p/> blocked_queues=$blocked_queues_sid$ 
+<p/> s2s_connections_sid=$s2s_connections_sid$ 
+<p/> hec=$hec_connections_sid$ 
+<p/> ingestion=$ingestion_sid$ 
+<p/> cpu_load=$cpu_load_sid$
+<p/> io=$io_measure_sid$
+<p/> concurrency_sid=$concurrency_sid$ 
+<p/> event_delay_sid=$event_delay_sid$
+<p/> s3_errors_sid=$s3_errors_sid$
+<p/> cachemanager_sid=$cachemanager_sid$
+<p/>
+<p/> final_report=$final_report$
+
+</div>
+      </html>
+    </panel>
+  </row>
+  <row rejects="$selected_stacks$">
+    <panel>
+      <html>
+      <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
+    </html>
+    </panel>
+  </row>
+</form>
