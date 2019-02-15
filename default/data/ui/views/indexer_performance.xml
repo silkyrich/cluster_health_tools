@@ -61,11 +61,11 @@ cloud_flavor
       <set token="s2s_connections_sid">$job.sid$</set>
     </done>
     <query>
-      | tstats count as s2s_connections where $all_indexers_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=31s 
-| eval s2s_connections=s2s_connections/31
+      | tstats count as s2s_connections where $all_indexers_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
+| eval s2s_connections=s2s_connections/$seconds_for_bin$
 | stats 
     avg(s2s_connections) as avg_s2s_connections_per_second 
-    sparkline(sum(s2s_connections),31s) as s2s_connections 
+    sparkline(sum(s2s_connections),$seconds_for_bin$sec) as s2s_connections 
     by host
 | eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)
       
@@ -84,8 +84,8 @@ cloud_flavor
     <query>
   | tstats max(_indextime) as _indextime where index=customer_splunkd  $all_indexers_IN$ sourcetype=splunkd by host _time span=1sec
 | eval delay=_indextime-round(_time,0) 
-| bin span=31s _time 
-| stats latest(delay) as current_delay max(delay) as max_delay sparkline(max(delay),31sec) as event_delay by host
+| bin span=$seconds_for_bin$sec _time 
+| stats latest(delay) as current_delay max(delay) as max_delay sparkline(max(delay),$seconds_for_bin$sec) as event_delay by host
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -98,11 +98,11 @@ cloud_flavor
     <progress>
       <unset token="blocked_queues_sid"></unset>
     </progress>
-    <query>| tstats count as blocked_queues where $all_indexers_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=31s 
-| eval blocked_queues=blocked_queues/31
+    <query>| tstats count as blocked_queues where $all_indexers_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
+| eval blocked_queues_ps=blocked_queues/$seconds_for_bin$
 | stats 
-    avg(blocked_queues) as avg_blocked_queues 
-    sparkline(sum(blocked_queues),31s) as blocked_queues 
+    avg(blocked_queues_ps) as avg_blocked_queues_ps 
+    sparkline(sum(blocked_queues_ps),$seconds_for_bin$sec) as blocked_queues_ps 
     by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -116,10 +116,10 @@ cloud_flavor
       <set token="broken_pipes_sid">$job.sid$</set>
     </done>
     <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
-| eval broken_pipes=sum_broken_pipes/31
+| eval broken_pipes=sum_broken_pipes/$seconds_for_bin$
 | stats 
     avg(broken_pipes) as avg_broken_pipes
-    sparkline(sum(broken_pipes),31s) as broken_pipes 
+    sparkline(sum(broken_pipes),$seconds_for_bin$sec) as broken_pipes 
     by host
 </query>
     <earliest>$time.earliest$</earliest>
@@ -159,17 +159,17 @@ cloud_flavor
       <set token="s3_errors_sid">$job.sid$</set>
     </done>
     <query>
-| tstats prestats=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=31sec 
+| tstats prestats=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=$seconds_for_bin$sec 
 | eval command="get" 
-| tstats prestats=t append=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=put) by host _time span=31sec 
+| tstats prestats=t append=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=put) by host _time span=$seconds_for_bin$sec 
 | eval command=if(isnull(command),"put",command) 
 | stats count as s3_errors by host _time command 
-| eval s3_errors_ps=s3_errors/31
+| eval s3_errors_ps=s3_errors/$seconds_for_bin$
 | stats count 
     max(eval(if(command="get",s3_errors_ps,0))) as max_s3_get_errors_ps 
     max(eval(if(command="put",s3_errors_ps,0))) as max_s3_errors_put_ps 
-    sparkline(sum(eval(if(command="get",s3_errors_ps,0))),31sec) as s3_get_errors_ps 
-    sparkline(sum(eval(if(command="put",s3_errors_ps,0))),31sec) as s3_put_errors_ps
+    sparkline(sum(eval(if(command="get",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_get_errors_ps 
+    sparkline(sum(eval(if(command="put",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_put_errors_ps
     by host
 </query>
     <earliest>$time.earliest$</earliest>
@@ -184,17 +184,17 @@ cloud_flavor
       <set token="cachemanager_sid">$job.sid$</set>
     </done>
     <query>
-| tstats prestats=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=31sec 
+| tstats prestats=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action="upload" 
-| tstats prestats=t append=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=31sec 
+| tstats prestats=t append=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action=if(isnull(action),"download",action) 
 | stats count as count by host _time action 
-| eval count=count/31
+| eval count=count/$seconds_for_bin$
 | stats  
     max(eval(if(action="download",count,0))) as max_cachemanager_download_ps 
     max(eval(if(action="upload",count,0))) as max_cachemanager_upload_ps 
-    sparkline(sum(eval(if(action="download",count,0))),31sec) as cachemanager_download_ps 
-    sparkline(sum(eval(if(action="upload",count,0))),31sec) as cachemanager_upload_ps 
+    sparkline(sum(eval(if(action="download",count,0))),$seconds_for_bin$sec) as cachemanager_download_ps 
+    sparkline(sum(eval(if(action="upload",count,0))),$seconds_for_bin$sec) as cachemanager_upload_ps 
     by host
 </query>
     <earliest>$time.earliest$</earliest>
@@ -212,7 +212,7 @@ cloud_flavor
 | fields - kb total_k_processed eps instantaneous_eps ev 
 | eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
 | fields _time instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev ingest_pipe host 
-| bin span=31s _time
+| bin span=$seconds_for_bin$sec _time
 | stats 
     sum(instantaneous_kbps) as instantaneous_kbps
     sum(average_kbps) as average_kbps
@@ -222,11 +222,11 @@ cloud_flavor
     avg(instantaneous_kbps) as avg_instantaneous_kbps
     avg(average_kbps) as average_kbps
     stdevp(instantaneous_kbps) as stdev_instantaneous_kbps 
-    sparkline(avg(instantaneous_kbps),31s) as instantaneous_kbps
+    sparkline(avg(instantaneous_kbps),$seconds_for_bin$sec) as instantaneous_kbps
     by  host
 | eval normalized_stdev_ingestion=stdev_instantaneous_kbps/avg_instantaneous_kbps
 | addinfo 
-| eval expected_metrics_readings=round(info_max_time-info_min_time,0)/31
+| eval expected_metrics_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
 | eval skipped_metrics=expected_metrics_readings-metrics_readings
 | fields - info_* expected_metrics_readings</query>
     <earliest>$time.earliest$</earliest>
@@ -251,11 +251,11 @@ cloud_flavor
 | fields - cpu_idle_pct 
 | stats 
     avg(cpu_used_pct) as avg_cpu_used_pct
-    sparkline(avg(cpu_used_pct),31sec) as cpu_used_pct 
+    sparkline(avg(cpu_used_pct),$seconds_for_bin$sec) as cpu_used_pct 
     avg(normalized_load_avg_1min) as avg_normalized_load_avg_1min
-    sparkline(avg(normalized_load_avg_1min),31sec) as normalized_load_avg_1min 
+    sparkline(avg(normalized_load_avg_1min),$seconds_for_bin$sec) as normalized_load_avg_1min 
     avg(mem_used) as avg_mem_used
-    sparkline(avg(mem_used),31sec) as mem_used     
+    sparkline(avg(mem_used),$seconds_for_bin$sec) as mem_used     
     by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host
    | rename data.splunk_version as splunk_version
     
@@ -311,7 +311,7 @@ cloud_flavor
     data.search_props.sid=* by host _time span=1sec
 | stats 
     avg(search_concurrency) as avg_search_concurrency
-    sparkline(avg(search_concurrency),31sec) as search_concurrency 
+    sparkline(avg(search_concurrency),$seconds_for_bin$sec) as search_concurrency 
     by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -349,9 +349,13 @@ $indexer_sampling$
     <input type="time" token="time">
       <label>Select time range</label>
       <default>
-        <earliest>-40m@m</earliest>
+        <earliest>-3100s@s</earliest>
         <latest>now</latest>
       </default>
+      <change>
+        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+      </change>
     </input>
     <input type="multiselect" token="selected_stacks">
       <label>Select stacks to chart</label>
@@ -379,6 +383,8 @@ $indexer_sampling$
         <unset token="StackNames_IN"></unset>
         <unset token="sample_indexers_OR"></unset>
         <unset token="sample_indexers_IN"></unset>
+        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
       </change>
       <valuePrefix>stack=</valuePrefix>
       <choice value="*">*</choice>
@@ -430,7 +436,7 @@ $indexer_sampling$
         <label>Analyse field distribution</label>
         <choice value="average_kbps">average_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
-        <choice value="avg_blocked_queues">avg_blocked_queues</choice>
+        <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
         <choice value="avg_load_average">avg_load_average</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
@@ -552,7 +558,7 @@ $indexer_sampling$
 
 </html>
       <table>
-        <title>The selected of indexers based on the chart configuration above</title>
+        <title>The selected of indexers based on the chart configuration above. One bar is $seconds_for_bin$</title>
         <search base="result_set">
           <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND stack="$selected_stack$"
 | fields - data.os_version data.instance_guid data.os_build host
@@ -675,11 +681,11 @@ $indexer_sampling$
           <option name="precision">0</option>
           <option name="unit">ps</option>
         </format>
-        <format type="color" field="avg_blocked_queues">
+        <format type="color" field="avg_blocked_queues_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.031328,0.033834,0.036541,0.039464,0.042621,0.046031,0.049713,0.05369,0.062625,0.067635,0.073045,0.0852,0.092016,0.099377,0.107328,0.146018,0.157699,0.198656,0.214548,0.250249</scale>
         </format>
-        <format type="number" field="avg_blocked_queues">
+        <format type="number" field="avg_blocked_queues_ps">
           <option name="precision">3</option>
           <option name="unit">ps</option>
         </format>
@@ -912,7 +918,7 @@ $indexer_sampling$
           </option>
           <option name="barWidth">2px</option>
         </format>
-        <format field="blocked_queues" type="sparkline">
+        <format field="blocked_queues_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
@@ -1341,16 +1347,7 @@ $indexer_sampling$
     </html>
     </panel>
   </row>
-  <row rejects="$selected_stacks$">
-    <panel>
-      <input type="checkbox" token="show_debug">
-        <label></label>
-        <choice value="dummy_value">Show debug panel</choice>
-        <delimiter> </delimiter>
-      </input>
-    </panel>
-  </row>
-  <row depends="$show_debug$">
+  <row>
     <panel>
       <html>
       <style>
