@@ -282,15 +282,15 @@ cloud_flavor
     index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=1sec 
 | stats 
     avg(avg_service_ms) as avg_avg_service_ms
-    sparkline(avg(avg_service_ms),62sec) as avg_service_ms 
+    sparkline(avg(avg_service_ms),$seconds_for_bin_64$sec) as avg_service_ms 
     avg(reads_ps) as avg_reads_ps
-    sparkline(avg(reads_ps),62sec) as reads_ps 
+    sparkline(avg(reads_ps),$seconds_for_bin_64$sec) as reads_ps 
     avg(writes_ps) as avg_writes_ps
-    sparkline(avg(writes_ps),62sec) as writes_ps 
+    sparkline(avg(writes_ps),$seconds_for_bin_64$sec) as writes_ps 
     avg(reads_kb_ps) as avg_reads_kb_ps
-    sparkline(avg(reads_kb_ps),62sec) as reads_kb_ps 
+    sparkline(avg(reads_kb_ps),$seconds_for_bin_64$sec) as reads_kb_ps 
     avg(writes_kb_ps) as avg_writes_kb_ps
-    sparkline(avg(writes_kb_ps),62sec) as writes_kb_ps 
+    sparkline(avg(writes_kb_ps),$seconds_for_bin_64$sec) as writes_kb_ps 
     by host
 | eval read_write_ratio_ps=avg_reads_ps/avg_writes_ps
 | eval read_write_ratio_kb_ps=avg_reads_kb_ps/avg_writes_kb_ps</query>
@@ -355,6 +355,7 @@ $indexer_sampling$
       <change>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+        <eval token="seconds_for_bin_64">ceiling($duration_seconds$/100/64)*64</eval>
       </change>
     </input>
     <input type="multiselect" token="selected_stacks">
@@ -419,6 +420,8 @@ $indexer_sampling$
     <input type="checkbox" token="show_chart">
       <label>Show population distribution chart</label>
       <choice value="show">Show</choice>
+      <default>show</default>
+      <delimiter> </delimiter>
     </input>
     <input type="dropdown" token="refresh_rate_seconds">
       <label>Refresh rate</label>
@@ -469,6 +472,9 @@ $indexer_sampling$
         <label>Split the chart by</label>
         <choice value="stack">Stack</choice>
         <choice value="| noop">No split by</choice>
+        <choice value="splunk_version">splunk_version</choice>
+        <choice value="instance_type">instance_type</choice>
+        <choice value="cloud_flavor">cloud_flavor</choice>
         <default>stack</default>
         <change>
           <set token="selected_stack">*</set>
@@ -509,7 +515,7 @@ $indexer_sampling$
 | makecontinuous lower
 | eventstats mode(eval(upper-lower)) as delta
 | eval upper=if(isnull(upper),lower+delta,upper),stack=if(isnull(stack),"NULL",stack), $selected_field$=if(isnull($selected_field$),lower."-".upper,$selected_field$)
-| chart count limit=100 by $selected_field$ stack
+| chart count limit=100 by $selected_field$ $split_by$
 | fields - NULL upper lower</query>
         </search>
         <selection>
@@ -1377,6 +1383,17 @@ $indexer_sampling$
 
 </div>
       </html>
+    </panel>
+  </row>
+  <row depends="$debug$">
+    <panel>
+      <table>
+        <title>Debug panel</title>
+        <search base="io_measure_sid">
+          <query/>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
     </panel>
   </row>
 </form>
