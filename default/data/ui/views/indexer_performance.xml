@@ -52,7 +52,9 @@ cloud_flavor
     <done>
       <set token="final_report">$job.sid$</set>
       <set token="all_indexers">$job.resultCount$</set>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$event_delay_runtime$+$s3_errors_runtime$+$cachemanager_runtime$</eval>
     </done>
+    
   </search>
   <search id="s2s_connections_sid">
     <refresh>$refresh_rate_seconds$</refresh>
@@ -580,7 +582,7 @@ $indexer_sampling$
 
 #count {
     font-family: sans-serif;
-    font-size: x-large;
+    font-size: large;
     padding: 15px;
     margin: auto;
 }
@@ -591,7 +593,7 @@ $indexer_sampling$
     <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND selected_stack=$selected_stack$</div>
     <div style="color:white" align="right">Very High</div>
 </div>
-    <div id="count">Showing $filtered_indexers$ of $all_indexers$</div>
+    <div id="count">Showing $filtered_indexers$ of $all_indexers$ indexers</div>
 </html>
       <table>
         <title>The selected of indexers based on the chart configuration above.</title>
@@ -1412,16 +1414,16 @@ $indexer_sampling$
 <p/> io=$io_measure_sid$ runtime=$io_measure_runtime$
 <p/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$
 <p/> event_delay_sid=$event_delay_sid$ runtime=$event_delay_runtime$
-<p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_error_runtime$
+<p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$
 <p/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
 <p/>
-<p/> final_report=$final_report$
+<p/> final_report=$final_report$ total_runtime=$total_time$
 
 </div>
       </html>
     </panel>
   </row>
-  <row>
+  <row depends="$nothing$">
     <panel>
       <table>
         <title>Debug panel</title>
