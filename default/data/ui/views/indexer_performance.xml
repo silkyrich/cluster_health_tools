@@ -47,9 +47,11 @@ cloud_flavor
     <latest>$latest$</latest>
     <progress>
       <unset token="final_report"></unset>
+      <set token="all_indexers">0</set>
     </progress>
     <done>
       <set token="final_report">$job.sid$</set>
+      <set token="all_indexers">$job.resultCount$</set>
     </done>
   </search>
   <search id="s2s_connections_sid">
@@ -59,6 +61,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="s2s_connections_sid">$job.sid$</set>
+      <set token="s2s_connections_runtime">$job.runDuration$</set>
     </done>
     <query>
       | tstats count as s2s_connections where $all_indexers_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
@@ -77,6 +80,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <done>
       <set token="event_delay_sid">$job.sid$</set>
+      <set token="event_delay_runtime">$job.runDuration$</set>
     </done>
     <progress>
       <unset token="event_delay_sid"></unset>
@@ -94,6 +98,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <done>
       <set token="blocked_queues_sid">$job.sid$</set>
+      <set token="blocked_queues_runtime">$job.runDuration$</set>
     </done>
     <progress>
       <unset token="blocked_queues_sid"></unset>
@@ -114,6 +119,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="broken_pipes_sid">$job.sid$</set>
+      <set token="broken_pipes_runtime">$job.runDuration$</set>
     </done>
     <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
 | eval broken_pipes=sum_broken_pipes/$seconds_for_bin$
@@ -132,6 +138,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="hec_connections_sid">$job.sid$</set>
+      <set token="hec_connections_runtime">$job.runDuration$</set>
     </done>
     <query>| tstats 
     sum(data.num_of_requests) as hec_requests
@@ -144,8 +151,8 @@ cloud_flavor
 | stats 
     avg(hec_requests) as avg_hec_requests 
     avg(hec_kb) as avg_hec_kb 
-    sparkline(sum(hec_requests),62s) as hec_requests
-    sparkline(sum(hec_kb),62s) as hec_kb
+    sparkline(sum(hec_requests),$seconds_for_bin_62$sec) as hec_requests
+    sparkline(sum(hec_kb),$seconds_for_bin_62$sec) as hec_kb
     by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -157,6 +164,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="s3_errors_sid">$job.sid$</set>
+      <set token="s3_errors_runtime">$job.runDuration$</set>
     </done>
     <query>
 | tstats prestats=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=$seconds_for_bin$sec 
@@ -182,6 +190,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="cachemanager_sid">$job.sid$</set>
+      <set token="cachemanager_runtime">$job.runDuration$</set>
     </done>
     <query>
 | tstats prestats=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
@@ -207,6 +216,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="ingestion_sid">$job.sid$</set>
+      <set token="ingestion_runtime">$job.runDuration$</set>
     </done>
     <query>index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) 
 | fields - kb total_k_processed eps instantaneous_eps ev 
@@ -239,6 +249,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="cpu_load_sid">$job.sid$</set>
+      <set token="cpu_load_runtime">$job.runDuration$</set>
     </done>
     <query>| tstats 
     avg(data.cpu_idle_pct) as cpu_idle_pct
@@ -270,6 +281,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="io_measure_sid">$job.sid$</set>
+      <set token="io_measure_runtime">$job.runDuration$</set>
     </done>
     <query>| tstats 
     avg(data.avg_service_ms) as avg_service_ms 
@@ -282,15 +294,15 @@ cloud_flavor
     index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=1sec 
 | stats 
     avg(avg_service_ms) as avg_avg_service_ms
-    sparkline(avg(avg_service_ms),$seconds_for_bin_64$sec) as avg_service_ms 
+    sparkline(avg(avg_service_ms),$seconds_for_bin_62$sec) as avg_service_ms 
     avg(reads_ps) as avg_reads_ps
-    sparkline(avg(reads_ps),$seconds_for_bin_64$sec) as reads_ps 
+    sparkline(avg(reads_ps),$seconds_for_bin_62$sec) as reads_ps 
     avg(writes_ps) as avg_writes_ps
-    sparkline(avg(writes_ps),$seconds_for_bin_64$sec) as writes_ps 
+    sparkline(avg(writes_ps),$seconds_for_bin_62$sec) as writes_ps 
     avg(reads_kb_ps) as avg_reads_kb_ps
-    sparkline(avg(reads_kb_ps),$seconds_for_bin_64$sec) as reads_kb_ps 
+    sparkline(avg(reads_kb_ps),$seconds_for_bin_62$sec) as reads_kb_ps 
     avg(writes_kb_ps) as avg_writes_kb_ps
-    sparkline(avg(writes_kb_ps),$seconds_for_bin_64$sec) as writes_kb_ps 
+    sparkline(avg(writes_kb_ps),$seconds_for_bin_62$sec) as writes_kb_ps 
     by host
 | eval read_write_ratio_ps=avg_reads_ps/avg_writes_ps
 | eval read_write_ratio_kb_ps=avg_reads_kb_ps/avg_writes_kb_ps</query>
@@ -304,6 +316,7 @@ cloud_flavor
     </progress>
     <done>
       <set token="concurrency_sid">$job.sid$</set>
+      <set token="concurrency_runtime">$job.runDuration$</set>
     </done>
     <query>| tstats count as search_concurrency where 
     index=customer_introspection $all_indexers_IN$ 
@@ -324,6 +337,8 @@ cloud_flavor
     <done>
       <set token="StackNames_IN">$result.stackNameFilter_IN$</set>
       <set token="all_indexers_IN">$result.all_indexers_IN$</set>
+      <set token="get_lists_runtime">$job.runDuration$</set>
+      <set token="get_lists_sid">$job.sid$</set>
     </done>
     <query>
       
@@ -355,7 +370,7 @@ $indexer_sampling$
       <change>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
-        <eval token="seconds_for_bin_64">ceiling($duration_seconds$/100/64)*64</eval>
+        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
     </input>
     <input type="multiselect" token="selected_stacks">
@@ -386,6 +401,7 @@ $indexer_sampling$
         <unset token="sample_indexers_IN"></unset>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
       <valuePrefix>stack=</valuePrefix>
       <choice value="*">*</choice>
@@ -413,6 +429,7 @@ $indexer_sampling$
         <unset token="sample_indexers_IN"></unset>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
       <default>*</default>
       <valuePrefix>region=</valuePrefix>
@@ -561,21 +578,33 @@ $indexer_sampling$
                                 #920034, #870002);
 }
 
+#count {
+    font-family: sans-serif;
+    font-size: x-large;
+    padding: 15px;
+    margin: auto;
+}
 </style>
 
 <div id="legend">
     <div class="low">Very Low</div>
-    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt; $selected_field$ &lt; $filter_upper_bound$ AND selected_stack=$selected_stack$</div>
+    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND selected_stack=$selected_stack$</div>
     <div style="color:white" align="right">Very High</div>
 </div>
-
+    <div id="count">Showing $filtered_indexers$ of $all_indexers$</div>
 </html>
       <table>
-        <title>The selected of indexers based on the chart configuration above. One bar is $seconds_for_bin$</title>
+        <title>The selected of indexers based on the chart configuration above.</title>
         <search base="result_set">
           <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND stack="$selected_stack$"
 | fields - data.os_version data.instance_guid data.os_build host
 | sort - $selected_field$</query>
+          <progress>
+            <set token="filtered_indexers">0</set>
+          </progress>
+          <done>
+            <set token="filtered_indexers">$job.resultCount$</set>
+          </done>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -1374,17 +1403,17 @@ $indexer_sampling$
 
 </style>
 <div id="sid">
-<p/> broken pipes=$broken_pipes_sid$  
-<p/> blocked_queues=$blocked_queues_sid$ 
-<p/> s2s_connections_sid=$s2s_connections_sid$ 
-<p/> hec=$hec_connections_sid$ 
-<p/> ingestion=$ingestion_sid$ 
-<p/> cpu_load=$cpu_load_sid$
-<p/> io=$io_measure_sid$
-<p/> concurrency_sid=$concurrency_sid$ 
-<p/> event_delay_sid=$event_delay_sid$
-<p/> s3_errors_sid=$s3_errors_sid$
-<p/> cachemanager_sid=$cachemanager_sid$
+<p/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$
+<p/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$
+<p/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$
+<p/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$
+<p/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$
+<p/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$
+<p/> io=$io_measure_sid$ runtime=$io_measure_runtime$
+<p/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$
+<p/> event_delay_sid=$event_delay_sid$ runtime=$event_delay_runtime$
+<p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_error_runtime$
+<p/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
 <p/>
 <p/> final_report=$final_report$
 
@@ -1392,11 +1421,11 @@ $indexer_sampling$
       </html>
     </panel>
   </row>
-  <row depends="$debug$">
+  <row>
     <panel>
       <table>
         <title>Debug panel</title>
-        <search base="">
+        <search base="io_measure_sid">
           <query/>
         </search>
         <option name="drilldown">none</option>
