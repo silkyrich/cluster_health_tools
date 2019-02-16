@@ -407,6 +407,13 @@ $indexer_sampling$
       <choice value="sa-east-1">sa-east-1</choice>
       <choice value="us-east-1">us-east-1</choice>
       <choice value="us-west-2">us-west-2</choice>
+      <change>
+        <unset token="StackNames_IN"></unset>
+        <unset token="sample_indexers_OR"></unset>
+        <unset token="sample_indexers_IN"></unset>
+        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+      </change>
       <default>*</default>
       <valuePrefix>region=</valuePrefix>
       <delimiter> OR </delimiter>
@@ -1389,7 +1396,7 @@ $indexer_sampling$
     <panel>
       <table>
         <title>Debug panel</title>
-        <search base="io_measure_sid">
+        <search base="">
           <query/>
         </search>
         <option name="drilldown">none</option>
