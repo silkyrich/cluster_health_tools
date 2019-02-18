@@ -47,19 +47,21 @@ cloud_flavor
     <latest>$latest$</latest>
     <progress>
       <unset token="final_report"></unset>
+      <unset token="final_report_runtime"/>
       <set token="all_indexers">0</set>
     </progress>
     <done>
       <set token="final_report">$job.sid$</set>
+      <set token="final_report_runtime">$job.runDuration$</set>
       <set token="all_indexers">$job.resultCount$</set>
       <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$event_delay_runtime$+$s3_errors_runtime$+$cachemanager_runtime$</eval>
     </done>
-    
   </search>
   <search id="s2s_connections_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="s2s_connections_sid"></unset>
+      <unset token="s2s_connections_sid"/>
     </progress>
     <done>
       <set token="s2s_connections_sid">$job.sid$</set>
@@ -86,9 +88,10 @@ cloud_flavor
     </done>
     <progress>
       <unset token="event_delay_sid"></unset>
+      <unset token="event_delay_runtime"></unset>
     </progress>
     <query>
-  | tstats max(_indextime) as _indextime where index=customer_splunkd  $all_indexers_IN$ sourcetype=splunkd by host _time span=1sec
+  | tstats max(_indextime) as _indextime where index=customer_metrics  $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) sourcetype=splunkd by host _time span=1sec
 | eval delay=_indextime-round(_time,0) 
 | bin span=$seconds_for_bin$sec _time 
 | stats latest(delay) as current_delay max(delay) as max_delay sparkline(max(delay),$seconds_for_bin$sec) as event_delay by host
@@ -104,6 +107,7 @@ cloud_flavor
     </done>
     <progress>
       <unset token="blocked_queues_sid"></unset>
+      <unset token="blocked_queues_runtime"></unset>
     </progress>
     <query>| tstats count as blocked_queues where $all_indexers_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
 | eval blocked_queues_ps=blocked_queues/$seconds_for_bin$
@@ -118,6 +122,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="broken_pipes_sid"></unset>
+      <unset token="broken_pipes_runtime"></unset>
     </progress>
     <done>
       <set token="broken_pipes_sid">$job.sid$</set>
@@ -137,6 +142,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="hec_connections_sid"></unset>
+      <unset token="hec_connections_runtime"></unset>
     </progress>
     <done>
       <set token="hec_connections_sid">$job.sid$</set>
@@ -163,6 +169,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="s3_errors_sid"></unset>
+      <unset token="s3_errors_runtime"></unset>
     </progress>
     <done>
       <set token="s3_errors_sid">$job.sid$</set>
@@ -189,6 +196,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="cachemanager_sid"></unset>
+      <unset token="cachemanager_runtime"></unset>
     </progress>
     <done>
       <set token="cachemanager_sid">$job.sid$</set>
@@ -215,6 +223,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="ingestion_sid"></unset>
+      <unset token="ingestion_runtime"></unset>
     </progress>
     <done>
       <set token="ingestion_sid">$job.sid$</set>
@@ -248,6 +257,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="cpu_load_sid"></unset>
+      <unset token="cpu_load_runtime"></unset>
     </progress>
     <done>
       <set token="cpu_load_sid">$job.sid$</set>
@@ -280,6 +290,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="io_measure_sid"></unset>
+      <unset token="io_measure_runtime"></unset>
     </progress>
     <done>
       <set token="io_measure_sid">$job.sid$</set>
@@ -315,6 +326,7 @@ cloud_flavor
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="concurrency_sid"></unset>
+      <unset token="concurrency_runtime"></unset>
     </progress>
     <done>
       <set token="concurrency_sid">$job.sid$</set>
@@ -467,7 +479,6 @@ $indexer_sampling$
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
         <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
-        <choice value="avg_load_average">avg_load_average</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
         <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
         <choice value="avg_mem_used">avg_mem_used</choice>
@@ -590,7 +601,7 @@ $indexer_sampling$
 
 <div id="legend">
     <div class="low">Very Low</div>
-    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND selected_stack=$selected_stack$</div>
+    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
     <div style="color:white" align="right">Very High</div>
 </div>
     <div id="count">Showing $filtered_indexers$ of $all_indexers$ indexers</div>
@@ -598,7 +609,7 @@ $indexer_sampling$
       <table>
         <title>The selected of indexers based on the chart configuration above.</title>
         <search base="result_set">
-          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND stack="$selected_stack$"
+          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
 | fields - data.os_version data.instance_guid data.os_build host
 | sort - $selected_field$</query>
           <progress>
@@ -1417,21 +1428,11 @@ $indexer_sampling$
 <p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$
 <p/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
 <p/>
-<p/> final_report=$final_report$ total_runtime=$total_time$
+<p/> final_report=$final_report$ runtime=$$
+<p/> <b>total_runtime=$total_time$</b>
 
 </div>
       </html>
-    </panel>
-  </row>
-  <row depends="$nothing$">
-    <panel>
-      <table>
-        <title>Debug panel</title>
-        <search base="io_measure_sid">
-          <query/>
-        </search>
-        <option name="drilldown">none</option>
-      </table>
     </panel>
   </row>
 </form>
