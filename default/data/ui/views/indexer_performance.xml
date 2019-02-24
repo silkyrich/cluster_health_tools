@@ -47,25 +47,29 @@ cloud_flavor
     <latest>$latest$</latest>
     <progress>
       <unset token="final_report"></unset>
-      <unset token="final_report_runtime"/>
+      <unset token="final_report_runtime"></unset>
       <set token="all_indexers">0</set>
+      <set token="final_report_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="final_report">$job.sid$</set>
       <set token="final_report_runtime">$job.runDuration$</set>
+      <set token="final_report_messages">$job.messages$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$event_delay_runtime$+$s3_errors_runtime$+$cachemanager_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$event_delay_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$final_report_runtime$</eval>
     </done>
   </search>
   <search id="s2s_connections_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
       <unset token="s2s_connections_sid"></unset>
-      <unset token="s2s_connections_sid"/>
+      <unset token="s2s_connections_runtime"></unset>
+      <set token="s2s_connections_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="s2s_connections_sid">$job.sid$</set>
       <set token="s2s_connections_runtime">$job.runDuration$</set>
+      <set token="s2s_connections_messages">$job.messages$</set>
     </done>
     <query>
       | tstats count as s2s_connections where $all_indexers_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
@@ -85,10 +89,12 @@ cloud_flavor
     <done>
       <set token="event_delay_sid">$job.sid$</set>
       <set token="event_delay_runtime">$job.runDuration$</set>
+      <set token="event_delay_messages">$job.messages$</set>
     </done>
     <progress>
       <unset token="event_delay_sid"></unset>
       <unset token="event_delay_runtime"></unset>
+      <set token="event_delay_messages">$job.messages$</set>
     </progress>
     <query>
   | tstats max(_indextime) as _indextime where index=customer_metrics  $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) sourcetype=splunkd by host _time span=1sec
@@ -104,10 +110,12 @@ cloud_flavor
     <done>
       <set token="blocked_queues_sid">$job.sid$</set>
       <set token="blocked_queues_runtime">$job.runDuration$</set>
+      <set token="blocked_queues_messages">$job.messages$</set>
     </done>
     <progress>
       <unset token="blocked_queues_sid"></unset>
       <unset token="blocked_queues_runtime"></unset>
+      <set token="blocked_queues_messages">$job.messages$</set>
     </progress>
     <query>| tstats count as blocked_queues where $all_indexers_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
 | eval blocked_queues_ps=blocked_queues/$seconds_for_bin$
@@ -123,10 +131,12 @@ cloud_flavor
     <progress>
       <unset token="broken_pipes_sid"></unset>
       <unset token="broken_pipes_runtime"></unset>
+      <set token="broken_pipes_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="broken_pipes_sid">$job.sid$</set>
       <set token="broken_pipes_runtime">$job.runDuration$</set>
+      <set token="broken_pipes_messages">$job.messages$</set>
     </done>
     <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
 | eval broken_pipes=sum_broken_pipes/$seconds_for_bin$
@@ -143,10 +153,12 @@ cloud_flavor
     <progress>
       <unset token="hec_connections_sid"></unset>
       <unset token="hec_connections_runtime"></unset>
+      <set token="hec_connections_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="hec_connections_sid">$job.sid$</set>
       <set token="hec_connections_runtime">$job.runDuration$</set>
+      <set token="hec_connections_messages">$job.messages$</set>
     </done>
     <query>| tstats 
     sum(data.num_of_requests) as hec_requests
@@ -170,10 +182,12 @@ cloud_flavor
     <progress>
       <unset token="s3_errors_sid"></unset>
       <unset token="s3_errors_runtime"></unset>
+      <set token="s3_errors_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="s3_errors_sid">$job.sid$</set>
       <set token="s3_errors_runtime">$job.runDuration$</set>
+      <set token="s3_errors_messages">$job.messages$</set>
     </done>
     <query>
 | tstats prestats=t count where  $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=$seconds_for_bin$sec 
@@ -197,10 +211,12 @@ cloud_flavor
     <progress>
       <unset token="cachemanager_sid"></unset>
       <unset token="cachemanager_runtime"></unset>
+      <set token="cachemanager_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="cachemanager_sid">$job.sid$</set>
       <set token="cachemanager_runtime">$job.runDuration$</set>
+      <set token="cachemanager_messages">$job.messages$</set>
     </done>
     <query>
 | tstats prestats=t count where $all_indexers_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
@@ -224,10 +240,12 @@ cloud_flavor
     <progress>
       <unset token="ingestion_sid"></unset>
       <unset token="ingestion_runtime"></unset>
+      <set token="ingestion_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="ingestion_sid">$job.sid$</set>
       <set token="ingestion_runtime">$job.runDuration$</set>
+      <set token="ingestion_messages">$job.messages$</set>
     </done>
     <query>index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) 
 | fields - kb total_k_processed eps instantaneous_eps ev 
@@ -258,10 +276,12 @@ cloud_flavor
     <progress>
       <unset token="cpu_load_sid"></unset>
       <unset token="cpu_load_runtime"></unset>
+      <set token="cpu_load_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="cpu_load_sid">$job.sid$</set>
       <set token="cpu_load_runtime">$job.runDuration$</set>
+      <set token="cpu_load_messages">$job.messages$</set>
     </done>
     <query>| tstats 
     avg(data.cpu_idle_pct) as cpu_idle_pct
@@ -291,10 +311,12 @@ cloud_flavor
     <progress>
       <unset token="io_measure_sid"></unset>
       <unset token="io_measure_runtime"></unset>
+      <set token="io_measure_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="io_measure_sid">$job.sid$</set>
       <set token="io_measure_runtime">$job.runDuration$</set>
+      <set token="io_measure_messages">$job.messages$</set>
     </done>
     <query>| tstats 
     avg(data.avg_service_ms) as avg_service_ms 
@@ -327,10 +349,12 @@ cloud_flavor
     <progress>
       <unset token="concurrency_sid"></unset>
       <unset token="concurrency_runtime"></unset>
+      <set token="concurrency_messages">$job.messages$</set>
     </progress>
     <done>
       <set token="concurrency_sid">$job.sid$</set>
       <set token="concurrency_runtime">$job.runDuration$</set>
+      <set token="concurrency_messages">$job.messages$</set>
     </done>
     <query>| tstats count as search_concurrency where 
     index=customer_introspection $all_indexers_IN$ 
@@ -351,22 +375,20 @@ cloud_flavor
     <done>
       <set token="StackNames_IN">$result.stackNameFilter_IN$</set>
       <set token="all_indexers_IN">$result.all_indexers_IN$</set>
+      <set token="wildcard_filter_IN">$result.wild_card_filter_IN$</set>
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
     </done>
     <query>
       
-| inputlookup aws_inventory where $selected_stacks$ role=indexer region=* customer_type="Customer"
+| inputlookup aws_inventory where $selected_stacks$ role=indexer region=* 
 | stats 
     values(eval(if(role="indexer",FQDN,""))) as all_indexers by stack 
-
-$indexer_sampling$
-
-
 | stats values(*) as * 
 | eval
     stackNameFilter_IN="(".mvjoin(StackNameFilter," OR ").")",
-    all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")"
+    all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")",
+    wild_card_filter_IN="host IN (idx*.".mvjoin(mvfilter(stack!=""),".splunkcloud.com, idx*.").".com)" 
 | fields - all_indexers index
 
 </query>
@@ -387,12 +409,30 @@ $indexer_sampling$
         <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
     </input>
+    <input type="multiselect" token="customer_type">
+      <label>Customer type</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>customer_type</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory where role=indexer
+| stats count by customer_type 
+| sort - count 
+| eval label=customer_type." (".count.")" 
+| fields - count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <valuePrefix>customer_type=</valuePrefix>
+      <delimiter> OR </delimiter>
+    </input>
     <input type="multiselect" token="selected_stacks">
       <label>Select stacks to chart</label>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>stack_derived</fieldForValue>
       <search>
-        <query>| inputlookup aws_inventory where role="indexer" 
+        <query>| inputlookup aws_inventory where role="indexer" $customer_type$
 | stats count by stack instance_type aws_account_id 
 | rename stack AS stack_derived 
 | sort - count 
@@ -449,12 +489,6 @@ $indexer_sampling$
       <valuePrefix>region=</valuePrefix>
       <delimiter> OR </delimiter>
     </input>
-    <input type="dropdown" token="indexer_sampling">
-      <label>Indexer sampling</label>
-      <choice value="| noop">Show all indexers</choice>
-      <choice value="| eval all_indexers=mvfilter(all_indexers!=&quot;&quot;),     index=random() % mvcount(all_indexers),     all_indexers=mvindex(all_indexers,index)">Show one indexer per stack</choice>
-      <default>| noop</default>
-    </input>
     <input type="checkbox" token="show_chart">
       <label>Show population distribution chart</label>
       <choice value="show">Show</choice>
@@ -467,7 +501,7 @@ $indexer_sampling$
       <choice value="300">5min</choice>
       <choice value="420">7min</choice>
       <choice value="900">15min</choice>
-      <default>900</default>
+      <choice value="999999">Never</choice>
     </input>
   </fieldset>
   <row depends="$selected_stacks$,$show_chart$">
@@ -530,11 +564,12 @@ $indexer_sampling$
         <default>500</default>
       </input>
       <input type="checkbox" token="filter">
-        <label>Toggle to clear filters</label>
+        <label>Toggle to clear $selected_stack$ from filter</label>
         <choice value="clear">clear</choice>
         <change>
           <set token="selected_stack">*</set>
         </change>
+        <delimiter> </delimiter>
       </input>
       <chart>
         <title>Distribution of $selected_field$</title>
@@ -1428,8 +1463,20 @@ $indexer_sampling$
 <p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$
 <p/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
 <p/>
-<p/> final_report=$final_report$ runtime=$$
+<p/> final_report=$final_report$ runtime=$final_report_runtime$
 <p/> <b>total_runtime=$total_time$</b>
+
+$broken_pipes_messages$
+$blocked_queues_messages$
+$s2s_connections_messages$
+$hec_connections_messages$
+$ingestion_messages$
+$cpu_load_messages$
+$io_measure_messages$
+$concurrency_messages$
+$event_delay_messages$
+$s3_errors_messages$
+$cachemanager_messages$
 
 </div>
       </html>
