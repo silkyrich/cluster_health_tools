@@ -4,6 +4,7 @@
   <search id="result_set">
     <query>
     | loadjob $broken_pipes_sid$  
+    | append [| loadjob $crashes_sid$ ] 
     | append [| loadjob $blocked_queues_sid$ ] 
     | append [| loadjob $s2s_connections_sid$ ]
     | append [| loadjob $hec_connections_sid$ ]
@@ -24,6 +25,7 @@ instance_type
 skipped_metrics
 current_delay
 instantaneous_kbps
+blocked_queues_ps
 normalized_load_avg_1min 
 event_delay
 search_concurrency 
@@ -35,6 +37,8 @@ s3*
 cache*
 writes_* 
 reads_* 
+mothership_crashes
+search_crashes
 avg_service_ms 
 max_delay
 blocked_queues
@@ -55,8 +59,39 @@ cloud_flavor
       <set token="final_report_runtime">$job.runDuration$</set>
       <set token="final_report_messages">$job.messages$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$final_report_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$crashes_runtime$+$final_report_runtime$</eval>
     </done>
+  </search>
+  <search id="crashes_sid">
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="crashes_sid"></unset>
+      <unset token="crashes_runtime"></unset>
+      <set token="crashes_messages">$job.messages$</set>
+    </progress>
+    <done>
+      <set token="crashes_sid">$job.sid$</set>
+      <set token="crashes_runtime">$job.runDuration$</set>
+      <set token="crashes_messages">$job.messages$</set>
+    </done>
+    <query>
+
+| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $all_indexers_IN$ host=*.*.splunkcloud.com TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+| eval crash_type="mothership" 
+| tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $all_indexers_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+| eval crash_type=if(isnull(crash_type),"search","mothership") 
+| stats count by host crash_type _time 
+| bin span=$seconds_for_bin$sec _time 
+| stats 
+    sparkline(count(eval(crash_type="mothership")),$seconds_for_bin$sec) as mothership_crashes
+    sparkline(count(eval(crash_type="search")),$seconds_for_bin$sec) as search_crashes
+    count(eval(crash_type="mothership")) as total_mothership_crashes
+    count(eval(crash_type="search")) as total_search_crashes
+    by host
+
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
   </search>
   <search id="s2s_connections_sid">
     <refresh>$refresh_rate_seconds$</refresh>
@@ -551,7 +586,7 @@ index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=
       </input>
       <input type="checkbox" token="filter">
         <label>Toggle to clear $selected_stack$ from filter</label>
-        <choice value="clear">clear</choice>
+        <choice value="clear">Reset filters</choice>
         <change>
           <set token="selected_stack">*</set>
         </change>
@@ -1442,6 +1477,7 @@ index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=
 <br/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$
 <br/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$
 <br/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$
+<br/> crashes=$crashes_sid$ runtime=$crashes_runtime$
 <br/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$
 <br/> io=$io_measure_sid$ runtime=$io_measure_runtime$
 <br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$
@@ -1449,19 +1485,8 @@ index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=
 <br/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
 <br/>
 <br/> final_report=$final_report$ runtime=$final_report_runtime$
+<br/>
 <br/> <b>total_runtime=$total_time$</b>
-
-<br/> $broken_pipes_messages$
-<br/> $blocked_queues_messages$
-<br/> $s2s_connections_messages$
-<br/> $hec_connections_messages$
-<br/> $ingestion_messages$
-<br/> $cpu_load_messages$
-<br/> $io_measure_messages$
-<br/> $concurrency_messages$
-<br/> $s3_errors_messages$
-<br/> $cachemanager_messages$
-
 </div>
       </html>
     </panel>
