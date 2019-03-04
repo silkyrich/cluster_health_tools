@@ -11,7 +11,6 @@
     | append [| loadjob $cpu_load_sid$ ]
     | append [| loadjob $io_measure_sid$ ]
     | append [| loadjob $concurrency_sid$ ]
-    | append [| loadjob $event_delay_sid$ ]
     | append [| loadjob $s3_errors_sid$ ]
     | append [| loadjob $cachemanager_sid$ ]
 | stats list(*) as * by host
@@ -56,7 +55,7 @@ cloud_flavor
       <set token="final_report_runtime">$job.runDuration$</set>
       <set token="final_report_messages">$job.messages$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$event_delay_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$final_report_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$final_report_runtime$</eval>
     </done>
   </search>
   <search id="s2s_connections_sid">
@@ -81,27 +80,6 @@ cloud_flavor
 | eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)
       
     </query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
-  <search id="event_delay_sid">
-    <refresh>$refresh_rate_seconds$</refresh>
-    <done>
-      <set token="event_delay_sid">$job.sid$</set>
-      <set token="event_delay_runtime">$job.runDuration$</set>
-      <set token="event_delay_messages">$job.messages$</set>
-    </done>
-    <progress>
-      <unset token="event_delay_sid"></unset>
-      <unset token="event_delay_runtime"></unset>
-      <set token="event_delay_messages">$job.messages$</set>
-    </progress>
-    <query>
-  | tstats max(_indextime) as _indextime where index=customer_metrics  $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) sourcetype=splunkd by host _time span=1sec
-| eval delay=_indextime-round(_time,0) 
-| bin span=$seconds_for_bin$sec _time 
-| stats latest(delay) as current_delay max(delay) as max_delay sparkline(max(delay),$seconds_for_bin$sec) as event_delay by host
-</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -247,27 +225,34 @@ cloud_flavor
       <set token="ingestion_runtime">$job.runDuration$</set>
       <set token="ingestion_messages">$job.messages$</set>
     </done>
-    <query>index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) 
-| fields - kb total_k_processed eps instantaneous_eps ev 
+    <query>
+index=customer_metrics Metrics sourcetype=splunkd $all_indexers_IN$  TERM(group=thruput) TERM(name=thruput) 
+| eval delay=_indextime-_time
+| fields - kb total_k_processed eps instantaneous_eps ev
 | eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
-| fields _time instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev ingest_pipe host 
+| fields _time instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev ingest_pipe host delay
 | bin span=$seconds_for_bin$sec _time
 | stats 
+    max(delay) as delay
     sum(instantaneous_kbps) as instantaneous_kbps
     sum(average_kbps) as average_kbps
     by host _time
 | stats 
+    latest(delay) as current_delay
+    max(delay) as max_delay
     count as metrics_readings 
     avg(instantaneous_kbps) as avg_instantaneous_kbps
     avg(average_kbps) as average_kbps
     stdevp(instantaneous_kbps) as stdev_instantaneous_kbps 
     sparkline(avg(instantaneous_kbps),$seconds_for_bin$sec) as instantaneous_kbps
+    sparkline(max(delay),$seconds_for_bin$sec) as event_delay
     by  host
 | eval normalized_stdev_ingestion=stdev_instantaneous_kbps/avg_instantaneous_kbps
 | addinfo 
 | eval expected_metrics_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
 | eval skipped_metrics=expected_metrics_readings-metrics_readings
-| fields - info_* expected_metrics_readings</query>
+| fields - info_* expected_metrics_readings      
+      </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -502,6 +487,7 @@ cloud_flavor
       <choice value="420">7min</choice>
       <choice value="900">15min</choice>
       <choice value="999999">Never</choice>
+      <default>999999</default>
     </input>
   </fieldset>
   <row depends="$selected_stacks$,$show_chart$">
@@ -561,7 +547,7 @@ cloud_flavor
         <choice value="750">750</choice>
         <choice value="1000">1000</choice>
         <prefix>bins=</prefix>
-        <default>500</default>
+        <default>50</default>
       </input>
       <input type="checkbox" token="filter">
         <label>Toggle to clear $selected_stack$ from filter</label>
@@ -1451,32 +1437,30 @@ cloud_flavor
 
 </style>
 <div id="sid">
-<p/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$
-<p/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$
-<p/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$
-<p/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$
-<p/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$
-<p/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$
-<p/> io=$io_measure_sid$ runtime=$io_measure_runtime$
-<p/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$
-<p/> event_delay_sid=$event_delay_sid$ runtime=$event_delay_runtime$
-<p/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$
-<p/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
-<p/>
-<p/> final_report=$final_report$ runtime=$final_report_runtime$
-<p/> <b>total_runtime=$total_time$</b>
+<br/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$
+<br/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$
+<br/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$
+<br/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$
+<br/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$
+<br/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$
+<br/> io=$io_measure_sid$ runtime=$io_measure_runtime$
+<br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$
+<br/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$
+<br/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$
+<br/>
+<br/> final_report=$final_report$ runtime=$final_report_runtime$
+<br/> <b>total_runtime=$total_time$</b>
 
-$broken_pipes_messages$
-$blocked_queues_messages$
-$s2s_connections_messages$
-$hec_connections_messages$
-$ingestion_messages$
-$cpu_load_messages$
-$io_measure_messages$
-$concurrency_messages$
-$event_delay_messages$
-$s3_errors_messages$
-$cachemanager_messages$
+<br/> $broken_pipes_messages$
+<br/> $blocked_queues_messages$
+<br/> $s2s_connections_messages$
+<br/> $hec_connections_messages$
+<br/> $ingestion_messages$
+<br/> $cpu_load_messages$
+<br/> $io_measure_messages$
+<br/> $concurrency_messages$
+<br/> $s3_errors_messages$
+<br/> $cachemanager_messages$
 
 </div>
       </html>
