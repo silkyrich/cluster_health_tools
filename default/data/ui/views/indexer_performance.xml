@@ -14,9 +14,10 @@
     | append [| loadjob $concurrency_sid$ ]
     | append [| loadjob $s3_errors_sid$ ]
     | append [| loadjob $cachemanager_sid$ ]
-| stats list(*) as * by host
-| lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type
+| stats list(*) as * by host 
+| lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
 | rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
+| eval age_days=round((now()-strptime(launch_time, "%Y-%m-%dT%H:%M:%S.000Z"))/(24*60*60),0)
 | table 
 short_host_for_pretty_output 
 stack  
@@ -42,8 +43,9 @@ search_crashes
 avg_service_ms 
 max_delay
 blocked_queues
-broken_pipes *
-
+broken_pipes 
+ip_address *
+age_days
 cloud_flavor
 </query>
     <earliest>$earliest$</earliest>
@@ -558,6 +560,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="age_days">age_days</choice>
         <default>average_kbps</default>
       </input>
       <input type="dropdown" token="split_by">
@@ -665,20 +668,21 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <table>
         <title>The selected of indexers based on the chart configuration above.</title>
         <search base="result_set">
-          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
-| fields - data.os_version data.instance_guid data.os_build host
-| sort - $selected_field$</query>
           <progress>
             <set token="filtered_indexers">0</set>
           </progress>
           <done>
             <set token="filtered_indexers">$job.resultCount$</set>
           </done>
+          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
+| fields - data.os_version data.instance_guid data.os_build host launch_time
+| sort - $selected_field$</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <format type="number" field="indexer_cluster_size">
@@ -916,6 +920,15 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         </format>
         <format type="number" field="max_cachemanager_download_ps">
           <option name="unit">ps</option>
+        </format>
+        <format type="color" field="age_days">
+          <colorPalette type="minMidMax" maxColor="#1E93C6" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="age_days">
+          <option name="precision">0</option>
+          <option name="unit">days</option>
+          <option name="useThousandSeparators">false</option>
         </format>
         <format field="s3_get_errors_ps" type="sparkline">
           <option name="type">bar</option>
