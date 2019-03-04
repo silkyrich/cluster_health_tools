@@ -138,7 +138,7 @@ cloud_flavor
       <set token="broken_pipes_runtime">$job.runDuration$</set>
       <set token="broken_pipes_messages">$job.messages$</set>
     </done>
-    <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
+    <query>| tstats count as broken_pipes where index=customer_splunkd $all_indexers_IN$ TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
 | eval broken_pipes=sum_broken_pipes/$seconds_for_bin$
 | stats 
     avg(broken_pipes) as avg_broken_pipes
