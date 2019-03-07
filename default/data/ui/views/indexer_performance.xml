@@ -511,12 +511,6 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <valuePrefix>region=</valuePrefix>
       <delimiter> OR </delimiter>
     </input>
-    <input type="checkbox" token="show_chart">
-      <label>Show population distribution chart</label>
-      <choice value="show">Show</choice>
-      <default>show</default>
-      <delimiter> </delimiter>
-    </input>
     <input type="dropdown" token="refresh_rate_seconds">
       <label>Refresh rate</label>
       <choice value="60">1min</choice>
@@ -526,8 +520,47 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <choice value="999999">Never</choice>
       <default>999999</default>
     </input>
+    <input type="checkbox" token="show_elements">
+      <label></label>
+      <choice value="| noop">Show elements</choice>
+      <default>| noop</default>
+      <delimiter> </delimiter>
+    </input>
   </fieldset>
-  <row depends="$selected_stacks$,$show_chart$">
+  <row depends="$show_elements$">
+    <panel>
+      <title>Show elements</title>
+      <input type="checkbox" token="show_banner">
+        <label></label>
+        <choice value="| noop">Banner</choice>
+        <default>| noop</default>
+        <delimiter> </delimiter>
+      </input>
+      <input type="checkbox" token="show_filter_chart">
+        <label></label>
+        <choice value="show">Filter chart</choice>
+        <default>| noop,show</default>
+        <delimiter> </delimiter>
+      </input>
+      <input type="checkbox" token="show_table">
+        <label></label>
+        <choice value="| noop">Table</choice>
+        <delimiter> </delimiter>
+      </input>
+      <input type="checkbox" token="show_bubble">
+        <label></label>
+        <choice value="| noop">Bubble chart</choice>
+        <delimiter> </delimiter>
+      </input>
+      <input type="checkbox" token="show_debug">
+        <label></label>
+        <choice value="| noop">Debug</choice>
+        <delimiter> </delimiter>
+        <default>| noop</default>
+      </input>
+    </panel>
+  </row>
+  <row depends="$selected_stacks$,$show_filter_chart$">
     <panel>
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
@@ -561,6 +594,8 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
         <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
+        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
         <default>average_kbps</default>
       </input>
       <input type="dropdown" token="split_by">
@@ -598,7 +633,8 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <chart>
         <title>Distribution of $selected_field$</title>
         <search base="result_set">
-          <query>| fields host $selected_field$ $split_by$ 
+          <query>$show_filter_chart$
+| fields host $selected_field$ $split_by$ 
 | bin $selected_bins$ $selected_field$ 
 | rex field=$selected_field$ "^(?&lt;lower&gt;[\d\.]+)-(?&lt;upper&gt;[\d\.]+)" 
 
@@ -631,7 +667,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       </chart>
     </panel>
   </row>
-  <row depends="$selected_stacks$">
+  <row depends="$selected_stacks$,$show_banner">
     <panel>
       <html>
 
@@ -650,6 +686,30 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
                                 #920034, #870002);
 }
 
+</style>
+
+<div id="legend">
+    <div class="low">Very Low</div>
+    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+    <div style="color:white" align="right">Very High</div>
+</div>
+
+</html>
+    </panel>
+  </row>
+  <row depends="$selected_stacks$,$show_table$">
+    <panel>
+      <input type="checkbox" token="single_indexer_filter">
+        <label></label>
+        <choice value="| eval random=random() | eventstats max(random) as max_random by stack | where max_random=random">Display one indexer per stack</choice>
+        <change>
+          <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
+        </change>
+      </input>
+      <html>
+
+<style>
+
 #count {
     font-family: sans-serif;
     font-size: large;
@@ -658,21 +718,8 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 }
 </style>
 
-<div id="legend">
-    <div class="low">Very Low</div>
-    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
-    <div style="color:white" align="right">Very High</div>
-</div>
     <div id="count">Showing $filtered_indexers$ of $all_indexers$ indexers</div>
 </html>
-      <input type="checkbox" token="single_indexer_filter">
-        <label></label>
-        <choice value="| eval random=random() | eventstats max(random) as max_random by stack | where max_random=random">Display one indexer per stack</choice>
-        <change>
-          <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
-        </change>
-      </input>
-
       <table>
         <title>The selected of indexers based on the chart configuration above</title>
         <search base="result_set">
@@ -685,7 +732,10 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
           <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
 $single_indexer_only$
 | fields - data.os_version data.instance_guid data.os_build host launch_time
-| sort - $selected_field$</query>
+| sort - $selected_field$
+$show_table$
+
+</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -1473,14 +1523,14 @@ $single_indexer_only$
       </table>
     </panel>
   </row>
-  <row rejects="$selected_stacks$">
+  <row rejects="$selected_stacks$,$selected_stacks$">
     <panel>
       <html>
       <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
     </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_stacks$,$show_debug$">
     <panel>
       <html>
       <style>
