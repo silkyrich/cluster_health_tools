@@ -78,7 +78,7 @@ cloud_flavor
     </done>
     <query>
 
-| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ host=*.*.splunkcloud.com TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
 | eval crash_type="mothership" 
 | tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=1s 
 | eval crash_type=if(isnull(crash_type),"search","mothership") 
@@ -410,13 +410,21 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 | eval
     stackNameFilter_IN="(".mvjoin(StackNameFilter," OR ").")",
     all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")",
-    wildcard_filter_IN="host IN (idx*.".mvjoin(mvfilter(stack!=""),".splunkcloud.com, idx*.").".splunkcloud.com)" 
+    wildcard_filter_IN="host IN (idx*.".mvjoin(mvfilter(stack!=""),".*, idx*.").".*)" 
 | fields - all_indexers index
 
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
+  </search>
+  <search base="result_set" id="filtered_result_set">
+    <query>
+| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
+$single_indexer_only$
+| fields - data.os_version data.instance_guid data.os_build host launch_time
+| sort - $selected_field$
+</query>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -536,10 +544,16 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         <default>| noop</default>
         <delimiter> </delimiter>
       </input>
+      <input type="checkbox" token="show_debug">
+        <label></label>
+        <choice value="| noop">Debug</choice>
+        <delimiter> </delimiter>
+        <default>| noop</default>
+      </input>
       <input type="checkbox" token="show_filter_chart">
         <label></label>
-        <choice value="show">Filter chart</choice>
-        <default>| noop,show</default>
+        <choice value="| noop">Filter chart</choice>
+        <default>| noop</default>
         <delimiter> </delimiter>
       </input>
       <input type="checkbox" token="show_table">
@@ -551,12 +565,6 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         <label></label>
         <choice value="| noop">Bubble chart</choice>
         <delimiter> </delimiter>
-      </input>
-      <input type="checkbox" token="show_debug">
-        <label></label>
-        <choice value="| noop">Debug</choice>
-        <delimiter> </delimiter>
-        <default>| noop</default>
       </input>
     </panel>
   </row>
@@ -599,7 +607,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
         <default>average_kbps</default>
       </input>
       <input type="dropdown" token="split_by">
-        <label>Split the chart by</label>
+        <label>Split by</label>
         <choice value="stack">Stack</choice>
         <choice value="| noop">No split by</choice>
         <choice value="splunk_version">splunk_version</choice>
@@ -633,8 +641,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <chart>
         <title>Distribution of $selected_field$</title>
         <search base="result_set">
-          <query>$show_filter_chart$
-| fields host $selected_field$ $split_by$ 
+          <query>| fields host $selected_field$ $split_by$ 
 | bin $selected_bins$ $selected_field$ 
 | rex field=$selected_field$ "^(?&lt;lower&gt;[\d\.]+)-(?&lt;upper&gt;[\d\.]+)" 
 
@@ -648,7 +655,8 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 | eventstats mode(eval(upper-lower)) as delta
 | eval upper=if(isnull(upper),lower+delta,upper),stack=if(isnull(stack),"NULL",stack), $selected_field$=if(isnull($selected_field$),lower."-".upper,$selected_field$)
 | chart count limit=100 by $selected_field$ $split_by$
-| fields - NULL upper lower</query>
+| fields - NULL upper lower
+$show_filter_chart$</query>
         </search>
         <selection>
           <eval token="filter_lower_bound">mvindex(split($start$,"-"),0)</eval>
@@ -722,20 +730,14 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 </html>
       <table>
         <title>The selected of indexers based on the chart configuration above</title>
-        <search base="result_set">
+        <search base="filtered_result_set">
           <progress>
             <set token="filtered_indexers">0</set>
           </progress>
           <done>
             <set token="filtered_indexers">$job.resultCount$</set>
           </done>
-          <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
-$single_indexer_only$
-| fields - data.os_version data.instance_guid data.os_build host launch_time
-| sort - $selected_field$
-$show_table$
-
-</query>
+          <query>$show_table$</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -1528,6 +1530,137 @@ $show_table$
       <html>
       <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
     </html>
+    </panel>
+  </row>
+  <row depends="$selected_stacks$,$show_bubble$">
+    <panel>
+      <input type="dropdown" token="bubble_selected_field_x">
+        <label>X series</label>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
+        <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
+        <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
+        <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
+        <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
+        <choice value="avg_mem_used">avg_mem_used</choice>
+        <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
+        <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
+        <choice value="avg_reads_ps">avg_reads_ps</choice>
+        <choice value="avg_search_concurrency">avg_search_concurrency</choice>
+        <choice value="avg_writes_kb_ps">avg_writes_kb_ps</choice>
+        <choice value="avg_writes_ps">avg_writes_ps</choice>
+        <choice value="metrics_readings">metrics_readings</choice>
+        <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
+        <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
+        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="avg_broken_pipes">avg_broken_pipes</choice>
+        <choice value="avg_hec_requests">avg_hec_requests</choice>
+        <choice value="avg_hec_kb">avg_hec_kb</choice>
+        <choice value="avg_s2s_connections_per_second">avg_s2s_connections_per_second</choice>
+        <choice value="max_delay">max_delay</choice>
+        <choice value="current_delay">current_delay</choice>
+        <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
+        <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
+        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
+        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <default>average_kbps</default>
+      </input>
+      <input type="dropdown" token="bubble_selected_field_y">
+        <label>Y series</label>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
+        <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
+        <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
+        <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
+        <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
+        <choice value="avg_mem_used">avg_mem_used</choice>
+        <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
+        <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
+        <choice value="avg_reads_ps">avg_reads_ps</choice>
+        <choice value="avg_search_concurrency">avg_search_concurrency</choice>
+        <choice value="avg_writes_kb_ps">avg_writes_kb_ps</choice>
+        <choice value="avg_writes_ps">avg_writes_ps</choice>
+        <choice value="metrics_readings">metrics_readings</choice>
+        <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
+        <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
+        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="avg_broken_pipes">avg_broken_pipes</choice>
+        <choice value="avg_hec_requests">avg_hec_requests</choice>
+        <choice value="avg_hec_kb">avg_hec_kb</choice>
+        <choice value="avg_s2s_connections_per_second">avg_s2s_connections_per_second</choice>
+        <choice value="max_delay">max_delay</choice>
+        <choice value="current_delay">current_delay</choice>
+        <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
+        <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
+        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
+        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <default>avg_search_concurrency</default>
+      </input>
+      <input type="dropdown" token="bubble_selected_field_size">
+        <label>Size</label>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
+        <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
+        <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
+        <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
+        <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
+        <choice value="avg_mem_used">avg_mem_used</choice>
+        <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
+        <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
+        <choice value="avg_reads_ps">avg_reads_ps</choice>
+        <choice value="avg_search_concurrency">avg_search_concurrency</choice>
+        <choice value="avg_writes_kb_ps">avg_writes_kb_ps</choice>
+        <choice value="avg_writes_ps">avg_writes_ps</choice>
+        <choice value="metrics_readings">metrics_readings</choice>
+        <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
+        <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
+        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="avg_broken_pipes">avg_broken_pipes</choice>
+        <choice value="avg_hec_requests">avg_hec_requests</choice>
+        <choice value="avg_hec_kb">avg_hec_kb</choice>
+        <choice value="avg_s2s_connections_per_second">avg_s2s_connections_per_second</choice>
+        <choice value="max_delay">max_delay</choice>
+        <choice value="current_delay">current_delay</choice>
+        <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
+        <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
+        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
+        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <default>average_kbps</default>
+      </input>
+      <input type="dropdown" token="bubble_split_by">
+        <label>Split by</label>
+        <choice value="stack">Stack</choice>
+        <choice value="| noop">No split by</choice>
+        <choice value="splunk_version">splunk_version</choice>
+        <choice value="instance_type">instance_type</choice>
+        <choice value="cloud_flavor">cloud_flavor</choice>
+        <default>stack</default>
+        <change>
+          <set token="selected_stack">*</set>
+        </change>
+      </input>
+      <chart>
+        <search base="filtered_result_set">
+          <query>| table $bubble_split_by$ $bubble_selected_field_x$ $bubble_selected_field_y$ $bubble_selected_field_size$
+$show_bubble$</query>
+        </search>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">632</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
   <row depends="$selected_stacks$,$show_debug$">
