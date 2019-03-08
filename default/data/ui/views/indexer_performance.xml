@@ -18,35 +18,7 @@
 | lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
 | rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
 | eval age_days=round((now()-strptime(launch_time, "%Y-%m-%dT%H:%M:%S.000Z"))/(24*60*60),0)
-| table 
-short_host_for_pretty_output 
-stack  
-splunk_version
-instance_type
-skipped_metrics
-current_delay
-instantaneous_kbps
-blocked_queues_ps
-normalized_load_avg_1min 
-event_delay
-search_concurrency 
-cpu_used_pct
-mem_used 
-s2s_connections
-hec*  
-s3*
-cache*
-writes_* 
-reads_* 
-mothership_crashes
-search_crashes
-avg_service_ms 
-max_delay
-blocked_queues
-broken_pipes 
-ip_address *
-age_days
-cloud_flavor
+| table host *
 </query>
     <earliest>$earliest$</earliest>
     <latest>$latest$</latest>
@@ -213,7 +185,7 @@ cloud_flavor
 | eval s3_errors_ps=s3_errors/$seconds_for_bin$
 | stats count 
     max(eval(if(command="get",s3_errors_ps,0))) as max_s3_get_errors_ps 
-    max(eval(if(command="put",s3_errors_ps,0))) as max_s3_errors_put_ps 
+    max(eval(if(command="put",s3_errors_ps,0))) as max_s3_put_errors_ps 
     sparkline(sum(eval(if(command="get",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_get_errors_ps 
     sparkline(sum(eval(if(command="put",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_put_errors_ps
     by host
@@ -238,11 +210,16 @@ cloud_flavor
 | eval action="upload" 
 | tstats prestats=t append=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action=if(isnull(action),"download",action) 
+| tstats prestats=t append=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(CacheManager) TERM(INFO) TERM(Eviction) TERM(results) by host _time span=$seconds_for_bin$sec
+| eval action=if(isnull(action),"eviction",action) 
+
 | stats count as count by host _time action 
 | eval count=count/$seconds_for_bin$
 | stats  
+    max(eval(if(action="eviction",count,0))) as max_cachemanager_eviction_ps 
     max(eval(if(action="download",count,0))) as max_cachemanager_download_ps 
     max(eval(if(action="upload",count,0))) as max_cachemanager_upload_ps 
+    sparkline(sum(eval(if(action="eviction",count,0))),$seconds_for_bin$sec) as cachemanager_eviction_ps 
     sparkline(sum(eval(if(action="download",count,0))),$seconds_for_bin$sec) as cachemanager_download_ps 
     sparkline(sum(eval(if(action="upload",count,0))),$seconds_for_bin$sec) as cachemanager_upload_ps 
     by host
@@ -270,24 +247,27 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 | fields _time instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev ingest_pipe host delay
 | bin span=$seconds_for_bin$sec _time
 | stats 
+    count(eval(ingest_pipe=0)) as readings
     max(delay) as delay
     sum(instantaneous_kbps) as instantaneous_kbps
     sum(average_kbps) as average_kbps
     by host _time
+| eval readings_expected=readings/$readings_per_bin_31$
 | stats 
     latest(delay) as current_delay
     max(delay) as max_delay
-    count as metrics_readings 
+    sum(readings_expected) as metrics_readings 
     avg(instantaneous_kbps) as avg_instantaneous_kbps
-    avg(average_kbps) as average_kbps
+    avg(average_kbps) as avg_average_kbps
     stdevp(instantaneous_kbps) as stdev_instantaneous_kbps 
+    sparkline(sum(readings_expected),$seconds_for_bin$sec) as readings
     sparkline(avg(instantaneous_kbps),$seconds_for_bin$sec) as instantaneous_kbps
     sparkline(max(delay),$seconds_for_bin$sec) as event_delay
-    by  host
+    by host
 | eval normalized_stdev_ingestion=stdev_instantaneous_kbps/avg_instantaneous_kbps
 | addinfo 
 | eval expected_metrics_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
-| eval skipped_metrics=expected_metrics_readings-metrics_readings
+| eval skipped_readings=expected_metrics_readings-metrics_readings
 | fields - info_* expected_metrics_readings      
       </query>
     <earliest>$time.earliest$</earliest>
@@ -305,7 +285,8 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <set token="cpu_load_runtime">$job.runDuration$</set>
       <set token="cpu_load_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats 
+    <query>
+| tstats 
     avg(data.cpu_idle_pct) as cpu_idle_pct
     avg(data.mem_used) as mem_used
     avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
@@ -322,7 +303,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
     avg(mem_used) as avg_mem_used
     sparkline(avg(mem_used),$seconds_for_bin$sec) as mem_used     
     by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host
-   | rename data.splunk_version as splunk_version
+| rename data.splunk_version as splunk_version
     
     </query>
     <earliest>$time.earliest$</earliest>
@@ -435,6 +416,7 @@ $single_indexer_only$
       </default>
       <change>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="readings_per_bin_31">ceiling($duration_seconds$/100/31)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
         <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
@@ -530,8 +512,7 @@ $single_indexer_only$
     </input>
     <input type="checkbox" token="show_elements">
       <label></label>
-      <choice value="| noop">Show elements</choice>
-      <default>| noop</default>
+      <choice value="| noop">Select UI elements</choice>
       <delimiter> </delimiter>
     </input>
   </fieldset>
@@ -560,6 +541,7 @@ $single_indexer_only$
         <label></label>
         <choice value="| noop">Table</choice>
         <delimiter> </delimiter>
+        <default>| noop</default>
       </input>
       <input type="checkbox" token="show_bubble">
         <label></label>
@@ -573,7 +555,7 @@ $single_indexer_only$
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
         <label>Analyse field distribution</label>
-        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
         <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
@@ -589,7 +571,7 @@ $single_indexer_only$
         <choice value="metrics_readings">metrics_readings</choice>
         <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
         <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
-        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_hec_requests">avg_hec_requests</choice>
@@ -599,12 +581,13 @@ $single_indexer_only$
         <choice value="current_delay">current_delay</choice>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
-        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
         <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
         <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
         <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
-        <default>average_kbps</default>
+        <default>avg_average_kbps</default>
       </input>
       <input type="dropdown" token="split_by">
         <label>Split by</label>
@@ -680,6 +663,33 @@ $show_filter_chart$</query>
       <html>
 
 <style>
+#filter {
+    padding: 10px;
+    font-family: sans-serif;
+    font-size: xx-large;
+}
+
+</style>
+
+<div id="filter">
+    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+</div>
+
+</html>
+    </panel>
+  </row>
+  <row depends="$selected_stacks$,$show_table$">
+    <panel>
+      <input type="checkbox" token="single_indexer_filter">
+        <label></label>
+        <choice value="| eval random=random() | eventstats max(random) as max_random by stack | where max_random=random">Display one indexer per stack</choice>
+        <change>
+          <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
+        </change>
+      </input>
+      <html>
+
+<style>
 #legend {
     display: grid;
     grid: auto / auto auto auto;
@@ -698,22 +708,11 @@ $show_filter_chart$</query>
 
 <div id="legend">
     <div class="low">Very Low</div>
-    <div style="color:#ffffa2" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+    <div style="color:#ffffa2" align="center"/>
     <div style="color:white" align="right">Very High</div>
 </div>
 
 </html>
-    </panel>
-  </row>
-  <row depends="$selected_stacks$,$show_table$">
-    <panel>
-      <input type="checkbox" token="single_indexer_filter">
-        <label></label>
-        <choice value="| eval random=random() | eventstats max(random) as max_random by stack | where max_random=random">Display one indexer per stack</choice>
-        <change>
-          <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
-        </change>
-      </input>
       <html>
 
 <style>
@@ -737,7 +736,93 @@ $show_filter_chart$</query>
           <done>
             <set token="filtered_indexers">$job.resultCount$</set>
           </done>
-          <query>$show_table$</query>
+          <query>$show_table$
+          | rename stack as stack_name
+| table short_host_for_pretty_output
+stack_name
+splunk_version
+instance_type
+skipped_readings
+readings
+
+avg_average_kbps
+average_kbps
+
+avg_instantaneous_kbps
+normalized_stdev_ingestion
+instantaneous_kbps
+
+avg_blocked_queues_ps
+blocked_queues_ps
+
+avg_normalized_load_avg_1min
+normalized_load_avg_1min
+
+current_delay
+max_delay
+event_delay
+
+avg_search_concurrency
+search_concurrency
+
+avg_cpu_used_pct
+cpu_used_pct
+
+avg_mem_used
+mem_used
+
+avg_s2s_connections_per_second
+s2s_connections
+
+avg_hec_kb
+hec_kb
+
+avg_hec_requests
+hec_requests
+
+read_write_ratio_kb_ps
+
+avg_writes_kb_ps
+writes_ps
+
+avg_reads_kb_ps
+reads_kb_ps
+
+read_write_ratio_ps
+
+avg_writes_ps
+writes_kb_ps
+
+avg_reads_ps
+reads_ps
+
+avg_avg_service_ms
+avg_service_ms
+
+max_cachemanager_download_ps
+cachemanager_download_ps
+
+max_cachemanager_eviction_ps
+cachemanager_eviction_ps
+
+max_cachemanager_upload_ps
+cachemanager_upload_ps
+
+max_s3_put_errors_ps
+s3_put_errors_ps
+
+max_s3_get_errors_ps
+s3_get_errors_ps
+
+s3_get_errors_ps
+
+data.cpu_count
+data.mem
+
+age_days
+cloud_flavor
+
+*</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -749,11 +834,11 @@ $show_filter_chart$</query>
         <format type="number" field="indexer_cluster_size">
           <option name="precision">0</option>
         </format>
-        <format type="color" field="average_kbps">
+        <format type="color" field="avg_average_kbps">
           <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
           <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,4722.4</scale>
         </format>
-        <format type="number" field="average_kbps">
+        <format type="number" field="avg_average_kbps">
           <option name="precision">0</option>
           <option name="unit">kbps</option>
         </format>
@@ -793,9 +878,6 @@ $show_filter_chart$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,40.5,56.7,79.4,999999</scale>
         </format>
-        <format type="number" field="avg_average_kbps">
-          <option name="unit">%</option>
-        </format>
         <format type="color" field="avg_mem_used">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">917.3,1192.5,1550.3,2015.4,2620,3406,4427.8,5756.1,7483,9727.9,12646.2,16440.1,21372.1,27783.7,36118.9,46954.5,61040.9,103159.1,174338.9,999999999</scale>
@@ -816,9 +898,6 @@ $show_filter_chart$</query>
           <option name="precision">3</option>
           <option name="unit">ms</option>
         </format>
-        <format type="number" field="avg_average_kbps">
-          <option name="unit">kbps</option>
-        </format>
         <format type="color" field="avg_normalized_load_avg_1min">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.000867,0.001388,0.00222,0.003553,0.005684,0.009095,0.014552,0.023283,0.037253,0.059605,0.095367,0.152588,0.244141,0.390625,0.625,1,1.6,2.6,4.1,6.6,99999</scale>
@@ -831,7 +910,7 @@ $show_filter_chart$</query>
           <scale type="threshold">1,1.2,1.4,1.7,2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,999.3</scale>
         </format>
         <format type="number" field="avg_search_concurrency">
-          <option name="unit">kbps</option>
+          <option name="useThousandSeparators">false</option>
         </format>
         <format type="color" field="avg_s2s_connections_per_second">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -876,6 +955,10 @@ $show_filter_chart$</query>
         <format type="color" field="max_delay">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">1,1.5,2.2,3.4,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,25251.2</scale>
+        </format>
+        <format type="color" field="max_cachemanager_eviction_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
         </format>
         <format type="color" field="max_cachemanager_download_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -947,7 +1030,7 @@ $show_filter_chart$</query>
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
-        <format type="color" field="skipped_metrics">
+        <format type="color" field="skipped_readings">
           <colorPalette type="list">[#A2CC3E,#D93F3C]</colorPalette>
           <scale type="threshold">1</scale>
         </format>
@@ -972,9 +1055,12 @@ $show_filter_chart$</query>
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
-        <format type="number" field="skipped_metrics">
+        <format type="number" field="skipped_readings">
           <option name="precision">0</option>
           <option name="unit">skipped</option>
+        </format>
+        <format type="number" field="max_cachemanager_eviction_ps">
+          <option name="unit">ps</option>
         </format>
         <format type="number" field="max_cachemanager_upload_ps">
           <option name="unit">ps</option>
@@ -1076,6 +1162,34 @@ $show_filter_chart$</query>
           <option name="barWidth">2px</option>
         </format>
         <format field="cachemanager_download_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:0.034572">#e9ffd2</option>
+            <option name="0.048400:0.067760">#e5fecf</option>
+            <option name="0.094865:0.132810">#ddfdc8</option>
+            <option name="0.132810:0.185934">#d2fcbd</option>
+            <option name="0.185934:0.260308">#c2faad</option>
+            <option name="0.260308:0.364431">#a9f79a</option>
+            <option name="0.364431:0.510204">#88f582</option>
+            <option name="0.510204:0.714286">#65f171</option>
+            <option name="0.714286:1.000000">#46ed6f</option>
+            <option name="1.0:1.4">#25e979</option>
+            <option name="1.4:2.0">#03e495</option>
+            <option name="2.0:2.7">#00dec6</option>
+            <option name="2.7:3.8">#00b1d7</option>
+            <option name="3.8:5.4">#006bcf</option>
+            <option name="5.4:7.5">#0023c7</option>
+            <option name="7.5:10.5">#2200bd</option>
+            <option name="10.5:14.8">#6300b3</option>
+            <option name="14.8:20.7">#9c00a9</option>
+            <option name="20.7:28.9">#9e0070</option>
+            <option name="28.9:40.5">#920034</option>
+            <option name="40.5:999999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="cachemanager_eviction_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
@@ -1408,6 +1522,32 @@ $show_filter_chart$</query>
           </option>
           <option name="barWidth">2px</option>
         </format>
+        <format field="average_kbps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1.6">#e9ffd2</option>
+            <option name="1.6:2.6">#e4fece</option>
+            <option name="2.6:4.1">#dbfdc6</option>
+            <option name="4.1:6.6">#cdfbb8</option>
+            <option name="6.6:10.5">#b8f9a5</option>
+            <option name="10.5:16.8">#98f68d</option>
+            <option name="16.8:26.8">#6ff274</option>
+            <option name="26.8:42.9">#4dee6e</option>
+            <option name="42.9:68.7">#28e977</option>
+            <option name="68.7:110.0">#03e495</option>
+            <option name="110.0:175.9">#00ddcc</option>
+            <option name="175.9:281.5">#00a2d5</option>
+            <option name="281.5:450.4">#0053cd</option>
+            <option name="450.4:720.6">#0004c3</option>
+            <option name="720.6:1152.9">#4700b8</option>
+            <option name="1152.9:1844.7">#8a00ac</option>
+            <option name="1844.7:2951.5">#a0007e</option>
+            <option name="2951.5:4722.4">#94003a</option>
+            <option name="4722.4:10000000.8">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
         <format field="writes_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
@@ -1536,7 +1676,7 @@ $show_filter_chart$</query>
     <panel>
       <input type="dropdown" token="bubble_selected_field_x">
         <label>X series</label>
-        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
         <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
@@ -1552,7 +1692,7 @@ $show_filter_chart$</query>
         <choice value="metrics_readings">metrics_readings</choice>
         <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
         <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
-        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_hec_requests">avg_hec_requests</choice>
@@ -1562,16 +1702,17 @@ $show_filter_chart$</query>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
-        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
         <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
         <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
         <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
-        <default>average_kbps</default>
+        <default>avg_instantaneous_kbps</default>
       </input>
       <input type="dropdown" token="bubble_selected_field_y">
         <label>Y series</label>
-        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
         <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
@@ -1587,7 +1728,7 @@ $show_filter_chart$</query>
         <choice value="metrics_readings">metrics_readings</choice>
         <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
         <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
-        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_hec_requests">avg_hec_requests</choice>
@@ -1597,16 +1738,17 @@ $show_filter_chart$</query>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
-        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
         <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
         <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
         <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
         <default>avg_search_concurrency</default>
       </input>
       <input type="dropdown" token="bubble_selected_field_size">
         <label>Size</label>
-        <choice value="average_kbps">average_kbps</choice>
+        <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
         <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
         <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
@@ -1622,7 +1764,7 @@ $show_filter_chart$</query>
         <choice value="metrics_readings">metrics_readings</choice>
         <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
         <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
-        <choice value="skipped_metrics">skipped_metrics</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_hec_requests">avg_hec_requests</choice>
@@ -1632,12 +1774,13 @@ $show_filter_chart$</query>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
-        <choice value="max_s3_errors_put_ps">max_s3_errors_put_ps</choice>
+        <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
         <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
         <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
         <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
         <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
-        <default>average_kbps</default>
+        <default>avg_normalized_load_avg_1min</default>
       </input>
       <input type="dropdown" token="bubble_split_by">
         <label>Split by</label>
@@ -1656,8 +1799,12 @@ $show_filter_chart$</query>
           <query>| table $bubble_split_by$ $bubble_selected_field_x$ $bubble_selected_field_y$ $bubble_selected_field_size$
 $show_bubble$</query>
         </search>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMinimumSize">5</option>
         <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
         <option name="height">632</option>
         <option name="refresh.display">progressbar</option>
       </chart>
