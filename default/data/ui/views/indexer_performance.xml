@@ -548,6 +548,11 @@ $single_indexer_only$
         <choice value="| noop">Bubble chart</choice>
         <delimiter> </delimiter>
       </input>
+      <input type="checkbox" token="show_bar">
+        <label></label>
+        <choice value="| noop">Bar chart</choice>
+        <delimiter> </delimiter>
+      </input>
     </panel>
   </row>
   <row depends="$selected_stacks$,$show_filter_chart$">
@@ -687,6 +692,14 @@ $show_filter_chart$</query>
           <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
         </change>
       </input>
+      <input type="checkbox" token="transpose_table">
+        <label></label>
+        <choice value="| transpose header_field=short_host_for_pretty_output">Transpose table</choice>
+        <change>
+          <eval token="transpose_table">if(isnull($transpose_table$),"| noop",$transpose_table$)</eval>
+        </change>
+        <delimiter> </delimiter>
+      </input>
       <html>
 
 <style>
@@ -822,7 +835,10 @@ data.mem
 age_days
 cloud_flavor
 
-*</query>
+*
+$transpose_table$
+
+</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -836,7 +852,7 @@ cloud_flavor
         </format>
         <format type="color" field="avg_average_kbps">
           <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
-          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,4722.4</scale>
+          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,999999999999.4</scale>
         </format>
         <format type="number" field="avg_average_kbps">
           <option name="precision">0</option>
@@ -1076,6 +1092,33 @@ cloud_flavor
           <option name="precision">0</option>
           <option name="unit">days</option>
           <option name="useThousandSeparators">false</option>
+        </format>
+        <format field="readings" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0.95:1">#e9ffd2</option>
+            <option name="0.9:0.95">#e5fecf</option>
+            <option name="0.85:0.9">#ddfdc8</option>
+            <option name="0.80:0.85">#d2fcbd</option>
+            <option name="0.75:0.80">#c2faad</option>
+            <option name="0.70:0.75">#a9f79a</option>
+            <option name="0.65:0.70">#88f582</option>
+            <option name="0.60:0.65">#65f171</option>
+            <option name="0.55:0.60">#46ed6f</option>
+            <option name="0.50:0.55">#25e979</option>
+            <option name="0.45:0.50">#03e495</option>
+            <option name="0.40:0.45">#00dec6</option>
+            <option name="0.35:0.40">#00b1d7</option>
+            <option name="0.30:0.35">#006bcf</option>
+            <option name="0.25:0.30">#0023c7</option>
+            <option name="0.20:0.25">#2200bd</option>
+            <option name="0.15:0.20">#6300b3</option>
+            <option name="0.10:0.15">#9c00a9</option>
+            <option name="0.05:0.10">#9e0070</option>
+            <option name="0.00:0.05">#920034</option>
+          </option>
+          <option name="barWidth">2px</option>
         </format>
         <format field="s3_get_errors_ps" type="sparkline">
           <option name="type">bar</option>
@@ -1810,7 +1853,91 @@ $show_bubble$</query>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_debug$">
+  <row depends="$show_bar$">
+    <panel>
+      <input type="dropdown" token="bar_kpi">
+        <label>Select KPI</label>
+        <choice value="avg_average_kbps">avg_average_kbps</choice>
+        <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
+        <choice value="avg_blocked_queues_ps">avg_blocked_queues_ps</choice>
+        <choice value="normalized_stdev_ingestion">normalized_stdev_ingestion</choice>
+        <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
+        <choice value="avg_cpu_used_pct">avg_cpu_used_pct</choice>
+        <choice value="avg_mem_used">avg_mem_used</choice>
+        <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
+        <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
+        <choice value="avg_reads_ps">avg_reads_ps</choice>
+        <choice value="avg_search_concurrency">avg_search_concurrency</choice>
+        <choice value="avg_writes_kb_ps">avg_writes_kb_ps</choice>
+        <choice value="avg_writes_ps">avg_writes_ps</choice>
+        <choice value="metrics_readings">metrics_readings</choice>
+        <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
+        <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
+        <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="avg_broken_pipes">avg_broken_pipes</choice>
+        <choice value="avg_hec_requests">avg_hec_requests</choice>
+        <choice value="avg_hec_kb">avg_hec_kb</choice>
+        <choice value="avg_s2s_connections_per_second">avg_s2s_connections_per_second</choice>
+        <choice value="max_delay">max_delay</choice>
+        <choice value="current_delay">current_delay</choice>
+        <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
+        <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
+        <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
+        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="age_days">age_days</choice>
+        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
+        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
+        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <default>avg_normalized_load_avg_1min</default>
+      </input>
+      <input type="dropdown" token="bar_aggregation_function">
+        <label>Aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="bar_split_by_1">
+        <label>Select split by</label>
+        <choice value="stack">Stack</choice>
+        <choice value="short_host_for_pretty_output">host</choice>
+        <choice value="splunk_version">splunk_version</choice>
+        <choice value="instance_type">instance_type</choice>
+        <choice value="cloud_flavor">cloud_flavor</choice>
+        <default>host</default>
+      </input>
+      <input type="dropdown" token="bar_split_by_2">
+        <label>Select split by</label>
+        <choice value="stack">Stack</choice>
+        <choice value="short_host_for_pretty_output">host</choice>
+        <choice value="splunk_version">splunk_version</choice>
+        <choice value="instance_type">instance_type</choice>
+        <choice value="cloud_flavor">cloud_flavor</choice>
+        <default>stack</default>
+      </input>
+      <chart>
+        <search base="filtered_result_set">
+          <query>| chart $bar_aggregation_function$($bar_kpi$) by $bar_split_by_1$ $bar_split_by_1$
+| eval dummy=dummy."$show_bar$"</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
     <panel>
       <html>
       <style>
