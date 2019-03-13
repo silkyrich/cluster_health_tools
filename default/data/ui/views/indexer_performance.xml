@@ -260,6 +260,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
     latest(delay) as current_delay
     max(delay) as max_delay
     sum(readings_expected) as metrics_readings 
+    max(instantaneous_kbps) as max_instantaneous_kbps
     avg(instantaneous_kbps) as avg_instantaneous_kbps
     avg(average_kbps) as avg_average_kbps
     stdevp(instantaneous_kbps) as stdev_instantaneous_kbps 
@@ -748,6 +749,7 @@ readings
 avg_average_kbps
 average_kbps
 
+max_instantaneous_kbps
 avg_instantaneous_kbps
 normalized_stdev_ingestion
 instantaneous_kbps
@@ -826,14 +828,13 @@ age_days
 cloud_flavor
 
 *
-$transpose_table$
-
-</query>
+$transpose_table$</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <format type="number" field="indexer_cluster_size">
@@ -841,7 +842,7 @@ $transpose_table$
         </format>
         <format type="color" field="avg_average_kbps">
           <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
-          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,999999999999.4</scale>
+          <scale type="threshold">3.72,5.77,8.95,13.87,21.49,33.32,51.64,80.04,124.06,192.3,298.07,462,716.1,1109.96,1720.44,2666.68,4133.35,6406.69,9930.38,15392.08,23857.73,36979.48</scale>
         </format>
         <format type="number" field="avg_average_kbps">
           <option name="precision">0</option>
@@ -871,9 +872,13 @@ $transpose_table$
           <option name="precision">0</option>
           <option name="unit">kb ps</option>
         </format>
+        <format type="color" field="max_instantaneous_kbps">
+          <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
+          <scale type="threshold">0.00213,0.540541,3.42,6.33,11.71,21.67,40.09,74.17,137.21,253.83,469.59,868.74,1607.17,2973.26,5500.53,10175.97,18825.55,34827.27,64430.44,119196.32,999999999999</scale>
+        </format>
         <format type="color" field="avg_instantaneous_kbps">
           <colorPalette type="list">[#E9FFD2,#E4FECE,#DBFDC6,#CDFBB8,#B8F9A5,#98F68D,#6FF274,#4DEE6E,#28E977,#03E495,#00DDCC,#00A2D5,#0053CD,#0004C3,#4700B8,#8A00AC,#A0007E,#94003A,#870002]</colorPalette>
-          <scale type="threshold">1,1.6,2.6,4.1,6.6,10.5,16.8,26.8,42.9,68.7,110,175.9,281.5,450.4,720.6,1152.9,1844.7,2951.5,99999.4</scale>
+          <scale type="threshold">0.00213,0.540541,3.42,6.33,11.71,21.67,40.09,74.17,137.21,253.83,469.59,868.74,1607.17,2973.26,5500.53,10175.97,18825.55,34827.27,64430.44,119196.32,9999999999999</scale>
         </format>
         <format type="number" field="avg_instantaneous_kbps">
           <option name="precision">0</option>
@@ -981,6 +986,18 @@ $transpose_table$
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.052922,0.09526,0.171468,0.308642,0.555556,1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,99999999</scale>
         </format>
+        <format type="color" field="max_broken_pipes">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.000854,0.001673,0.00328,0.004591,0.006428,0.008999,0.012599,0.017639,0.024694,0.034572,0.0484,0.06776,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,99999999999</scale>
+        </format>
+        <format type="color" field="avg_broken_pipes">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.000854,0.001673,0.00328,0.004591,0.006428,0.008999,0.012599,0.017639,0.024694,0.034572,0.0484,0.06776,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,99999999999</scale>
+        </format>
+        <format type="color" field="normalized_stdev_ingestion">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.041519,0.061796,0.167017,0.203761,0.248589,0.303278,0.369999,0.451399,0.550707,0.671862,0.819672,1,1.22,1.49,1.82,2.22,2.7,3.3,4.02,4.91,9999999999</scale>
+        </format>
         <format type="number" field="max_s3_get_errors_ps">
           <option name="unit">ps</option>
         </format>
@@ -1022,10 +1039,6 @@ $transpose_table$
           <scale type="minMidMax"></scale>
         </format>
         <format type="number" field="read_write_ratio_kb_ps"></format>
-        <format type="color" field="normalized_stdev_ingestion">
-          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
-          <scale type="minMidMax"></scale>
-        </format>
         <format type="number" field="normalized_stdev_ingestion"></format>
         <format type="color" field="metrics_readings">
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
@@ -1086,6 +1099,11 @@ $transpose_table$
           <option name="precision">3</option>
           <option name="unit">ps</option>
         </format>
+        <format type="number" field="max_broken_pipes">
+          <option name="unit">ps</option>
+          <option name="useThousandSeparators">false</option>
+        </format>
+        <format type="number" field="max_instantaneous_kbps"></format>
         <format field="readings" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
@@ -1392,6 +1410,33 @@ $transpose_table$
           </option>
           <option name="barWidth">2px</option>
         </format>
+        <format field="broken_pipes" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0.000854:0.001195">#e9ffd2</option>
+            <option name="0.001673:0.002343">#e5fecf</option>
+            <option name="0.003280:0.004591">#ddfdc8</option>
+            <option name="0.004591:0.006428">#d2fcbd</option>
+            <option name="0.006428:0.008999">#c2faad</option>
+            <option name="0.008999:0.012599">#a9f79a</option>
+            <option name="0.012599:0.017639">#88f582</option>
+            <option name="0.017639:0.024694">#65f171</option>
+            <option name="0.024694:0.034572">#46ed6f</option>
+            <option name="0.034572:0.048400">#25e979</option>
+            <option name="0.048400:0.067760">#03e495</option>
+            <option name="0.067760:0.094865">#00dec6</option>
+            <option name="0.094865:0.132810">#00b1d7</option>
+            <option name="0.132810:0.185934">#006bcf</option>
+            <option name="0.185934:0.260308">#0023c7</option>
+            <option name="0.260308:0.364431">#2200bd</option>
+            <option name="0.364431:0.510204">#6300b3</option>
+            <option name="0.510204:0.714286">#9c00a9</option>
+            <option name="0.714286:1.000000">#9e0070</option>
+            <option name="1.0:1.4">#920034</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
         <format field="hec_kb" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
@@ -1536,25 +1581,27 @@ $transpose_table$
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0:1.6">#e9ffd2</option>
-            <option name="1.6:2.6">#e4fece</option>
-            <option name="2.6:4.1">#dbfdc6</option>
-            <option name="4.1:6.6">#cdfbb8</option>
-            <option name="6.6:10.5">#b8f9a5</option>
-            <option name="10.5:16.8">#98f68d</option>
-            <option name="16.8:26.8">#6ff274</option>
-            <option name="26.8:42.9">#4dee6e</option>
-            <option name="42.9:68.7">#28e977</option>
-            <option name="68.7:110.0">#03e495</option>
-            <option name="110.0:175.9">#00ddcc</option>
-            <option name="175.9:281.5">#00a2d5</option>
-            <option name="281.5:450.4">#0053cd</option>
-            <option name="450.4:720.6">#0004c3</option>
-            <option name="720.6:1152.9">#4700b8</option>
-            <option name="1152.9:1844.7">#8a00ac</option>
-            <option name="1844.7:2951.5">#a0007e</option>
-            <option name="2951.5:4722.4">#94003a</option>
-            <option name="4722.4:10000000.8">#870002</option>
+            <option name="0.002130:0.003940">#e9ffd2</option>
+            <option name="0.540541:1.000000">#e5fecf</option>
+            <option name="3.42:6.33">#ddfdc8</option>
+            <option name="6.33:11.71">#d2fcbd</option>
+            <option name="11.71:21.67">#c2faad</option>
+            <option name="21.67:40.09">#a9f79a</option>
+            <option name="40.09:74.17">#88f582</option>
+            <option name="74.17:137.21">#65f171</option>
+            <option name="137.21:253.83">#46ed6f</option>
+            <option name="253.83:469.59">#25e979</option>
+            <option name="469.59:868.74">#03e495</option>
+            <option name="868.74:1607.17">#00dec6</option>
+            <option name="1607.17:2973.26">#00b1d7</option>
+            <option name="2973.26:5500.53">#006bcf</option>
+            <option name="5500.53:10175.97">#0023c7</option>
+            <option name="10175.97:18825.55">#2200bd</option>
+            <option name="18825.55:34827.27">#6300b3</option>
+            <option name="34827.27:64430.44">#9c00a9</option>
+            <option name="64430.44:119196.32">#9e0070</option>
+            <option name="119196.32:220513.19">#920034</option>
+            <option name="220513.19:9999999999">#870002</option>
           </option>
           <option name="barWidth">2px</option>
         </format>
@@ -2000,7 +2047,7 @@ $show_bubble$</query>
   <row>
     <panel>
       <table>
-        <search base="broken_pipes_sid">
+        <search base="ingestion_sid">
           <query/>
         </search>
       </table>
