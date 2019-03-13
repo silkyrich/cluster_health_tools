@@ -128,7 +128,7 @@
     <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=1s
 | eval broken_pipes=broken_pipes/$seconds_for_bin$
 | stats 
-    max(broken_pipes) as broken_pipes
+    max(broken_pipes) as max_broken_pipes
     avg(broken_pipes) as avg_broken_pipes
     sparkline(sum(broken_pipes),$seconds_for_bin$sec) as broken_pipes 
     by host
