@@ -125,9 +125,10 @@
       <set token="broken_pipes_runtime">$job.runDuration$</set>
       <set token="broken_pipes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TERM(Broken) TERM(pipe) sourcetype=splunkd by _time host span=1s
-| eval broken_pipes=sum_broken_pipes/$seconds_for_bin$
+    <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=1s
+| eval broken_pipes=broken_pipes/$seconds_for_bin$
 | stats 
+    max(broken_pipes) as broken_pipes
     avg(broken_pipes) as avg_broken_pipes
     sparkline(sum(broken_pipes),$seconds_for_bin$sec) as broken_pipes 
     by host
@@ -155,7 +156,9 @@
     data.series::http_event_collector 
     $wildcard_filter_IN$  by host _time span=1s
 | makecontinuous _time
-| stats 
+| stats
+    max(hec_requests) as max_hec_requests
+    max(hec_kb) as max_hec_kb
     avg(hec_requests) as avg_hec_requests 
     avg(hec_kb) as avg_hec_kb 
     sparkline(sum(hec_requests),$seconds_for_bin_62$sec) as hec_requests
@@ -297,6 +300,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 | fields - cpu_idle_pct 
 | stats 
     avg(cpu_used_pct) as avg_cpu_used_pct
+    max(cpu_used_pct) as max_cpu_used_pct
     sparkline(avg(cpu_used_pct),$seconds_for_bin$sec) as cpu_used_pct 
     avg(normalized_load_avg_1min) as avg_normalized_load_avg_1min
     sparkline(avg(normalized_load_avg_1min),$seconds_for_bin$sec) as normalized_load_avg_1min 
@@ -751,6 +755,9 @@ instantaneous_kbps
 avg_blocked_queues_ps
 blocked_queues_ps
 
+avg_broken_pipes
+broken_pipes
+
 avg_normalized_load_avg_1min
 normalized_load_avg_1min
 
@@ -827,7 +834,6 @@ $transpose_table$
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
-        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <format type="number" field="indexer_cluster_size">
@@ -1075,6 +1081,10 @@ $transpose_table$
           <option name="precision">0</option>
           <option name="unit">days</option>
           <option name="useThousandSeparators">false</option>
+        </format>
+        <format type="number" field="avg_broken_pipes">
+          <option name="precision">3</option>
+          <option name="unit">ps</option>
         </format>
         <format field="readings" type="sparkline">
           <option name="type">bar</option>
@@ -1988,6 +1998,12 @@ $show_bubble$</query>
     </panel>
   </row>
   <row>
-    <panel><table><search base="ingestion_sid"></search></table></panel>
+    <panel>
+      <table>
+        <search base="broken_pipes_sid">
+          <query/>
+        </search>
+      </table>
+    </panel>
   </row>
 </form>
