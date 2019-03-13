@@ -3,17 +3,18 @@
   <description>Another groovy operations dashboard brought to you by Richard Morgan Productions</description>
   <search id="result_set">
     <query>
-    | loadjob $broken_pipes_sid$  
-    | append [| loadjob $crashes_sid$ ] 
-    | append [| loadjob $blocked_queues_sid$ ] 
-    | append [| loadjob $s2s_connections_sid$ ]
-    | append [| loadjob $hec_connections_sid$ ]
-    | append [| loadjob $ingestion_sid$ ]
-    | append [| loadjob $cpu_load_sid$ ]
-    | append [| loadjob $io_measure_sid$ ]
-    | append [| loadjob $concurrency_sid$ ]
-    | append [| loadjob $s3_errors_sid$ ]
-    | append [| loadjob $cachemanager_sid$ ]
+    | union 
+    [| loadjob $broken_pipes_sid$ ]
+    [| loadjob $crashes_sid$ ] 
+    [| loadjob $blocked_queues_sid$ ] 
+    [| loadjob $s2s_connections_sid$ ]
+    [| loadjob $hec_connections_sid$ ]
+    [| loadjob $ingestion_sid$ ]
+    [| loadjob $cpu_load_sid$ ]
+    [| loadjob $io_measure_sid$ ]
+    [| loadjob $concurrency_sid$ ]
+    [| loadjob $s3_errors_sid$ ]
+    [| loadjob $cachemanager_sid$ ]
 | stats list(*) as * by host 
 | lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
 | rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
@@ -1962,7 +1963,9 @@ $show_bubble$</query>
         <choice value="sum">sum</choice>
         <choice value="range">range</choice>
         <choice value="var">variance</choice>
-        <default>avg</default>
+        <choice value="count">count</choice>
+        <choice value="dc">dc</choice>
+        <default>count</default>
       </input>
       <input type="dropdown" token="bar_split_by">
         <label>Select split by</label>
@@ -1974,7 +1977,7 @@ $show_bubble$</query>
         <choice value="stack splunk_version">stack, splunk_version</choice>
         <choice value="stack cloud_flavor">stack, cloud_flavor</choice>
         <choice value="splunk_version stack">splunk_version, stack</choice>
-        <default>stack</default>
+        <default>splunk_version stack</default>
       </input>
       <html>
 
