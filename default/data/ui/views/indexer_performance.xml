@@ -1964,22 +1964,16 @@ $show_bubble$</query>
         <choice value="var">variance</choice>
         <default>avg</default>
       </input>
-      <input type="dropdown" token="bar_split_by_1">
+      <input type="dropdown" token="bar_split_by">
         <label>Select split by</label>
-        <choice value="stack">Stack</choice>
-        <choice value="short_host_for_pretty_output">host</choice>
+        <choice value="stack">stack</choice>
         <choice value="splunk_version">splunk_version</choice>
         <choice value="instance_type">instance_type</choice>
         <choice value="cloud_flavor">cloud_flavor</choice>
-        <default>host</default>
-      </input>
-      <input type="dropdown" token="bar_split_by_2">
-        <label>Select split by</label>
-        <choice value="stack">Stack</choice>
-        <choice value="short_host_for_pretty_output">Host</choice>
-        <choice value="splunk_version">splunk_version</choice>
-        <choice value="instance_type">instance_type</choice>
-        <choice value="cloud_flavor">cloud_flavor</choice>
+        <choice value="stack instance_type">stack, instance_type</choice>
+        <choice value="stack splunk_version">stack, splunk_version</choice>
+        <choice value="stack cloud_flavor">stack, cloud_flavor</choice>
+        <choice value="splunk_version stack">splunk_version, stack</choice>
         <default>stack</default>
       </input>
       <html>
@@ -2000,7 +1994,7 @@ $show_bubble$</query>
 </html>
       <chart>
         <search base="filtered_result_set">
-          <query>| chart limit=100 $bar_aggregation_function$($bar_kpi$) by $bar_split_by_1$ $bar_split_by_2$
+          <query>| chart limit=100 $bar_aggregation_function$($bar_kpi$) by $bar_split_by$
 | eval dummy=dummy."$show_bar$"</query>
         </search>
         <option name="charting.chart">column</option>
@@ -2042,15 +2036,6 @@ $show_bubble$</query>
 <br/> <b>total_runtime=$total_time$</b>
 </div>
       </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="ingestion_sid">
-          <query/>
-        </search>
-      </table>
     </panel>
   </row>
 </form>
