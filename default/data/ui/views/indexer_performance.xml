@@ -183,7 +183,7 @@
 | eval command=if(isnull(command),"put",command) 
 | stats count as s3_errors by host _time command 
 | eval s3_errors_ps=s3_errors/$seconds_for_bin$
-| stats count 
+| stats  
     max(eval(if(command="get",s3_errors_ps,0))) as max_s3_get_errors_ps 
     max(eval(if(command="put",s3_errors_ps,0))) as max_s3_put_errors_ps 
     sparkline(sum(eval(if(command="get",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_get_errors_ps 
@@ -519,23 +519,11 @@ $single_indexer_only$
   <row depends="$show_elements$">
     <panel>
       <title>Show elements</title>
-      <input type="checkbox" token="show_banner">
-        <label></label>
-        <choice value="| noop">Banner</choice>
-        <default>| noop</default>
-        <delimiter> </delimiter>
-      </input>
       <input type="checkbox" token="show_debug">
         <label></label>
         <choice value="| noop">Debug</choice>
         <delimiter> </delimiter>
         <default>| noop</default>
-      </input>
-      <input type="checkbox" token="show_filter_chart">
-        <label></label>
-        <choice value="| noop">Filter chart</choice>
-        <default>| noop</default>
-        <delimiter> </delimiter>
       </input>
       <input type="checkbox" token="show_table">
         <label></label>
@@ -555,7 +543,7 @@ $single_indexer_only$
       </input>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_filter_chart$">
+  <row depends="$selected_stacks$">
     <panel>
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
@@ -643,8 +631,7 @@ $single_indexer_only$
 | eventstats mode(eval(upper-lower)) as delta
 | eval upper=if(isnull(upper),lower+delta,upper),stack=if(isnull(stack),"NULL",stack), $selected_field$=if(isnull($selected_field$),lower."-".upper,$selected_field$)
 | chart count limit=100 by $selected_field$ $split_by$
-| fields - NULL upper lower
-$show_filter_chart$</query>
+| fields - NULL upper lower</query>
         </search>
         <selection>
           <eval token="filter_lower_bound">mvindex(split($start$,"-"),0)</eval>
@@ -661,26 +648,6 @@ $show_filter_chart$</query>
           <set token="selected_stack">$click.name2$</set>
         </drilldown>
       </chart>
-    </panel>
-  </row>
-  <row depends="$selected_stacks$,$show_banner">
-    <panel>
-      <html>
-
-<style>
-#filter {
-    padding: 10px;
-    font-family: sans-serif;
-    font-size: xx-large;
-}
-
-</style>
-
-<div id="filter">
-    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
-</div>
-
-</html>
     </panel>
   </row>
   <row depends="$selected_stacks$,$show_table$">
@@ -700,6 +667,22 @@ $show_filter_chart$</query>
         </change>
         <delimiter> </delimiter>
       </input>
+      <html>
+
+<style>
+#filter {
+    padding: 10px;
+    font-family: sans-serif;
+    font-size: xx-large;
+}
+
+</style>
+
+<div id="filter">
+    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+</div>
+
+</html>
       <html>
 
 <style>
@@ -1837,6 +1820,22 @@ $transpose_table$
           <set token="selected_stack">*</set>
         </change>
       </input>
+      <html>
+
+<style>
+#filter {
+    padding: 10px;
+    font-family: sans-serif;
+    font-size: xx-large;
+}
+
+</style>
+
+<div id="filter">
+    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+</div>
+
+</html>
       <chart>
         <search base="filtered_result_set">
           <query>| table $bubble_split_by$ $bubble_selected_field_x$ $bubble_selected_field_y$ $bubble_selected_field_size$
@@ -1920,19 +1919,37 @@ $show_bubble$</query>
       <input type="dropdown" token="bar_split_by_2">
         <label>Select split by</label>
         <choice value="stack">Stack</choice>
-        <choice value="short_host_for_pretty_output">host</choice>
+        <choice value="short_host_for_pretty_output">Host</choice>
         <choice value="splunk_version">splunk_version</choice>
         <choice value="instance_type">instance_type</choice>
         <choice value="cloud_flavor">cloud_flavor</choice>
         <default>stack</default>
       </input>
+      <html>
+
+<style>
+#filter {
+    padding: 10px;
+    font-family: sans-serif;
+    font-size: xx-large;
+}
+
+</style>
+
+<div id="filter">
+    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+</div>
+
+</html>
       <chart>
         <search base="filtered_result_set">
-          <query>| chart $bar_aggregation_function$($bar_kpi$) by $bar_split_by_1$ $bar_split_by_1$
+          <query>| chart limit=100 $bar_aggregation_function$($bar_kpi$) by $bar_split_by_1$ $bar_split_by_2$
 | eval dummy=dummy."$show_bar$"</query>
         </search>
         <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
+        <option name="height">503</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -1969,5 +1986,8 @@ $show_bubble$</query>
 </div>
       </html>
     </panel>
+  </row>
+  <row>
+    <panel><table><search base="ingestion_sid"></search></table></panel>
   </row>
 </form>
