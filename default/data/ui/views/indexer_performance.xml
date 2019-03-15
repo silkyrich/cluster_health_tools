@@ -334,14 +334,19 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
     $wildcard_filter_IN$ 
     index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=1sec 
 | stats 
+    max(avg_service_ms) as max_avg_service_ms
     avg(avg_service_ms) as avg_avg_service_ms
     sparkline(avg(avg_service_ms),$seconds_for_bin_62$sec) as avg_service_ms 
+    max(reads_ps) as max_reads_ps
     avg(reads_ps) as avg_reads_ps
     sparkline(avg(reads_ps),$seconds_for_bin_62$sec) as reads_ps 
+    max(writes_ps) as max_writes_ps
     avg(writes_ps) as avg_writes_ps
     sparkline(avg(writes_ps),$seconds_for_bin_62$sec) as writes_ps 
+    max(reads_kb_ps) as max_reads_kb_ps
     avg(reads_kb_ps) as avg_reads_kb_ps
     sparkline(avg(reads_kb_ps),$seconds_for_bin_62$sec) as reads_kb_ps 
+    max(writes_kb_ps) as max_writes_kb_ps
     avg(writes_kb_ps) as avg_writes_kb_ps
     sparkline(avg(writes_kb_ps),$seconds_for_bin_62$sec) as writes_kb_ps 
     by host
