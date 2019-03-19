@@ -291,6 +291,33 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  
+  <search id="count_search_sid">
+    <refresh>$refresh_rate_seconds$</refresh>
+    <progress>
+      <unset token="count_search_sid"></unset>
+      <unset token="count_search_runtime"></unset>
+      <set token="count_search_progress">$job.doneProgress$</set>
+    </progress>
+    <done>
+      <set token="count_search_sid">$job.sid$</set>
+      <set token="count_search_runtime">$job.runDuration$</set>
+      <set token="count_search_progress">$job.doneProgress$</set>
+    </done>
+    <query>
+| tstats count where index=customer_internal $wildcard_filter_IN$
+    sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting) by host _time span=$seconds_for_bin$sec
+| eval count=count/$seconds_for_bin$
+| stats 
+    avg(count) as avg_searches_ps
+    max(count) as max_searches_ps
+    sparkline(avg(count),$seconds_for_bin$sec) as searches_ps 
+    by host  
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>  
+  
   <search id="io_measure_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
@@ -418,7 +445,7 @@ $single_indexer_only$
         <latest>now</latest>
       </search>
       <valuePrefix>customer_type=</valuePrefix>
-      <delimiter>OR</delimiter>
+      <delimiter> OR </delimiter>
     </input>
     <input type="multiselect" token="selected_stacks">
       <label>Select stacks to chart</label>
@@ -439,7 +466,7 @@ $single_indexer_only$
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
-      <delimiter>OR</delimiter>
+      <delimiter> OR </delimiter>
       <prefix>(</prefix>
       <suffix>)</suffix>
       <change>
@@ -489,7 +516,7 @@ $single_indexer_only$
       </change>
       <default>*</default>
       <valuePrefix>region=</valuePrefix>
-      <delimiter>OR</delimiter>
+      <delimiter> OR </delimiter>
     </input>
     <input type="checkbox" token="show_elements">
       <label></label>
@@ -2505,5 +2532,16 @@ $show_bubble$</query>
                 </div>
             </html>
     </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search base="count_search_sid"></search>
+        
+      </table>
+      
+      
+    </panel>    
+    
   </row>
 </form>
