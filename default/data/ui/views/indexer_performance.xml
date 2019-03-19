@@ -8,6 +8,7 @@
     [| loadjob $blocked_queues_sid$ ] 
     [| loadjob $s2s_connections_sid$ ]
     [| loadjob $hec_connections_sid$ ]
+    [| loadjob $count_search_sid$ ]
     [| loadjob $ingestion_sid$ ]
     [| loadjob $cpu_load_sid$ ]
     [| loadjob $io_measure_sid$ ]
@@ -32,7 +33,7 @@
       <set token="final_report_runtime">$job.runDuration$</set>
       <set token="final_report_progress">$job.doneProgress$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$bucket_access_runtime$+$cachemanager_runtime$+$crashes_runtime$+$final_report_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$bucket_access_runtime$+$cachemanager_runtime$+$crashes_runtime$+$count_search_runtime$+$final_report_runtime$</eval>
     </done>
   </search>
   <search id="crashes_sid">
@@ -291,7 +292,6 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  
   <search id="count_search_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
@@ -316,8 +316,7 @@
     </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
-  </search>  
-  
+  </search>
   <search id="io_measure_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
@@ -378,6 +377,7 @@
     component=PerProcess 
     data.search_props.sid=* by host _time span=1sec
 | stats 
+    max(search_concurrency) as max_search_concurrency
     avg(search_concurrency) as avg_search_concurrency
     sparkline(avg(search_concurrency),$seconds_for_bin$sec) as search_concurrency 
     by host</query>
@@ -634,7 +634,7 @@ $single_indexer_only$
         <choice value="750">750</choice>
         <choice value="1000">1000</choice>
         <prefix>bins=</prefix>
-        <default>50</default>
+        <default>250</default>
       </input>
       <input type="checkbox" token="filter">
         <label>Toggle to clear $selected_stack$ from filter</label>
@@ -754,20 +754,9 @@ instance_type
 skipped_readings
 readings
 
-avg_average_kbps
-average_kbps
-
-max_instantaneous_kbps
-avg_instantaneous_kbps
-normalized_stdev_ingestion
-instantaneous_kbps
-
-avg_blocked_queues_ps
-blocked_queues_ps
-
-max_broken_pipes
-avg_broken_pipes
-broken_pipes
+max_cpu_used_pct
+avg_cpu_used_pct
+cpu_used_pct
 
 avg_normalized_load_avg_1min
 normalized_load_avg_1min
@@ -776,15 +765,13 @@ current_delay
 max_delay
 event_delay
 
-avg_search_concurrency
-search_concurrency
+avg_average_kbps
+average_kbps
 
-max_cpu_used_pct
-avg_cpu_used_pct
-cpu_used_pct
-
-avg_mem_used
-mem_used
+max_instantaneous_kbps
+avg_instantaneous_kbps
+normalized_stdev_ingestion
+instantaneous_kbps
 
 avg_s2s_connections_per_second
 s2s_connections
@@ -796,6 +783,40 @@ hec_kb
 max_hec_requests
 avg_hec_requests
 hec_requests
+
+avg_blocked_queues_ps
+blocked_queues_ps
+
+max_broken_pipes
+avg_broken_pipes
+broken_pipes
+
+max_searches_ps
+avg_searches_ps
+searches_ps
+
+max_search_concurrency
+avg_search_concurrency
+search_concurrency
+
+max_buckets_touched_ps
+avg_buckets_touched_ps
+buckets_touched_ps
+
+max_bucket_download_ps
+avg_bucket_download_ps
+bucket_download_ps
+
+max_bucket_eviction_ps
+avg_bucket_eviction_ps
+bucket_eviction_ps
+
+max_bucket_upload_ps
+avg_bucket_upload_ps
+cachemanager_upload_ps
+
+avg_mem_used
+mem_used
 
 max_writes_kb_ps
 avg_writes_kb_ps
@@ -816,22 +837,6 @@ reads_kb_ps
 max_avg_service_ms
 avg_avg_service_ms
 avg_service_ms
-
-max_bucket_download_ps
-avg_bucket_download_ps
-bucket_download_ps
-
-max_bucket_eviction_ps
-avg_bucket_eviction_ps
-bucket_eviction_ps
-
-max_bucket_upload_ps
-avg_bucket_upload_ps
-cachemanager_upload_ps
-
-max_buckets_touched_ps
-avg_buckets_touched_ps
-buckets_touched_ps
 
 data.cpu_count
 data.mem
@@ -943,7 +948,15 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.006086,0.008216,0.011092,0.014974,0.020214,0.027289,0.036841,0.049735,0.067142,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1,1.35,9999.82</scale>
         </format>
+        <format type="color" field="max_avg_service_ms">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.006086,0.008216,0.011092,0.014974,0.020214,0.027289,0.036841,0.049735,0.067142,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1,1.35,9999.82</scale>
+        </format>
         <format type="number" field="avg_avg_service_ms">
+          <option name="precision">4</option>
+          <option name="unit">ms</option>
+        </format>
+        <format type="number" field="max_avg_service_ms">
           <option name="precision">4</option>
           <option name="unit">ms</option>
         </format>
@@ -955,6 +968,10 @@ $transpose_table$</query>
           <option name="unit">kbps</option>
         </format>
         <format type="color" field="avg_search_concurrency">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.2,1.4,1.7,2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,999.3</scale>
+        </format>
+        <format type="color" field="max_search_concurrency">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">1,1.2,1.4,1.7,2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,999.3</scale>
         </format>
@@ -1041,6 +1058,14 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
         </format>
+        <format type="color" field="max_searches_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.049735,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1.00,1.35,1.82,2.46,3.32,4.48,6.05,8.17,11.03,14.89,20.11</scale>
+        </format>
+        <format type="color" field="avg_searches_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.049735,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1.00,1.35,1.82,2.46,3.32,4.48,6.05,8.17,11.03,14.89,20.11</scale>
+        </format>
         <format type="color" field="max_bucket_upload_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
@@ -1105,6 +1130,14 @@ $transpose_table$</query>
         <format type="number" field="stdev_instantaneous_kbps">
           <option name="precision">0</option>
           <option name="unit">kbps</option>
+        </format>
+        <format type="number" field="max_searches_ps">
+          <option name="precision">4</option>
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="avg_searches_ps">
+          <option name="precision">4</option>
+          <option name="unit">ps</option>
         </format>
         <format type="number" field="read_write_ratio_ps">
           <option name="unit">ps</option>
@@ -1638,6 +1671,34 @@ $transpose_table$</query>
             <option name="1.35:1.82">#9e0070</option>
             <option name="1.82:2.46">#920034</option>
             <option name="2.46:99999">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
+        <format field="searches_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0.049735:0.067142">#e9ffd2</option>
+            <option name="0.090642:0.122367">#e5fecf</option>
+            <option name="0.122367:0.165195">#ddfdc8</option>
+            <option name="0.165195:0.223014">#d2fcbd</option>
+            <option name="0.223014:0.301068">#c2faad</option>
+            <option name="0.301068:0.406442">#a9f79a</option>
+            <option name="0.406442:0.548697">#88f582</option>
+            <option name="0.548697:0.740741">#65f171</option>
+            <option name="0.740741:1.000000">#46ed6f</option>
+            <option name="1.00:1.35">#25e979</option>
+            <option name="1.35:1.82">#03e495</option>
+            <option name="1.82:2.46">#00dec6</option>
+            <option name="2.46:3.32">#00b1d7</option>
+            <option name="3.32:4.48">#006bcf</option>
+            <option name="4.48:6.05">#0023c7</option>
+            <option name="6.05:8.17">#2200bd</option>
+            <option name="8.17:11.03">#6300b3</option>
+            <option name="11.03:14.89">#9c00a9</option>
+            <option name="14.89:20.11">#9e0070</option>
+            <option name="20.11:27.14">#920034</option>
+            <option name="27.14:99999999">#870002</option>
           </option>
           <option name="barWidth">2px</option>
         </format>
@@ -2517,6 +2578,8 @@ $show_bubble$</query>
 
                     <br/> io=$io_measure_sid$ runtime=$io_measure_runtime$ progress=$io_measure_progress$
 
+                    <br/> io=$count_search_sid$ runtime=$count_search_runtime$ progress=$count_search_progress$
+
                     <br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$ progress=$concurrency_progress$
 
                     <br/> bucket_access_sid=$bucket_access_sid$ runtime=$bucket_access_runtime$ progress=$bucket_access_progress$
@@ -2532,16 +2595,5 @@ $show_bubble$</query>
                 </div>
             </html>
     </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="count_search_sid"></search>
-        
-      </table>
-      
-      
-    </panel>    
-    
   </row>
 </form>
