@@ -391,7 +391,6 @@
     </progress>
     <done>
       <set token="StackNames_IN">$result.stackNameFilter_IN$</set>
-      <set token="all_indexers_IN">$result.all_indexers_IN$</set>
       <set token="wildcard_filter_IN">$result.wildcard_filter_IN$</set>
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
@@ -2599,13 +2598,6 @@ $show_bubble$</query>
                     <b>total_runtime=$total_time$</b>
                 </div>
             </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="get_lists"></search>
-      </table>
     </panel>
   </row>
 </form>
