@@ -2,8 +2,7 @@
   <label>Indexer performance and stability</label>
   <description>Another groovy operations dashboard brought to you by Richard Morgan Productions</description>
   <search id="result_set">
-    <query>
-    | union 
+    <query>| union 
     [| loadjob $broken_pipes_sid$ ]
     [| loadjob $crashes_sid$ ] 
     [| loadjob $blocked_queues_sid$ ] 
@@ -19,8 +18,7 @@
 | lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
 | rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
 | eval age_days=round((now()-strptime(launch_time, "%Y-%m-%dT%H:%M:%S.000Z"))/(24*60*60),0)
-| table host *
-</query>
+| table host *</query>
     <earliest>$earliest$</earliest>
     <latest>$latest$</latest>
     <progress>
@@ -49,9 +47,7 @@
       <set token="crashes_runtime">$job.runDuration$</set>
       <set token="crashes_progress">$job.doneProgress$</set>
     </done>
-    <query>
-
-| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+    <query>| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
 | eval crash_type="mothership" 
 | tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=1s 
 | eval crash_type=if(isnull(crash_type),"search","mothership") 
@@ -60,9 +56,7 @@
 | stats 
     count(eval(crash_type="mothership")) as total_mothership_crashes
     count(eval(crash_type="search")) as total_search_crashes
-    by host
-
-    </query>
+    by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -78,16 +72,13 @@
       <set token="s2s_connections_runtime">$job.runDuration$</set>
       <set token="s2s_connections_progress">$job.doneProgress$</set>
     </done>
-    <query>
-      | tstats count as s2s_connections where $wildcard_filter_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count as s2s_connections where $wildcard_filter_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
 | eval s2s_connections=s2s_connections/$seconds_for_bin$
 | stats 
     avg(s2s_connections) as avg_s2s_connections_per_second 
     sparkline(sum(s2s_connections),$seconds_for_bin$sec) as s2s_connections 
     by host
-| eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)
-      
-    </query>
+| eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -130,8 +121,7 @@
     max(broken_pipes) as max_broken_pipes
     avg(broken_pipes) as avg_broken_pipes
     sparkline(sum(broken_pipes),$seconds_for_bin$sec) as broken_pipes 
-    by host
-</query>
+    by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -178,15 +168,13 @@
       <set token="bucket_access_runtime">$job.runDuration$</set>
       <set token="bucket_access_progress">$job.doneProgress$</set>
     </done>
-    <query>
-| tstats count where index=customer_splunkd sourcetype=splunkd_access* $wildcard_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
+    <query>| tstats count where index=customer_splunkd sourcetype=splunkd_access* $wildcard_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
 | eval count_ps=count/$seconds_for_bin$
 | stats  
     max(count_ps) as max_buckets_touched_ps
     avg(count_ps) as avg_buckets_touched_ps
     sparkline(sum(count_ps),31sec) as buckets_touched_ps 
-    by host
-</query>
+    by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -202,8 +190,7 @@
       <set token="cachemanager_runtime">$job.runDuration$</set>
       <set token="cachemanager_progress">$job.doneProgress$</set>
     </done>
-    <query>
-| tstats prestats=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats prestats=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action="upload" 
 | tstats prestats=t append=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action=if(isnull(action),"download",action) 
@@ -221,8 +208,7 @@
     avg(eval(if(action="upload",count,0))) as avg_bucket_upload_ps 
     sparkline(sum(eval(if(action="eviction",count,0))),$seconds_for_bin$sec) as bucket_eviction_ps 
     sparkline(sum(eval(if(action="download",count,0))),$seconds_for_bin$sec) as bucket_download_ps 
-    by host
-</query>
+    by host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -238,8 +224,7 @@
       <set token="ingestion_runtime">$job.runDuration$</set>
       <set token="ingestion_progress">$job.doneProgress$</set>
     </done>
-    <query>
-index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
+    <query>index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
 | eval delay=_indextime-_time
 | fields - kb total_k_processed eps instantaneous_eps ev
 | eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
@@ -268,8 +253,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
 | addinfo 
 | eval expected_metrics_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
 | eval skipped_readings=expected_metrics_readings-metrics_readings
-| fields - info_* expected_metrics_readings      
-      </query>
+| fields - info_* expected_metrics_readings</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -285,8 +269,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <set token="cpu_load_runtime">$job.runDuration$</set>
       <set token="cpu_load_progress">$job.doneProgress$</set>
     </done>
-    <query>
-| tstats 
+    <query>| tstats 
     avg(data.cpu_idle_pct) as cpu_idle_pct
     avg(data.mem_used) as mem_used
     avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
@@ -304,9 +287,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
     avg(mem_used) as avg_mem_used
     sparkline(avg(mem_used),$seconds_for_bin$sec) as mem_used     
     by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host
-| rename data.splunk_version as splunk_version
-    
-    </query>
+| rename data.splunk_version as splunk_version</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -388,9 +369,7 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
     </done>
-    <query>
-      
-| inputlookup aws_inventory where $selected_stacks$ role=indexer region=* 
+    <query>| inputlookup aws_inventory where $selected_stacks$ role=indexer region=* 
 | stats 
     values(eval(if(role="indexer",FQDN,""))) as all_indexers by stack 
 | stats values(*) as * 
@@ -398,20 +377,16 @@ index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(gro
     stackNameFilter_IN="(".mvjoin(StackNameFilter," OR ").")",
     all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")",
     wildcard_filter_IN="host IN (idx*.".mvjoin(mvfilter(stack!=""),".*, idx*.").".*)" 
-| fields - all_indexers index
-
-</query>
+| fields - all_indexers index</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
   </search>
   <search base="result_set" id="filtered_result_set">
-    <query>
-| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
+    <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
 $single_indexer_only$
 | fields - data.os_version data.instance_guid data.os_build host launch_time
-| sort - $selected_field$
-</query>
+| sort - $selected_field$</query>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -443,7 +418,7 @@ $single_indexer_only$
         <latest>now</latest>
       </search>
       <valuePrefix>customer_type=</valuePrefix>
-      <delimiter> OR </delimiter>
+      <delimiter>OR</delimiter>
     </input>
     <input type="multiselect" token="selected_stacks">
       <label>Select stacks to chart</label>
@@ -464,7 +439,7 @@ $single_indexer_only$
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
-      <delimiter> OR </delimiter>
+      <delimiter>OR</delimiter>
       <prefix>(</prefix>
       <suffix>)</suffix>
       <change>
@@ -514,43 +489,43 @@ $single_indexer_only$
       </change>
       <default>*</default>
       <valuePrefix>region=</valuePrefix>
-      <delimiter> OR </delimiter>
+      <delimiter>OR</delimiter>
     </input>
     <input type="checkbox" token="show_elements">
       <label></label>
       <choice value="| noop">Select UI elements</choice>
-      <delimiter> </delimiter>
+      <delimiter/>
     </input>
   </fieldset>
   <row depends="$show_elements$">
     <panel>
       <title>Show elements</title>
+      <input type="checkbox" token="show_documentation">
+        <label></label>
+        <choice value="| noop">Documentation</choice>
+        <delimiter/>
+      </input>
       <input type="checkbox" token="show_debug">
         <label></label>
         <choice value="| noop">Debug</choice>
-        <delimiter> </delimiter>
+        <delimiter/>
         <default>| noop</default>
       </input>
       <input type="checkbox" token="show_table">
         <label></label>
         <choice value="| noop">Table</choice>
-        <delimiter> </delimiter>
+        <delimiter/>
         <default>| noop</default>
       </input>
       <input type="checkbox" token="show_bubble">
         <label></label>
         <choice value="| noop">Bubble chart</choice>
-        <delimiter> </delimiter>
+        <delimiter/>
       </input>
       <input type="checkbox" token="show_bar">
         <label></label>
         <choice value="| noop">Bar chart</choice>
-        <delimiter> </delimiter>
-      </input>
-      <input type="checkbox" token="show_documentation">
-        <label></label>
-        <choice value="| noop">Documentation</choice>
-        <delimiter> </delimiter>
+        <delimiter/>
       </input>
     </panel>
   </row>
@@ -640,7 +615,7 @@ $single_indexer_only$
         <change>
           <set token="selected_stack">*</set>
         </change>
-        <delimiter> </delimiter>
+        <delimiter/>
       </input>
       <chart>
         <title>Distribution of $selected_field$</title>
@@ -693,28 +668,20 @@ $single_indexer_only$
         <change>
           <eval token="transpose_table">if(isnull($transpose_table$),"| noop",$transpose_table$)</eval>
         </change>
-        <delimiter> </delimiter>
+        <delimiter/>
       </input>
       <html>
-
-<style>
-#filter {
+                <style>#filter {
     padding: 10px;
     font-family: sans-serif;
     font-size: xx-large;
-}
-
-</style>
-
-<div id="filter">
-    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
-</div>
-
-</html>
+}</style>
+                <div id="filter">
+                    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+                </div>
+            </html>
       <html>
-
-<style>
-#legend {
+                <style>#legend {
     display: grid;
     grid: auto / auto auto auto;
     padding: 10px;
@@ -726,31 +693,22 @@ $single_indexer_only$
                                 #00dec6, #00b1d7, #006bcf, #0023c7,
                                 #2200bd, #6300b3, #9c00a9, #9e0070,
                                 #920034, #870002);
-}
-
-</style>
-
-<div id="legend">
-    <div class="low">Very Low</div>
-    <div style="color:#ffffa2" align="center"/>
-    <div style="color:white" align="right">Very High</div>
-</div>
-
-</html>
+}</style>
+                <div id="legend">
+                    <div class="low">Very Low</div>
+                    <div style="color:#ffffa2" align="center"/>
+                    <div style="color:white" align="right">Very High</div>
+                </div>
+            </html>
       <html>
-
-<style>
-
-#count {
+                <style>#count {
     font-family: sans-serif;
     font-size: large;
     padding: 15px;
     margin: auto;
-}
-</style>
-
-    <div id="count">Showing $filtered_indexers$ of $all_indexers$ indexers</div>
-</html>
+}</style>
+                <div id="count">Showing $filtered_indexers$ of $all_indexers$ indexers</div>
+            </html>
       <table>
         <title>The selected of indexers based on the chart configuration above</title>
         <search base="filtered_result_set">
@@ -1886,8 +1844,8 @@ $transpose_table$</query>
   <row rejects="$selected_stacks$,$selected_stacks$">
     <panel>
       <html>
-      <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
-    </html>
+                <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
+            </html>
     </panel>
   </row>
   <row depends="$selected_stacks$,$show_bubble$">
@@ -2062,21 +2020,15 @@ $transpose_table$</query>
         </change>
       </input>
       <html>
-
-<style>
-#filter {
+                <style>#filter {
     padding: 10px;
     font-family: sans-serif;
     font-size: xx-large;
-}
-
-</style>
-
-<div id="filter">
-    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
-</div>
-
-</html>
+}</style>
+                <div id="filter">
+                    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+                </div>
+            </html>
       <chart>
         <search base="filtered_result_set">
           <query>| table $bubble_split_by$ $bubble_selected_field_x$ $bubble_selected_field_y$ $bubble_selected_field_size$
@@ -2180,21 +2132,15 @@ $show_bubble$</query>
         <default>splunk_version stack</default>
       </input>
       <html>
-
-<style>
-#filter {
+                <style>#filter {
     padding: 10px;
     font-family: sans-serif;
     font-size: xx-large;
-}
-
-</style>
-
-<div id="filter">
-    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
-</div>
-
-</html>
+}</style>
+                <div id="filter">
+                    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+                </div>
+            </html>
       <chart>
         <search base="filtered_result_set">
           <query>| chart limit=100 $bar_aggregation_function$($bar_kpi$) by $bar_split_by$
@@ -2211,349 +2157,353 @@ $show_bubble$</query>
   <row depends="$show_documentation$">
     <panel>
       <html>
-
-<table>
-
-
-<table>
-   <tr>
-      <td>title</td>
-      <td>Report</td>
-      <td>Description</td>
-   </tr>
-   <tr>
-      <td>short_host_for_pretty_output</td>
-      <td>hostname</td>
-      <td>A short name for the indexer, it has been truncated to remove redunddant information. The old StackMakr instances have names like idx1 idx2 etc, whereas the CloudWorks names include the AWS instance GUID embedded meaning very name is unique. When an indexer dies it is automatically replaced via the magic of automation with a new name, the stackmakr names are recycled.</td>
-   </tr>
-   <tr>
-      <td>stack_name</td>
-      <td>aws_inventory</td>
-      <td>The name of the Splunk Cloud stack, it is typically a shortened version of the customer name. You can find the stack id in SFDC with this as a key.</td>
-   </tr>
-   <tr>
-      <td>splunk_version</td>
-      <td>hostwide</td>
-      <td>The version of the Splunk instance is printed out every 62 seconds in introspection via the hostwide component. Very instance in the cluster should be the same version, unless it is being upgraded.</td>
-   </tr>
-   <tr>
-      <td>instance_type</td>
-      <td>aws_inventory</td>
-      <td>The type of host purchased from Amazon. Typically this is the i3.8xl for cloudworks builds. This data is pulled from aws_inventory. Unfortunately when we loose an indexer we no longer know what version it was running.</td>
-   </tr>
-   <tr>
-      <td>skipped_readings</td>
-      <td>ingestion</td>
-      <td>Metrics triggers very 31 seconds, so in 10 mins we expect in 19 readings. How many times did this fail to happen? A little bit of jitter in this reading is OK, but when we see a large number of skipped readings we know that the host is in distress. If you have a cluster and only one indexer doing this, it is either a sticky forwarder ruining the party, or a faulty host to shoot in the head.</td>
-   </tr>
-   <tr>
-      <td>readings</td>
-      <td>ingestion</td>
-      <td>A sparkline for readings, you can see where the readings were skipped. Ideally this should be inverted, but I don't know how to do this in a computationally efficent manor.</td>
-   </tr>
-   <tr>
-      <td>total_mothership_crashes</td>
-      <td>crashes</td>
-      <td>There is only one splunkd indexing data and launching search processes. We call this "mothership", should "mothership" go down it is a major event and much infrastructure for HA kicks off. We don't want to see this process ever crash.</td>
-   </tr>
-   <tr>
-      <td>total_search_crashes</td>
-      <td>crashes</td>
-      <td>Mothership launches search processes, these are normally short lived. If they crash the user will get an error, but utimately it isn't doesn't create a major event for the platform.</td>
-   </tr>
-   <tr>
-      <td>avg_average_kbps</td>
-      <td>ingestion</td>
-      <td>This field sums up the average ingestion rate for each of the pipelines in an indexer and takes an average for the time range specified. This value is averaged at the indexer, I don’t know over what period but because it is an average it is so smoothed that it is not worth generating a sparkline for.</td>
-   </tr>
-   <tr>
-      <td>avg_instantaneous_kbps</td>
-      <td>ingestion</td>
-      <td>Instaneous ingestion is the data rate the indexers is processing right now, no average and is the most important metric for ingestion. This field sums instaneous ingestion rate from each pipeline, which can mask problems but is good enough. This reading includes all data being processed by the indexer including HEC, forwarders and local information. The average of the instantaneous ingestion should be very close to the average ingestion reported by the host.</td>
-   </tr>
-   <tr>
-      <td>normalized_stdev_ingestion</td>
-      <td>ingestion</td>
-      <td>This is a measure of how "spikey" the measure for instaneous ingestion, it is computed by taking the stdev between each reading and dividing it by the average. This recreated a normalized view of how spikey the ingestion is. The higher the number the worse the ingestion spikes, which is an indicator of bad event distribution, or super heavy forwarders sending very heavy streams.</td>
-   </tr>
-   <tr>
-      <td>instantaneous_kbps</td>
-      <td>ingestion</td>
-      <td>This is the sparkline for instantaneous ingestion for an indexer. We could like this to be nice and smooth which indicates that events are being well distributed across the cluster. If you see this being excessively spikey, or hitting zero you have ingestion problems, or at least and opportunity to improve the ingestion.</td>
-   </tr>
-   <tr>
-      <td>avg_blocked_queues_ps</td>
-      <td>blocked_queues</td>
-      <td>Splunk has multiple queues, but only a few really matter: indexing, typing, aggregation and splunktcp. Typically the indexing queue stops due to IO issues, it then fills and causes the typing queue to fill, then the aggregation queue, then splunktcpin. Once splunktcpin is blocked, all bets are off and the indexer will refuse to recieve any more data. It doesn't have to start with the indexing queue it can be any of the others, but the pipeline will block from that point onwards. This search simply counts the number of blocked queue messages i.e. "blocked=queue". It doesn't attempt to break out which pipeline is blocking and why, this is up to you to work out. Blocked queues are often a sympthom of event distribution or super giant forwarders sending too much data to a single indexer, the pipeline cannot cope and then blocks to slow down the ingestion. You don't really want to see blocked queues.</td>
-   </tr>
-   <tr>
-      <td>blocked_queues_ps</td>
-      <td>blocked_queues</td>
-      <td>This is a sparkline for blocked queues. You don't really want to see anything here, if an indexer is doing this on its own excessively you either have sticky forwarders hurting it, or you have a faulty host.</td>
-   </tr>
-   <tr>
-      <td>avg_broken_pipes</td>
-      <td>broken_pipes</td>
-      <td>When an indexer blocks its pipes for an extended period, forwarders will give up and switch to another instance. This is reported by the indexer as "broken pipes" in splunkd. This value is the average number of broken pipes generated per second for the selected time range. This is can thought of "shedding forawarders"</td>
-   </tr>
-   <tr>
-      <td>broken_pipes</td>
-      <td>broken_pipes</td>
-      <td>This is a sparkline for the generation of broken pipe, you can see when and how severly we are dropping forwarder connections.</td>
-   </tr>
-   <tr>
-      <td>avg_normalized_load_avg_1min</td>
-      <td>hostwide</td>
-      <td>This the normalized load average for the host. This is a measure of how many processes are waiting to be served or the "waiting load", see the web for what "load average" means. When indexers go into D state this number builds up quickly as search processes are created but aren't completing. The ingestion source also calls out load average, but it is not normalized around the number of processors the host has.</td>
-   </tr>
-   <tr>
-      <td>normalized_load_avg_1min</td>
-      <td>hostwide</td>
-      <td>This is a sparkline for the normalized load average. Watch how it does up and down as the server is asked to do more operations, it should be closely matched to ingestion and search concurrency.</td>
-   </tr>
-   <tr>
-      <td>current_delay</td>
-      <td>ingestion</td>
-      <td>When the host is overloaded the SkyNet forwarder struggles to keep up with speed at which the log files the host generates. This is the current delay at the time the report was generated.</td>
-   </tr>
-   <tr>
-      <td>max_delay</td>
-      <td>ingestion</td>
-      <td>When the host is overloaded the SkyNet forwarder struggles to keep up with speed at which the log files the host generates. This the maximum delay seen during the time range of the report</td>
-   </tr>
-   <tr>
-      <td>event_delay</td>
-      <td>ingestion</td>
-      <td>This is a sparkline for the event delay during the time of the report</td>
-   </tr>
-   <tr>
-      <td>avg_search_concurrency</td>
-      <td>concurrency</td>
-      <td>Each indexer executes searches in parallel, concurrency is the number of searches it is currently executing. Remember that most searches are very short lived, for instance if you visit a dashboard with 5 panels, you might trigger a conncurrency of 5 for a few seconds while the dashboard loads. However it is the real time searches and the long running searches that really pump up this number. When this number exceeds the number of CPUs, you have a problem. When an indexer has an IO problem the search concurrency can shoot up because the short running searches aren't completing.</td>
-   </tr>
-   <tr>
-      <td>search_concurrency</td>
-      <td>concurrency</td>
-      <td>The sparkline for the search concurrency. In a cluster this should be in lock step across the indexers as they all receive the same searches at the same time, and run them for the same duration - if the platform is performing well and configured well.</td>
-   </tr>
-   <tr>
-      <td>avg_cpu_used_pct</td>
-      <td>cpu_load</td>
-      <td>Average CPU used on the host for the time range. This is the most important metric for when IO is plentiful as it is on the i3 series which all use NVRAM. The percentage CPU measure doesn't consider the difference between a core and a hyperthreaded core. This results in a stuble error, values of 0-50% CPU are "whole cores" but values 50-100% are "hyperthreaded", i.e. not a whole core. In short this means that when you see the platform hit 50% CPU it is really using 90% of CPU.</td>
-   </tr>
-   <tr>
-      <td>cpu_used_pct</td>
-      <td>cpu_load</td>
-      <td>The sparkline for CPU usage. Noticed how it is affected by search concurrency more than by ingestion.</td>
-   </tr>
-   <tr>
-      <td>avg_mem_used</td>
-      <td>cpu_load</td>
-      <td>Average memory used on the host for the time range. If you see anomoulies here across the indexers, you might have a memory leak.</td>
-   </tr>
-   <tr>
-      <td>mem_used</td>
-      <td>cpu_load</td>
-      <td>The sparkline for memory usage</td>
-   </tr>
-   <tr>
-      <td>avg_s2s_connections_per_second</td>
-      <td>s2s_connections_sid</td>
-      <td>Forwarders connect to indexers using the Splunk 2 Splunk (s2s) API. When using forwarders to collect data it is very important that they distribute their events over the cluster and to do so they must connect and then disconnect and connect to another indexer. We can count how many connections and disconnections they are. Overall we want to see this as "high" as "low" is strongly correlated with issues like poor event distribution, event delay and indexer starvation.</td>
-   </tr>
-   <tr>
-      <td>s2s_connections</td>
-      <td>s2s_connections_sid</td>
-      <td>The sparkline for S2S connections for the time range. You will notice that after an indexer blocks its ingestion pipe you will see a drop in connections to that device as the forwarders will "back off" and avoid connecting to it for 5 minutes + 30 seconds for each target in its group.</td>
-   </tr>
-   <tr>
-      <td>avg_hec_kb</td>
-      <td>hec</td>
-      <td>Average data ingestion from HEC, in KB obtained from _introspection. This is measure of how much data has been sent, not a count of events.</td>
-   </tr>
-   <tr>
-      <td>hec_kb</td>
-      <td>hec</td>
-      <td>The sparkline for HEC kb usage. We would like this to be smooth and not spikey. If it is spikey and is of high volume, you should see artifacts in the instantaneous ingestion sparkline.</td>
-   </tr>
-   <tr>
-      <td>avg_hec_requests</td>
-      <td>hec</td>
-      <td>The number of HTTP requests made to deliver the HEC data. If this is low and KB is high we can infer that event bundling is being used.</td>
-   </tr>
-   <tr>
-      <td>hec_requests</td>
-      <td>hec</td>
-      <td>This is a sparkline for the HEC requests</td>
-   </tr>
-   <tr>
-      <td>read_write_ratio_kb_ps</td>
-      <td>iostats</td>
-      <td>This is a ratio between the writes and reads per second for the host</td>
-   </tr>
-   <tr>
-      <td>avg_writes_kb_ps</td>
-      <td>iostats</td>
-      <td>Splunk writes data to disk when it is indexing, and when it writes search results out. This measure is for the data rate been written to disk. This is different from the IO requests.</td>
-   </tr>
-   <tr>
-      <td>avg_reads_kb_ps</td>
-      <td>iostats</td>
-      <td>Splunk reads data when it searches buckets. Linux hosts will use any unused RAM as a cache for reading from disk. This means that much of the time Splunk's IO operations are soaked by cache and you will find there is very little write activity. This measure is the bandwidth measure, which is separate from IO operations</td>
-   </tr>
-   <tr>
-      <td>writes_ps</td>
-      <td>iostats</td>
-      <td>This is a sparkline for writes per second</td>
-   </tr>
-   <tr>
-      <td>reads_kb_ps</td>
-      <td>iostats</td>
-      <td>Sparkline for bandwidth read from disk</td>
-   </tr>
-   <tr>
-      <td>read_write_ratio_ps</td>
-      <td>iostats</td>
-      <td>This values is the ratio between the read and write ps readings.</td>
-   </tr>
-   <tr>
-      <td>avg_writes_ps</td>
-      <td>iostats</td>
-      <td>The average number of IO writes per second for the duration of the report</td>
-   </tr>
-   <tr>
-      <td>writes_kb_ps</td>
-      <td>iostats</td>
-      <td>Sparkline for bandwidth written to disk</td>
-   </tr>
-   <tr>
-      <td>avg_reads_ps</td>
-      <td>iostats</td>
-      <td>The average number of IO reads per second for the duration of the report</td>
-   </tr>
-   <tr>
-      <td>reads_ps</td>
-      <td>iostats</td>
-      <td>Sparkline for read IO per second</td>
-   </tr>
-   <tr>
-      <td>avg_avg_service_ms</td>
-      <td>iostats</td>
-      <td>The operating system measures on average how long it took for the disk subsystem to complete its operation in milliseconds. This is an average of this average for the duration of the report</td>
-   </tr>
-   <tr>
-      <td>avg_service_ms</td>
-      <td>iostats</td>
-      <td>The sparkline for the average service time in milliseconds</td>
-   </tr>
-   <tr>
-      <td>max_bucket_download_ps</td>
-      <td>cachemanager</td>
-      <td>The cachemanager downloads buckets from S3 when there is no local copy. This KPI captures the maximum rate of downloading per second during the duration of the report</td>
-   </tr>
-   <tr>
-      <td>bucket_download_ps</td>
-      <td>cachemanager</td>
-      <td>This is the sparkline for the cachemanager download activity</td>
-   </tr>
-   <tr>
-      <td>max_bucket_eviction_ps</td>
-      <td>cachemanager</td>
-      <td>When the cache is full and a search needs to make space it evicts buckets with its Least Recently Used (LRU) algorithm. It deletes buckets that have not been accessed. This is the maximum number of buckets rejected per second during time range of the report</td>
-   </tr>
-   <tr>
-      <td>bucket_eviction_ps</td>
-      <td>cachemanager</td>
-      <td>This a sparkline for the eviction of buckets by the cache manager</td>
-   </tr>
-   <tr>
-      <td>max_bucket_upload_ps</td>
-      <td>cachemanager</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>max_s3_put_errors_ps</td>
-      <td>s3client</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>s3_put_errors_ps</td>
-      <td>s3client</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>max_s3_get_errors_ps</td>
-      <td>s3client</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>s3_get_errors_ps</td>
-      <td>s3client</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>s3_get_errors_ps</td>
-      <td>s3client</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>data.cpu_count</td>
-      <td>hostwide</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>data.mem</td>
-      <td>hostwide</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>age_days</td>
-      <td>aws_inventory</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>cloud_flavor</td>
-      <td>aws_inventory</td>
-      <td/>
-   </tr>
-</table>
-
-   </table>
-
-      </html>
+                <table>
+                    <table>
+                        <tr>
+                            <td>title</td>
+                            <td>Report</td>
+                            <td>Description</td>
+                        </tr>
+                        <tr>
+                            <td>short_host_for_pretty_output</td>
+                            <td>hostname</td>
+                            <td>A short name for the indexer, it has been truncated to remove redunddant information. The old StackMakr instances have names like idx1 idx2 etc, whereas the CloudWorks names include the AWS instance GUID embedded meaning very name is unique. When an indexer dies it is automatically replaced via the magic of automation with a new name, the stackmakr names are recycled.</td>
+                        </tr>
+                        <tr>
+                            <td>stack_name</td>
+                            <td>aws_inventory</td>
+                            <td>The name of the Splunk Cloud stack, it is typically a shortened version of the customer name. You can find the stack id in SFDC with this as a key.</td>
+                        </tr>
+                        <tr>
+                            <td>splunk_version</td>
+                            <td>hostwide</td>
+                            <td>The version of the Splunk instance is printed out every 62 seconds in introspection via the hostwide component. Very instance in the cluster should be the same version, unless it is being upgraded.</td>
+                        </tr>
+                        <tr>
+                            <td>instance_type</td>
+                            <td>aws_inventory</td>
+                            <td>The type of host purchased from Amazon. Typically this is the i3.8xl for cloudworks builds. This data is pulled from aws_inventory. Unfortunately when we loose an indexer we no longer know what version it was running.</td>
+                        </tr>
+                        <tr>
+                            <td>skipped_readings</td>
+                            <td>ingestion</td>
+                            <td>Metrics triggers very 31 seconds, so in 10 mins we expect in 19 readings. How many times did this fail to happen? A little bit of jitter in this reading is OK, but when we see a large number of skipped readings we know that the host is in distress. If you have a cluster and only one indexer doing this, it is either a sticky forwarder ruining the party, or a faulty host to shoot in the head.</td>
+                        </tr>
+                        <tr>
+                            <td>readings</td>
+                            <td>ingestion</td>
+                            <td>A sparkline for readings, you can see where the readings were skipped. Ideally this should be inverted, but I don't know how to do this in a computationally efficent manor.</td>
+                        </tr>
+                        <tr>
+                            <td>total_mothership_crashes</td>
+                            <td>crashes</td>
+                            <td>There is only one splunkd indexing data and launching search processes. We call this "mothership", should "mothership" go down it is a major event and much infrastructure for HA kicks off. We don't want to see this process ever crash.</td>
+                        </tr>
+                        <tr>
+                            <td>total_search_crashes</td>
+                            <td>crashes</td>
+                            <td>Mothership launches search processes, these are normally short lived. If they crash the user will get an error, but utimately it isn't doesn't create a major event for the platform.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_average_kbps</td>
+                            <td>ingestion</td>
+                            <td>This field sums up the average ingestion rate for each of the pipelines in an indexer and takes an average for the time range specified. This value is averaged at the indexer, I don’t know over what period but because it is an average it is so smoothed that it is not worth generating a sparkline for.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_instantaneous_kbps</td>
+                            <td>ingestion</td>
+                            <td>Instaneous ingestion is the data rate the indexers is processing right now, no average and is the most important metric for ingestion. This field sums instaneous ingestion rate from each pipeline, which can mask problems but is good enough. This reading includes all data being processed by the indexer including HEC, forwarders and local information. The average of the instantaneous ingestion should be very close to the average ingestion reported by the host.</td>
+                        </tr>
+                        <tr>
+                            <td>normalized_stdev_ingestion</td>
+                            <td>ingestion</td>
+                            <td>This is a measure of how "spikey" the measure for instaneous ingestion, it is computed by taking the stdev between each reading and dividing it by the average. This recreated a normalized view of how spikey the ingestion is. The higher the number the worse the ingestion spikes, which is an indicator of bad event distribution, or super heavy forwarders sending very heavy streams.</td>
+                        </tr>
+                        <tr>
+                            <td>instantaneous_kbps</td>
+                            <td>ingestion</td>
+                            <td>This is the sparkline for instantaneous ingestion for an indexer. We could like this to be nice and smooth which indicates that events are being well distributed across the cluster. If you see this being excessively spikey, or hitting zero you have ingestion problems, or at least and opportunity to improve the ingestion.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_blocked_queues_ps</td>
+                            <td>blocked_queues</td>
+                            <td>Splunk has multiple queues, but only a few really matter: indexing, typing, aggregation and splunktcp. Typically the indexing queue stops due to IO issues, it then fills and causes the typing queue to fill, then the aggregation queue, then splunktcpin. Once splunktcpin is blocked, all bets are off and the indexer will refuse to recieve any more data. It doesn't have to start with the indexing queue it can be any of the others, but the pipeline will block from that point onwards. This search simply counts the number of blocked queue messages i.e. "blocked=queue". It doesn't attempt to break out which pipeline is blocking and why, this is up to you to work out. Blocked queues are often a sympthom of event distribution or super giant forwarders sending too much data to a single indexer, the pipeline cannot cope and then blocks to slow down the ingestion. You don't really want to see blocked queues.</td>
+                        </tr>
+                        <tr>
+                            <td>blocked_queues_ps</td>
+                            <td>blocked_queues</td>
+                            <td>This is a sparkline for blocked queues. You don't really want to see anything here, if an indexer is doing this on its own excessively you either have sticky forwarders hurting it, or you have a faulty host.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_broken_pipes</td>
+                            <td>broken_pipes</td>
+                            <td>When an indexer blocks its pipes for an extended period, forwarders will give up and switch to another instance. This is reported by the indexer as "broken pipes" in splunkd. This value is the average number of broken pipes generated per second for the selected time range. This is can thought of "shedding forawarders"</td>
+                        </tr>
+                        <tr>
+                            <td>broken_pipes</td>
+                            <td>broken_pipes</td>
+                            <td>This is a sparkline for the generation of broken pipe, you can see when and how severly we are dropping forwarder connections.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_normalized_load_avg_1min</td>
+                            <td>hostwide</td>
+                            <td>This the normalized load average for the host. This is a measure of how many processes are waiting to be served or the "waiting load", see the web for what "load average" means. When indexers go into D state this number builds up quickly as search processes are created but aren't completing. The ingestion source also calls out load average, but it is not normalized around the number of processors the host has.</td>
+                        </tr>
+                        <tr>
+                            <td>normalized_load_avg_1min</td>
+                            <td>hostwide</td>
+                            <td>This is a sparkline for the normalized load average. Watch how it does up and down as the server is asked to do more operations, it should be closely matched to ingestion and search concurrency.</td>
+                        </tr>
+                        <tr>
+                            <td>current_delay</td>
+                            <td>ingestion</td>
+                            <td>When the host is overloaded the SkyNet forwarder struggles to keep up with speed at which the log files the host generates. This is the current delay at the time the report was generated.</td>
+                        </tr>
+                        <tr>
+                            <td>max_delay</td>
+                            <td>ingestion</td>
+                            <td>When the host is overloaded the SkyNet forwarder struggles to keep up with speed at which the log files the host generates. This the maximum delay seen during the time range of the report</td>
+                        </tr>
+                        <tr>
+                            <td>event_delay</td>
+                            <td>ingestion</td>
+                            <td>This is a sparkline for the event delay during the time of the report</td>
+                        </tr>
+                        <tr>
+                            <td>avg_search_concurrency</td>
+                            <td>concurrency</td>
+                            <td>Each indexer executes searches in parallel, concurrency is the number of searches it is currently executing. Remember that most searches are very short lived, for instance if you visit a dashboard with 5 panels, you might trigger a conncurrency of 5 for a few seconds while the dashboard loads. However it is the real time searches and the long running searches that really pump up this number. When this number exceeds the number of CPUs, you have a problem. When an indexer has an IO problem the search concurrency can shoot up because the short running searches aren't completing.</td>
+                        </tr>
+                        <tr>
+                            <td>search_concurrency</td>
+                            <td>concurrency</td>
+                            <td>The sparkline for the search concurrency. In a cluster this should be in lock step across the indexers as they all receive the same searches at the same time, and run them for the same duration - if the platform is performing well and configured well.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_cpu_used_pct</td>
+                            <td>cpu_load</td>
+                            <td>Average CPU used on the host for the time range. This is the most important metric for when IO is plentiful as it is on the i3 series which all use NVRAM. The percentage CPU measure doesn't consider the difference between a core and a hyperthreaded core. This results in a stuble error, values of 0-50% CPU are "whole cores" but values 50-100% are "hyperthreaded", i.e. not a whole core. In short this means that when you see the platform hit 50% CPU it is really using 90% of CPU.</td>
+                        </tr>
+                        <tr>
+                            <td>cpu_used_pct</td>
+                            <td>cpu_load</td>
+                            <td>The sparkline for CPU usage. Noticed how it is affected by search concurrency more than by ingestion.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_mem_used</td>
+                            <td>cpu_load</td>
+                            <td>Average memory used on the host for the time range. If you see anomoulies here across the indexers, you might have a memory leak.</td>
+                        </tr>
+                        <tr>
+                            <td>mem_used</td>
+                            <td>cpu_load</td>
+                            <td>The sparkline for memory usage</td>
+                        </tr>
+                        <tr>
+                            <td>avg_s2s_connections_per_second</td>
+                            <td>s2s_connections_sid</td>
+                            <td>Forwarders connect to indexers using the Splunk 2 Splunk (s2s) API. When using forwarders to collect data it is very important that they distribute their events over the cluster and to do so they must connect and then disconnect and connect to another indexer. We can count how many connections and disconnections they are. Overall we want to see this as "high" as "low" is strongly correlated with issues like poor event distribution, event delay and indexer starvation.</td>
+                        </tr>
+                        <tr>
+                            <td>s2s_connections</td>
+                            <td>s2s_connections_sid</td>
+                            <td>The sparkline for S2S connections for the time range. You will notice that after an indexer blocks its ingestion pipe you will see a drop in connections to that device as the forwarders will "back off" and avoid connecting to it for 5 minutes + 30 seconds for each target in its group.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_hec_kb</td>
+                            <td>hec</td>
+                            <td>Average data ingestion from HEC, in KB obtained from _introspection. This is measure of how much data has been sent, not a count of events.</td>
+                        </tr>
+                        <tr>
+                            <td>hec_kb</td>
+                            <td>hec</td>
+                            <td>The sparkline for HEC kb usage. We would like this to be smooth and not spikey. If it is spikey and is of high volume, you should see artifacts in the instantaneous ingestion sparkline.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_hec_requests</td>
+                            <td>hec</td>
+                            <td>The number of HTTP requests made to deliver the HEC data. If this is low and KB is high we can infer that event bundling is being used.</td>
+                        </tr>
+                        <tr>
+                            <td>hec_requests</td>
+                            <td>hec</td>
+                            <td>This is a sparkline for the HEC requests</td>
+                        </tr>
+                        <tr>
+                            <td>read_write_ratio_kb_ps</td>
+                            <td>iostats</td>
+                            <td>This is a ratio between the writes and reads per second for the host</td>
+                        </tr>
+                        <tr>
+                            <td>avg_writes_kb_ps</td>
+                            <td>iostats</td>
+                            <td>Splunk writes data to disk when it is indexing, and when it writes search results out. This measure is for the data rate been written to disk. This is different from the IO requests.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_reads_kb_ps</td>
+                            <td>iostats</td>
+                            <td>Splunk reads data when it searches buckets. Linux hosts will use any unused RAM as a cache for reading from disk. This means that much of the time Splunk's IO operations are soaked by cache and you will find there is very little write activity. This measure is the bandwidth measure, which is separate from IO operations</td>
+                        </tr>
+                        <tr>
+                            <td>writes_ps</td>
+                            <td>iostats</td>
+                            <td>This is a sparkline for writes per second</td>
+                        </tr>
+                        <tr>
+                            <td>reads_kb_ps</td>
+                            <td>iostats</td>
+                            <td>Sparkline for bandwidth read from disk</td>
+                        </tr>
+                        <tr>
+                            <td>read_write_ratio_ps</td>
+                            <td>iostats</td>
+                            <td>This values is the ratio between the read and write ps readings.</td>
+                        </tr>
+                        <tr>
+                            <td>avg_writes_ps</td>
+                            <td>iostats</td>
+                            <td>The average number of IO writes per second for the duration of the report</td>
+                        </tr>
+                        <tr>
+                            <td>writes_kb_ps</td>
+                            <td>iostats</td>
+                            <td>Sparkline for bandwidth written to disk</td>
+                        </tr>
+                        <tr>
+                            <td>avg_reads_ps</td>
+                            <td>iostats</td>
+                            <td>The average number of IO reads per second for the duration of the report</td>
+                        </tr>
+                        <tr>
+                            <td>reads_ps</td>
+                            <td>iostats</td>
+                            <td>Sparkline for read IO per second</td>
+                        </tr>
+                        <tr>
+                            <td>avg_avg_service_ms</td>
+                            <td>iostats</td>
+                            <td>The operating system measures on average how long it took for the disk subsystem to complete its operation in milliseconds. This is an average of this average for the duration of the report</td>
+                        </tr>
+                        <tr>
+                            <td>avg_service_ms</td>
+                            <td>iostats</td>
+                            <td>The sparkline for the average service time in milliseconds</td>
+                        </tr>
+                        <tr>
+                            <td>max_bucket_download_ps</td>
+                            <td>cachemanager</td>
+                            <td>The cachemanager downloads buckets from S3 when there is no local copy. This KPI captures the maximum rate of downloading per second during the duration of the report</td>
+                        </tr>
+                        <tr>
+                            <td>bucket_download_ps</td>
+                            <td>cachemanager</td>
+                            <td>This is the sparkline for the cachemanager download activity</td>
+                        </tr>
+                        <tr>
+                            <td>max_bucket_eviction_ps</td>
+                            <td>cachemanager</td>
+                            <td>When the cache is full and a search needs to make space it evicts buckets with its Least Recently Used (LRU) algorithm. It deletes buckets that have not been accessed. This is the maximum number of buckets rejected per second during time range of the report</td>
+                        </tr>
+                        <tr>
+                            <td>bucket_eviction_ps</td>
+                            <td>cachemanager</td>
+                            <td>This a sparkline for the eviction of buckets by the cache manager</td>
+                        </tr>
+                        <tr>
+                            <td>max_bucket_upload_ps</td>
+                            <td>cachemanager</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>max_s3_put_errors_ps</td>
+                            <td>s3client</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>s3_put_errors_ps</td>
+                            <td>s3client</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>max_s3_get_errors_ps</td>
+                            <td>s3client</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>s3_get_errors_ps</td>
+                            <td>s3client</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>s3_get_errors_ps</td>
+                            <td>s3client</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>data.cpu_count</td>
+                            <td>hostwide</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>data.mem</td>
+                            <td>hostwide</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>age_days</td>
+                            <td>aws_inventory</td>
+                            <td/>
+                        </tr>
+                        <tr>
+                            <td>cloud_flavor</td>
+                            <td>aws_inventory</td>
+                            <td/>
+                        </tr>
+                    </table>
+                </table>
+            </html>
     </panel>
   </row>
   <row>
     <panel>
       <html>
-      <style>
-  
-#sid {
+                <style>#sid {
   text-align: center;
   font: sans-serif;
   font-size: 10px;
   padding:20px
-}
+}</style>
+                <div id="sid">
+                    <br/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
 
-</style>
-<div id="sid">
-<br/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
-<br/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$ progress=$blocked_queues_progress$
-<br/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$ progress=$s2s_connections_progress$
-<br/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$ progress=$hec_connections_progress$
-<br/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$ progress=$ingestion_progress$
-<br/> crashes=$crashes_sid$ runtime=$crashes_runtime$ progress=$crashes_progress$
-<br/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$ progress=$cpu_load_progress$
-<br/> io=$io_measure_sid$ runtime=$io_measure_runtime$ progress=$io_measure_progress$
-<br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$ progress=$concurrency_progress$
-<br/> bucket_access_sid=$bucket_access_sid$ runtime=$bucket_access_runtime$ progress=$bucket_access_progress$
-<br/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$ progress=$cachemanager_progress$
-<br/>
-<br/> final_report=$final_report$ runtime=$final_report_runtime$
-<br/>
-<br/> <b>total_runtime=$total_time$</b>
-</div>
-      </html>
+                    <br/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$ progress=$blocked_queues_progress$
+
+                    <br/> s2s_connections_sid=$s2s_connections_sid$ runtime=$s2s_connections_runtime$ progress=$s2s_connections_progress$
+
+                    <br/> hec=$hec_connections_sid$ runtime=$hec_connections_runtime$ progress=$hec_connections_progress$
+
+                    <br/> ingestion=$ingestion_sid$ runtime=$ingestion_runtime$ progress=$ingestion_progress$
+
+                    <br/> crashes=$crashes_sid$ runtime=$crashes_runtime$ progress=$crashes_progress$
+
+                    <br/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$ progress=$cpu_load_progress$
+
+                    <br/> io=$io_measure_sid$ runtime=$io_measure_runtime$ progress=$io_measure_progress$
+
+                    <br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$ progress=$concurrency_progress$
+
+                    <br/> bucket_access_sid=$bucket_access_sid$ runtime=$bucket_access_runtime$ progress=$bucket_access_progress$
+
+                    <br/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$ progress=$cachemanager_progress$
+
+                    <br/>
+                    <br/> final_report=$final_report$ runtime=$final_report_runtime$
+
+                    <br/>
+                    <br/>
+                    <b>total_runtime=$total_time$</b>
+                </div>
+            </html>
     </panel>
   </row>
 </form>
