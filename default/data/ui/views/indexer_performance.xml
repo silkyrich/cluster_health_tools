@@ -478,6 +478,15 @@ $single_indexer_only$
       <valuePrefix>stack=</valuePrefix>
       <choice value="*">*</choice>
     </input>
+    <input type="dropdown" token="refresh_rate_seconds">
+      <label>Refresh rate</label>
+      <choice value="60">1min</choice>
+      <choice value="300">5min</choice>
+      <choice value="420">7min</choice>
+      <choice value="900">15min</choice>
+      <choice value="999999">Never</choice>
+      <default>999999</default>
+    </input>
     <input type="multiselect" token="selected_regions">
       <label>Select region</label>
       <choice value="*">*</choice>
@@ -506,15 +515,6 @@ $single_indexer_only$
       <default>*</default>
       <valuePrefix>region=</valuePrefix>
       <delimiter> OR </delimiter>
-    </input>
-    <input type="dropdown" token="refresh_rate_seconds">
-      <label>Refresh rate</label>
-      <choice value="60">1min</choice>
-      <choice value="300">5min</choice>
-      <choice value="420">7min</choice>
-      <choice value="900">15min</choice>
-      <choice value="999999">Never</choice>
-      <default>999999</default>
     </input>
     <input type="checkbox" token="show_elements">
       <label></label>
@@ -919,7 +919,6 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
         </format>
-
         <format type="color" field="avg_cpu_used_pct">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
@@ -945,7 +944,7 @@ $transpose_table$</query>
           <scale type="threshold">0.006086,0.008216,0.011092,0.014974,0.020214,0.027289,0.036841,0.049735,0.067142,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1,1.35,9999.82</scale>
         </format>
         <format type="number" field="avg_avg_service_ms">
-          <option name="precision">3</option>
+          <option name="precision">4</option>
           <option name="unit">ms</option>
         </format>
         <format type="color" field="avg_normalized_load_avg_1min">
@@ -971,11 +970,11 @@ $transpose_table$</query>
           <scale type="threshold">0.000858,0.001631,0.003099,0.005888,0.011187,0.021256,0.040386,0.076734,0.145794,0.277008,0.526316,1.0,1.9,3.6,6.9,13.0,24.8,47.0,89.4,169.8,322.7</scale>
         </format>
         <format type="number" field="max_buckets_touched_ps">
-          <option name="precision">4</option>
+          <option name="precision">8</option>
           <option name="useThousandSeparators">false</option>
         </format>
         <format type="number" field="avg_buckets_touched_ps">
-          <option name="precision">4</option>
+          <option name="precision">8</option>
           <option name="useThousandSeparators">false</option>
         </format>
         <format type="color" field="avg_s2s_connections_per_second">
@@ -1046,7 +1045,6 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
         </format>
-
         <format type="color" field="avg_bucket_eviction_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
@@ -1059,8 +1057,6 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
         </format>
-
-
         <format type="color" field="max_s3_get_errors_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.052922,0.09526,0.171468,0.308642,0.555556,1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,99999999</scale>
@@ -2485,19 +2481,6 @@ $show_bubble$</query>
 <br/> <b>total_runtime=$total_time$</b>
 </div>
       </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="bucket_access_sid">
-          <query>
-    
-    
-    
-  </query>
-        </search>
-      </table>
     </panel>
   </row>
 </form>
