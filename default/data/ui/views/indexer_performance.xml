@@ -48,9 +48,9 @@
       <set token="crashes_runtime">$job.runDuration$</set>
       <set token="crashes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+    <query>| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type="mothership" 
-| tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=1s 
+| tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type=if(isnull(crash_type),"search","mothership") 
 | stats count by host crash_type _time 
 | bin span=$seconds_for_bin$sec _time 
@@ -116,7 +116,7 @@
       <set token="broken_pipes_runtime">$job.runDuration$</set>
       <set token="broken_pipes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=1s
+    <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=$seconds_for_bin$s
 | eval broken_pipes=broken_pipes/$seconds_for_bin$
 | stats 
     max(broken_pipes) as max_broken_pipes
@@ -144,7 +144,7 @@
     where data.num_of_requests &gt; 0 
     index=customer_introspection 
     data.series::http_event_collector 
-    $wildcard_filter_IN$  by host _time span=1s
+    $wildcard_filter_IN$  by host _time span=$seconds_for_bin$s
 | makecontinuous _time
 | stats
     max(hec_requests) as max_hec_requests
@@ -276,7 +276,7 @@
     avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
     where component=hostwide index=customer_introspection 
     $wildcard_filter_IN$ 
-    by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host _time span=1sec 
+    by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host _time span=$seconds_for_bin$sec 
 | eval cpu_used_pct=100-cpu_idle_pct 
 | fields - cpu_idle_pct 
 | stats 
@@ -337,7 +337,7 @@
     avg(data.writes_kb_ps) as writes_kb_ps 
     where 
     $wildcard_filter_IN$ 
-    index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=1sec 
+    index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=$seconds_for_bin$sec 
 | stats 
     max(avg_service_ms) as max_avg_service_ms
     avg(avg_service_ms) as avg_avg_service_ms
@@ -375,7 +375,7 @@
     <query>| tstats count as search_concurrency where 
     index=customer_introspection $wildcard_filter_IN$ 
     component=PerProcess 
-    data.search_props.sid=* by host _time span=1sec
+    data.search_props.sid=* by host _time span=$seconds_for_bin$sec
 | stats 
     max(search_concurrency) as max_search_concurrency
     avg(search_concurrency) as avg_search_concurrency
@@ -396,7 +396,7 @@
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
     </done>
-    <query>| inputlookup aws_inventory where $selected_stacks$ role=indexer region=* 
+    <query>| inputlookup aws_inventory where $selected_stacks$ role=indexer $selected_regions$
 | stats 
     values(eval(if(role="indexer",FQDN,""))) as all_indexers by stack 
 | stats values(*) as * 
@@ -447,12 +447,41 @@ $single_indexer_only$
       <valuePrefix>customer_type=</valuePrefix>
       <delimiter> OR </delimiter>
     </input>
+    <input type="multiselect" token="selected_regions">
+      <label>Select region</label>
+      <choice value="*">*</choice>
+      <choice value="ap-southeast*">ap-southeast*</choice>
+      <choice value="ca-central*">ca-central*</choice>
+      <choice value="eu-west*">eu-west*</choice>
+      <choice value="sa-east*">sa-east*</choice>
+      <choice value="us-east*">us-east*</choice>
+      <choice value="ap-southeast-1">ap-southeast-1</choice>
+      <choice value="ap-southeast-2">ap-southeast-2</choice>
+      <choice value="ca-central-1">ca-central-1</choice>
+      <choice value="eu-central-1">eu-central-1</choice>
+      <choice value="eu-west-1">eu-west-1</choice>
+      <choice value="eu-west-2">eu-west-2</choice>
+      <choice value="sa-east-1">sa-east-1</choice>
+      <choice value="us-east-1">us-east-1</choice>
+      <choice value="us-west-2">us-west-2</choice>
+      <change>
+        <unset token="StackNames_IN"></unset>
+        <unset token="sample_indexers_OR"></unset>
+        <unset token="sample_indexers_IN"></unset>
+        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
+        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
+      </change>
+      <default>*</default>
+      <valuePrefix>region=</valuePrefix>
+      <delimiter> OR </delimiter>
+    </input>
     <input type="multiselect" token="selected_stacks">
       <label>Select stacks to chart</label>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>stack_derived</fieldForValue>
       <search>
-        <query>| inputlookup aws_inventory where role="indexer" $customer_type$
+        <query>| inputlookup aws_inventory where role="indexer" $customer_type$ $selected_regions$
 | stats count by stack instance_type aws_account_id 
 | rename stack AS stack_derived 
 | sort - count 
@@ -488,35 +517,6 @@ $single_indexer_only$
       <choice value="900">15min</choice>
       <choice value="999999">Never</choice>
       <default>999999</default>
-    </input>
-    <input type="multiselect" token="selected_regions">
-      <label>Select region</label>
-      <choice value="*">*</choice>
-      <choice value="ap-southeast*">ap-southeast*</choice>
-      <choice value="ca-central*">ca-central*</choice>
-      <choice value="eu-west*">eu-west*</choice>
-      <choice value="sa-east*">sa-east*</choice>
-      <choice value="us-east*">us-east*</choice>
-      <choice value="ap-southeast-1">ap-southeast-1</choice>
-      <choice value="ap-southeast-2">ap-southeast-2</choice>
-      <choice value="ca-central-1">ca-central-1</choice>
-      <choice value="eu-central-1">eu-central-1</choice>
-      <choice value="eu-west-1">eu-west-1</choice>
-      <choice value="eu-west-2">eu-west-2</choice>
-      <choice value="sa-east-1">sa-east-1</choice>
-      <choice value="us-east-1">us-east-1</choice>
-      <choice value="us-west-2">us-west-2</choice>
-      <change>
-        <unset token="StackNames_IN"></unset>
-        <unset token="sample_indexers_OR"></unset>
-        <unset token="sample_indexers_IN"></unset>
-        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
-        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
-        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
-      </change>
-      <default>*</default>
-      <valuePrefix>region=</valuePrefix>
-      <delimiter> OR </delimiter>
     </input>
     <input type="checkbox" token="show_elements">
       <label></label>
@@ -920,11 +920,10 @@ $transpose_table$</query>
           <option name="precision">0</option>
           <option name="unit">kbps</option>
         </format>
-                <format type="number" field="max_cpu_used_pct">
+        <format type="number" field="max_cpu_used_pct">
           <option name="precision">2</option>
           <option name="unit">%</option>
         </format>
-        
         <format type="color" field="max_cpu_used_pct">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">2.5,3.0,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46.0,55.2,66.2,79.5,99999999</scale>
@@ -1232,8 +1231,8 @@ $transpose_table$</query>
         <format type="number" field="max_instantaneous_kbps"></format>
         <format type="number" field="max_writes_ps">
           <option name="precision">0</option>
-          <option name="useThousandSeparators">false</option>
           <option name="unit">ps</option>
+          <option name="useThousandSeparators">false</option>
         </format>
         <format field="readings" type="sparkline">
           <option name="type">bar</option>
@@ -1930,7 +1929,7 @@ $transpose_table$</query>
           <option name="barWidth">2px</option>
         </format>
         <drilldown>
-          <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack$&amp;form.selected_host=$row.short_host_for_pretty_output$.$row.stack$.splunkcloud.com</link>
+          <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack_name$&amp;form.selected_host=$row.short_host_for_pretty_output$.$row.stack_name$.splunkcloud.com</link>
         </drilldown>
       </table>
     </panel>
@@ -2600,6 +2599,13 @@ $show_bubble$</query>
                     <b>total_runtime=$total_time$</b>
                 </div>
             </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search base="get_lists"></search>
+      </table>
     </panel>
   </row>
 </form>
