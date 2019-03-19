@@ -920,13 +920,18 @@ $transpose_table$</query>
           <option name="precision">0</option>
           <option name="unit">kbps</option>
         </format>
+                <format type="number" field="max_cpu_used_pct">
+          <option name="precision">2</option>
+          <option name="unit">%</option>
+        </format>
+        
         <format type="color" field="max_cpu_used_pct">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
-          <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
+          <scale type="threshold">2.5,3.0,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46.0,55.2,66.2,79.5,99999999</scale>
         </format>
         <format type="color" field="avg_cpu_used_pct">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
-          <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
+          <scale type="threshold">2.5,3.0,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46.0,55.2,66.2,79.5,99999999</scale>
         </format>
         <format type="color" field="avg_mem_used">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -965,7 +970,7 @@ $transpose_table$</query>
           <scale type="threshold">0.000867,0.001388,0.00222,0.003553,0.005684,0.009095,0.014552,0.023283,0.037253,0.059605,0.095367,0.152588,0.244141,0.390625,0.625,1,1.6,2.6,4.1,6.6,99999</scale>
         </format>
         <format type="number" field="avg_normalized_load_avg_1min">
-          <option name="unit">kbps</option>
+          <option name="precision">2</option>
         </format>
         <format type="color" field="avg_search_concurrency">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -1000,7 +1005,7 @@ $transpose_table$</query>
         </format>
         <format type="number" field="avg_s2s_connections_per_second">
           <option name="precision">3</option>
-          <option name="unit">kbps</option>
+          <option name="unit">ps</option>
         </format>
         <format type="color" field="avg_hec_kb">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -1044,7 +1049,7 @@ $transpose_table$</query>
         </format>
         <format type="number" field="current_delay">
           <option name="precision">0</option>
-          <option name="unit">s</option>
+          <option name="unit">sec</option>
         </format>
         <format type="color" field="max_delay">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
@@ -1110,7 +1115,7 @@ $transpose_table$</query>
         </format>
         <format type="number" field="max_delay">
           <option name="precision">0</option>
-          <option name="unit">s</option>
+          <option name="unit">sec</option>
         </format>
         <format type="number" field="avg_cpu_used_pct">
           <option name="precision">1</option>
@@ -1228,6 +1233,7 @@ $transpose_table$</query>
         <format type="number" field="max_writes_ps">
           <option name="precision">0</option>
           <option name="useThousandSeparators">false</option>
+          <option name="unit">ps</option>
         </format>
         <format field="readings" type="sparkline">
           <option name="type">bar</option>
