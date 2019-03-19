@@ -309,9 +309,9 @@
     sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting) by host _time span=$seconds_for_bin$sec
 | eval count=count/$seconds_for_bin$
 | stats 
-    avg(count) as avg_searches_ps
-    max(count) as max_searches_ps
-    sparkline(avg(count),$seconds_for_bin$sec) as searches_ps 
+    avg(count) as avg_search_insertion_ps
+    max(count) as max_search_insertion_ps
+    sparkline(avg(count),$seconds_for_bin$sec) as search_insertion_ps 
     by host  
     </query>
     <earliest>$time.earliest$</earliest>
@@ -791,9 +791,9 @@ max_broken_pipes
 avg_broken_pipes
 broken_pipes
 
-max_searches_ps
-avg_searches_ps
-searches_ps
+max_search_insertion_ps
+avg_search_insertion_ps
+search_insertion_ps
 
 max_search_concurrency
 avg_search_concurrency
@@ -1058,11 +1058,11 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
         </format>
-        <format type="color" field="max_searches_ps">
+        <format type="color" field="max_search_insertion_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.049735,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1.00,1.35,1.82,2.46,3.32,4.48,6.05,8.17,11.03,14.89,20.11</scale>
         </format>
-        <format type="color" field="avg_searches_ps">
+        <format type="color" field="avg_search_insertion_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.049735,0.090642,0.122367,0.165195,0.223014,0.301068,0.406442,0.548697,0.740741,1.00,1.35,1.82,2.46,3.32,4.48,6.05,8.17,11.03,14.89,20.11</scale>
         </format>
@@ -1131,11 +1131,11 @@ $transpose_table$</query>
           <option name="precision">0</option>
           <option name="unit">kbps</option>
         </format>
-        <format type="number" field="max_searches_ps">
+        <format type="number" field="max_search_insertion_ps">
           <option name="precision">4</option>
           <option name="unit">ps</option>
         </format>
-        <format type="number" field="avg_searches_ps">
+        <format type="number" field="avg_search_insertion_ps">
           <option name="precision">4</option>
           <option name="unit">ps</option>
         </format>
@@ -1674,7 +1674,7 @@ $transpose_table$</query>
           </option>
           <option name="barWidth">2px</option>
         </format>
-        <format field="searches_ps" type="sparkline">
+        <format field="search_insertion_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
