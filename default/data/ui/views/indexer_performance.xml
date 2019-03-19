@@ -13,7 +13,7 @@
     [| loadjob $cpu_load_sid$ ]
     [| loadjob $io_measure_sid$ ]
     [| loadjob $concurrency_sid$ ]
-    [| loadjob $s3_errors_sid$ ]
+    [| loadjob $bucket_access_sid$ ]
     [| loadjob $cachemanager_sid$ ]
 | stats list(*) as * by host 
 | lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
@@ -34,7 +34,7 @@
       <set token="final_report_runtime">$job.runDuration$</set>
       <set token="final_report_progress">$job.doneProgress$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$s3_errors_runtime$+$cachemanager_runtime$+$crashes_runtime$+$final_report_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$bucket_access_runtime$+$cachemanager_runtime$+$crashes_runtime$+$final_report_runtime$</eval>
     </done>
   </search>
   <search id="crashes_sid">
@@ -166,30 +166,25 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  <search id="s3_errors_sid">
+  <search id="bucket_access_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <progress>
-      <unset token="s3_errors_sid"></unset>
-      <unset token="s3_errors_runtime"></unset>
-      <set token="s3_errors_progress">$job.doneProgress$</set>
+      <unset token="bucket_access_sid"></unset>
+      <unset token="bucket_access_runtime"></unset>
+      <set token="bucket_access_progress">$job.doneProgress$</set>
     </progress>
     <done>
-      <set token="s3_errors_sid">$job.sid$</set>
-      <set token="s3_errors_runtime">$job.runDuration$</set>
-      <set token="s3_errors_progress">$job.doneProgress$</set>
+      <set token="bucket_access_sid">$job.sid$</set>
+      <set token="bucket_access_runtime">$job.runDuration$</set>
+      <set token="bucket_access_progress">$job.doneProgress$</set>
     </done>
     <query>
-| tstats prestats=t count where  $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=get) by host _time span=$seconds_for_bin$sec 
-| eval command="get" 
-| tstats prestats=t append=t count where  $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(ERROR) TERM(s3client) TERM(command=put) by host _time span=$seconds_for_bin$sec 
-| eval command=if(isnull(command),"put",command) 
-| stats count as s3_errors by host _time command 
-| eval s3_errors_ps=s3_errors/$seconds_for_bin$
+| tstats count where index=customer_splunkd sourcetype=splunkd_access* $wildcard_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
+| eval count_ps=count/$seconds_for_bin$
 | stats  
-    max(eval(if(command="get",s3_errors_ps,0))) as max_s3_get_errors_ps 
-    max(eval(if(command="put",s3_errors_ps,0))) as max_s3_put_errors_ps 
-    sparkline(sum(eval(if(command="get",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_get_errors_ps 
-    sparkline(sum(eval(if(command="put",s3_errors_ps,0))),$seconds_for_bin$sec) as s3_put_errors_ps
+    max(count_ps) as max_buckets_touched_ps
+    avg(count_ps) as avg_buckets_touched_ps
+    sparkline(sum(count_ps),31sec) as buckets_touched_ps 
     by host
 </query>
     <earliest>$time.earliest$</earliest>
@@ -218,11 +213,14 @@
 | stats count as count by host _time action 
 | eval count=count/$seconds_for_bin$
 | stats  
-    max(eval(if(action="eviction",count,0))) as max_cachemanager_eviction_ps 
-    max(eval(if(action="download",count,0))) as max_cachemanager_download_ps 
-    max(eval(if(action="upload",count,0))) as max_cachemanager_upload_ps 
-    sparkline(sum(eval(if(action="eviction",count,0))),$seconds_for_bin$sec) as cachemanager_eviction_ps 
-    sparkline(sum(eval(if(action="download",count,0))),$seconds_for_bin$sec) as cachemanager_download_ps 
+    max(eval(if(action="eviction",count,0))) as max_bucket_eviction_ps 
+    max(eval(if(action="download",count,0))) as max_bucket_download_ps 
+    max(eval(if(action="upload",count,0))) as max_bucket_upload_ps 
+    avg(eval(if(action="eviction",count,0))) as avg_bucket_eviction_ps 
+    avg(eval(if(action="download",count,0))) as avg_bucket_download_ps 
+    avg(eval(if(action="upload",count,0))) as avg_bucket_upload_ps 
+    sparkline(sum(eval(if(action="eviction",count,0))),$seconds_for_bin$sec) as bucket_eviction_ps 
+    sparkline(sum(eval(if(action="download",count,0))),$seconds_for_bin$sec) as bucket_download_ps 
     by host
 </query>
     <earliest>$time.earliest$</earliest>
@@ -588,11 +586,11 @@ $single_indexer_only$
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
-        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="max_bucket_access_get_ps">max_bucket_access_get_ps</choice>
         <choice value="age_days">age_days</choice>
-        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
-        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
-        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
+        <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
+        <choice value="max_bucket_upload_ps">max_bucket_upload_ps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
         <default>avg_average_kbps</default>
@@ -767,6 +765,7 @@ instantaneous_kbps
 avg_blocked_queues_ps
 blocked_queues_ps
 
+max_broken_pipes
 avg_broken_pipes
 broken_pipes
 
@@ -780,6 +779,7 @@ event_delay
 avg_search_concurrency
 search_concurrency
 
+max_cpu_used_pct
 avg_cpu_used_pct
 cpu_used_pct
 
@@ -789,47 +789,49 @@ mem_used
 avg_s2s_connections_per_second
 s2s_connections
 
+max_hec_kb
 avg_hec_kb
 hec_kb
 
+max_hec_requests
 avg_hec_requests
 hec_requests
 
-read_write_ratio_kb_ps
-
+max_writes_kb_ps
 avg_writes_kb_ps
-writes_ps
-
-avg_reads_kb_ps
-reads_kb_ps
-
-read_write_ratio_ps
-
-avg_writes_ps
 writes_kb_ps
 
+max_reads_ps
 avg_reads_ps
 reads_ps
 
+max_writes_ps
+avg_writes_ps
+writes_ps
+
+max_reads_kb_ps
+avg_reads_kb_ps
+reads_kb_ps
+
+max_avg_service_ms
 avg_avg_service_ms
 avg_service_ms
 
-max_cachemanager_download_ps
-cachemanager_download_ps
+max_bucket_download_ps
+avg_bucket_download_ps
+bucket_download_ps
 
-max_cachemanager_eviction_ps
-cachemanager_eviction_ps
+max_bucket_eviction_ps
+avg_bucket_eviction_ps
+bucket_eviction_ps
 
-max_cachemanager_upload_ps
+max_bucket_upload_ps
+avg_bucket_upload_ps
 cachemanager_upload_ps
 
-max_s3_put_errors_ps
-s3_put_errors_ps
-
-max_s3_get_errors_ps
-s3_get_errors_ps
-
-s3_get_errors_ps
+max_buckets_touched_ps
+avg_buckets_touched_ps
+buckets_touched_ps
 
 data.cpu_count
 data.mem
@@ -844,7 +846,6 @@ $transpose_table$</query>
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
-        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <format type="number" field="indexer_cluster_size">
@@ -862,7 +863,15 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">14.2,41,69.8,118.6,201.6,342.7,582.6,990.5,1683.8,2862.4,4866.1,8272.4,14063.1,23907.2,40642.3,69091.9,117456.3,199675.7,339448.7,577062.7,99999999999</scale>
         </format>
+        <format type="color" field="max_writes_kb_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">14.2,41,69.8,118.6,201.6,342.7,582.6,990.5,1683.8,2862.4,4866.1,8272.4,14063.1,23907.2,40642.3,69091.9,117456.3,199675.7,339448.7,577062.7,99999999999</scale>
+        </format>
         <format type="number" field="avg_writes_kb_ps">
+          <option name="precision">0</option>
+          <option name="unit">kb ps</option>
+        </format>
+        <format type="number" field="max_writes_kb_ps">
           <option name="precision">0</option>
           <option name="unit">kb ps</option>
         </format>
@@ -870,11 +879,23 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.004096,0.01024,0.0256,0.064,0.16,0.4,1,2.5,6.2,15.6,39.1,97.7,244.1,610.4,1525.9,3814.7,9536.7,23841.9,59604.6,149011.6,999999999999</scale>
         </format>
+        <format type="color" field="max_reads_kb_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.004096,0.01024,0.0256,0.064,0.16,0.4,1,2.5,6.2,15.6,39.1,97.7,244.1,610.4,1525.9,3814.7,9536.7,23841.9,59604.6,149011.6,999999999999</scale>
+        </format>
         <format type="number" field="avg_writes_kb_ps">
           <option name="precision">0</option>
           <option name="unit">kb ps</option>
         </format>
+        <format type="number" field="max_writes_kb_ps">
+          <option name="precision">0</option>
+          <option name="unit">kb ps</option>
+        </format>
         <format type="color" field="avg_reads_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,1668</scale>
+        </format>
+        <format type="color" field="max_reads_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,1668</scale>
         </format>
@@ -894,15 +915,24 @@ $transpose_table$</query>
           <option name="precision">0</option>
           <option name="unit">kbps</option>
         </format>
+        <format type="color" field="max_cpu_used_pct">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
+        </format>
+
         <format type="color" field="avg_cpu_used_pct">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
-          <scale type="threshold">2.1,2.5,3.0,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46.0,55.2,66.2,79.5,999999</scale>
+          <scale type="threshold">2.1,2.5,3,3.6,4.3,5.2,6.2,7.4,8.9,10.7,12.8,15.4,18.5,22.2,26.6,31.9,38.3,46,55.2,66.2,79.5,999999</scale>
         </format>
         <format type="color" field="avg_mem_used">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">917.3,1192.5,1550.3,2015.4,2620,3406,4427.8,5756.1,7483,9727.9,12646.2,16440.1,21372.1,27783.7,36118.9,46954.5,61040.9,103159.1,174338.9,999999999</scale>
         </format>
         <format type="color" field="avg_writes_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070]</colorPalette>
+          <scale type="threshold">2.2,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,3325.3,4987.9</scale>
+        </format>
+        <format type="color" field="max_writes_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070]</colorPalette>
           <scale type="threshold">2.2,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,3325.3,4987.9</scale>
         </format>
@@ -932,6 +962,22 @@ $transpose_table$</query>
         <format type="number" field="avg_search_concurrency">
           <option name="useThousandSeparators">false</option>
         </format>
+        <format type="color" field="max_buckets_touched_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.000858,0.001631,0.003099,0.005888,0.011187,0.021256,0.040386,0.076734,0.145794,0.277008,0.526316,1.0,1.9,3.6,6.9,13.0,24.8,47.0,89.4,169.8,322.7</scale>
+        </format>
+        <format type="color" field="avg_buckets_touched_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.000858,0.001631,0.003099,0.005888,0.011187,0.021256,0.040386,0.076734,0.145794,0.277008,0.526316,1.0,1.9,3.6,6.9,13.0,24.8,47.0,89.4,169.8,322.7</scale>
+        </format>
+        <format type="number" field="max_buckets_touched_ps">
+          <option name="precision">4</option>
+          <option name="useThousandSeparators">false</option>
+        </format>
+        <format type="number" field="avg_buckets_touched_ps">
+          <option name="precision">4</option>
+          <option name="useThousandSeparators">false</option>
+        </format>
         <format type="color" field="avg_s2s_connections_per_second">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.030016,0.046524,0.072112,0.111774,0.17325,0.268537,0.416233,0.645161,1,1.55,2.4,3.72,5.77,8.95,13.87,21.49,33.32,51.64,80.04,124.06</scale>
@@ -944,6 +990,10 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">85.8,180.1,378.2,794.3,1668,3502.8,7355.8,15447.2,32439.2,68122.3,143056.9,300419.4,630880.8,1324849.7,2782184.3,5842587,12269432.7,25765808.8,54108198.4,113627216.6,238617154.8</scale>
         </format>
+        <format type="color" field="max_hec_kb">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">85.8,180.1,378.2,794.3,1668,3502.8,7355.8,15447.2,32439.2,68122.3,143056.9,300419.4,630880.8,1324849.7,2782184.3,5842587,12269432.7,25765808.8,54108198.4,113627216.6,238617154.8</scale>
+        </format>
         <format type="number" field="avg_s2s_connections_per_second">
           <option name="precision">3</option>
           <option name="unit">kbps</option>
@@ -952,7 +1002,15 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,6746.6,12144,21859.1,39346.4,70823.5</scale>
         </format>
+        <format type="color" field="max_hec_requests">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,6746.6,12144,21859.1,39346.4,70823.5</scale>
+        </format>
         <format type="number" field="avg_hec_requests">
+          <option name="precision">0</option>
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="max_hec_requests">
           <option name="precision">0</option>
           <option name="unit">ps</option>
         </format>
@@ -976,18 +1034,33 @@ $transpose_table$</query>
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">1,1.5,2.2,3.4,5.1,7.6,11.4,17.1,25.6,38.4,57.7,86.5,129.7,194.6,291.9,437.9,656.8,985.3,1477.9,2216.8,25251.2</scale>
         </format>
-        <format type="color" field="max_cachemanager_eviction_ps">
+        <format type="color" field="max_bucket_eviction_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
         </format>
-        <format type="color" field="max_cachemanager_download_ps">
+        <format type="color" field="max_bucket_download_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
         </format>
-        <format type="color" field="max_cachemanager_upload_ps">
+        <format type="color" field="max_bucket_upload_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
         </format>
+
+        <format type="color" field="avg_bucket_eviction_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
+        </format>
+        <format type="color" field="avg_bucket_download_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,99999999</scale>
+        </format>
+        <format type="color" field="avg_bucket_upload_ps">
+          <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
+          <scale type="threshold">0.024694,0.0484,0.094865,0.13281,0.185934,0.260308,0.364431,0.510204,0.714286,1,1.4,2,2.7,3.8,5.4,7.5,10.5,14.8,20.7,28.9,56.7</scale>
+        </format>
+
+
         <format type="color" field="max_s3_get_errors_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
           <scale type="threshold">0.052922,0.09526,0.171468,0.308642,0.555556,1,1.8,3.2,5.8,10.5,18.9,34,61.2,110.2,198.4,357,642.7,1156.8,2082.3,3748.1,99999999</scale>
@@ -1087,13 +1160,22 @@ $transpose_table$</query>
           <option name="precision">0</option>
           <option name="unit">skipped</option>
         </format>
-        <format type="number" field="max_cachemanager_eviction_ps">
+        <format type="number" field="max_bucket_eviction_ps">
           <option name="unit">ps</option>
         </format>
-        <format type="number" field="max_cachemanager_upload_ps">
+        <format type="number" field="max_bucket_upload_ps">
           <option name="unit">ps</option>
         </format>
-        <format type="number" field="max_cachemanager_download_ps">
+        <format type="number" field="max_bucket_download_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="avg_bucket_eviction_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="avg_bucket_upload_ps">
+          <option name="unit">ps</option>
+        </format>
+        <format type="number" field="avg_bucket_download_ps">
           <option name="unit">ps</option>
         </format>
         <format type="color" field="age_days">
@@ -1114,6 +1196,10 @@ $transpose_table$</query>
           <option name="useThousandSeparators">false</option>
         </format>
         <format type="number" field="max_instantaneous_kbps"></format>
+        <format type="number" field="max_writes_ps">
+          <option name="precision">0</option>
+          <option name="useThousandSeparators">false</option>
+        </format>
         <format field="readings" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
@@ -1225,7 +1311,7 @@ $transpose_table$</query>
           </option>
           <option name="barWidth">2px</option>
         </format>
-        <format field="cachemanager_download_ps" type="sparkline">
+        <format field="bucket_download_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
@@ -1253,7 +1339,7 @@ $transpose_table$</query>
           </option>
           <option name="barWidth">2px</option>
         </format>
-        <format field="cachemanager_eviction_ps" type="sparkline">
+        <format field="bucket_eviction_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
@@ -1641,6 +1727,34 @@ $transpose_table$</query>
           </option>
           <option name="barWidth">2px</option>
         </format>
+        <format field="buckets_touched_ps" type="sparkline">
+          <option name="type">bar</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0.000858:0.001631">#e9ffd2</option>
+            <option name="0.001631:0.003099">#e5fecf</option>
+            <option name="0.003099:0.005888">#ddfdc8</option>
+            <option name="0.005888:0.011187">#d2fcbd</option>
+            <option name="0.011187:0.021256">#c2faad</option>
+            <option name="0.021256:0.040386">#a9f79a</option>
+            <option name="0.040386:0.076734">#88f582</option>
+            <option name="0.076734:0.145794">#65f171</option>
+            <option name="0.145794:0.277008">#46ed6f</option>
+            <option name="0.277008:0.526316">#25e979</option>
+            <option name="0.526316:1.000000">#03e495</option>
+            <option name="1.0:1.9">#00dec6</option>
+            <option name="1.9:3.6">#00b1d7</option>
+            <option name="3.6:6.9">#006bcf</option>
+            <option name="6.9:13.0">#0023c7</option>
+            <option name="13.0:24.8">#2200bd</option>
+            <option name="24.8:47.0">#6300b3</option>
+            <option name="47.0:89.4">#9c00a9</option>
+            <option name="89.4:169.8">#9e0070</option>
+            <option name="169.8:322.7">#920034</option>
+            <option name="322.7:613.1">#870002</option>
+          </option>
+          <option name="barWidth">2px</option>
+        </format>
         <format field="writes_ps" type="sparkline">
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
@@ -1796,11 +1910,11 @@ $transpose_table$</query>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
-        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="max_bucket_access_get_ps">max_bucket_access_get_ps</choice>
         <choice value="age_days">age_days</choice>
-        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
-        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
-        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
+        <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
+        <choice value="max_bucket_upload_ps">max_bucket_upload_ps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
         <default>avg_instantaneous_kbps</default>
@@ -1834,11 +1948,11 @@ $transpose_table$</query>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
-        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="max_bucket_access_get_ps">max_bucket_access_get_ps</choice>
         <choice value="age_days">age_days</choice>
-        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
-        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
-        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
+        <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
+        <choice value="max_bucket_upload_ps">max_bucket_upload_ps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
         <default>avg_search_concurrency</default>
@@ -1872,11 +1986,11 @@ $transpose_table$</query>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
-        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="max_bucket_access_get_ps">max_bucket_access_get_ps</choice>
         <choice value="age_days">age_days</choice>
-        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
-        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
-        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
+        <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
+        <choice value="max_bucket_upload_ps">max_bucket_upload_ps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
         <default>avg_normalized_load_avg_1min</default>
@@ -1956,11 +2070,11 @@ $show_bubble$</query>
         <choice value="max_buckets_download_ps">max_buckets_download_ps</choice>
         <choice value="max_buckets_upload_ps">max_buckets_upload_ps</choice>
         <choice value="max_s3_put_errors_ps">max_s3_put_errors_ps</choice>
-        <choice value="max_s3_errors_get_ps">max_s3_errors_get_ps</choice>
+        <choice value="max_bucket_access_get_ps">max_bucket_access_get_ps</choice>
         <choice value="age_days">age_days</choice>
-        <choice value="max_cachemanager_eviction_ps">max_cachemanager_eviction_ps</choice>
-        <choice value="max_cachemanager_download_ps">max_cachemanager_download_ps</choice>
-        <choice value="max_cachemanager_upload_ps">max_cachemanager_upload_ps</choice>
+        <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
+        <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
+        <choice value="max_bucket_upload_ps">max_bucket_upload_ps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
         <default>avg_normalized_load_avg_1min</default>
@@ -2264,32 +2378,27 @@ $show_bubble$</query>
       <td>The sparkline for the average service time in milliseconds</td>
    </tr>
    <tr>
-      <td>max_cachemanager_download_ps</td>
+      <td>max_bucket_download_ps</td>
       <td>cachemanager</td>
       <td>The cachemanager downloads buckets from S3 when there is no local copy. This KPI captures the maximum rate of downloading per second during the duration of the report</td>
    </tr>
    <tr>
-      <td>cachemanager_download_ps</td>
+      <td>bucket_download_ps</td>
       <td>cachemanager</td>
       <td>This is the sparkline for the cachemanager download activity</td>
    </tr>
    <tr>
-      <td>max_cachemanager_eviction_ps</td>
+      <td>max_bucket_eviction_ps</td>
       <td>cachemanager</td>
-      <td/>
+      <td>When the cache is full and a search needs to make space it evicts buckets with its Least Recently Used (LRU) algorithm. It deletes buckets that have not been accessed. This is the maximum number of buckets rejected per second during time range of the report</td>
    </tr>
    <tr>
-      <td>cachemanager_eviction_ps</td>
+      <td>bucket_eviction_ps</td>
       <td>cachemanager</td>
-      <td/>
+      <td>This a sparkline for the eviction of buckets by the cache manager</td>
    </tr>
    <tr>
-      <td>max_cachemanager_upload_ps</td>
-      <td>cachemanager</td>
-      <td/>
-   </tr>
-   <tr>
-      <td>cachemanager_upload_ps</td>
+      <td>max_bucket_upload_ps</td>
       <td>cachemanager</td>
       <td/>
    </tr>
@@ -2368,7 +2477,7 @@ $show_bubble$</query>
 <br/> cpu_load=$cpu_load_sid$ runtime=$cpu_load_runtime$ progress=$cpu_load_progress$
 <br/> io=$io_measure_sid$ runtime=$io_measure_runtime$ progress=$io_measure_progress$
 <br/> concurrency_sid=$concurrency_sid$ runtime=$concurrency_runtime$ progress=$concurrency_progress$
-<br/> s3_errors_sid=$s3_errors_sid$ runtime=$s3_errors_runtime$ progress=$s3_errors_progress$
+<br/> bucket_access_sid=$bucket_access_sid$ runtime=$bucket_access_runtime$ progress=$bucket_access_progress$
 <br/> cachemanager_sid=$cachemanager_sid$ runtime=$cachemanager_runtime$ progress=$cachemanager_progress$
 <br/>
 <br/> final_report=$final_report$ runtime=$final_report_runtime$
@@ -2376,6 +2485,19 @@ $show_bubble$</query>
 <br/> <b>total_runtime=$total_time$</b>
 </div>
       </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search base="bucket_access_sid">
+          <query>
+    
+    
+    
+  </query>
+        </search>
+      </table>
     </panel>
   </row>
 </form>
