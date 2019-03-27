@@ -17,9 +17,6 @@
     [| loadjob $bucket_access_sid$ ]
     [| loadjob $cachemanager_sid$ ]
 | stats list(*) as * by host 
-| lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time
-| rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
-| eval age_days=round((now()-strptime(launch_time, "%Y-%m-%dT%H:%M:%S.000Z"))/(24*60*60),0)
 | table host *</query>
     <earliest>$earliest$</earliest>
     <latest>$latest$</latest>
@@ -49,9 +46,9 @@
       <set token="crashes_runtime">$job.runDuration$</set>
       <set token="crashes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats prestats=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
+    <query>| tstats prestats=t count where index=_internal sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type="mothership" 
-| tstats prestats=t append=t count where index=customer_internal sourcetype=splunkd_crash_log $wildcard_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
+| tstats prestats=t append=t count where index=_internal sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type=if(isnull(crash_type),"search","mothership") 
 | stats count by host crash_type _time 
 | bin span=$seconds_for_bin$sec _time 
@@ -74,7 +71,7 @@
       <set token="s2s_connections_runtime">$job.runDuration$</set>
       <set token="s2s_connections_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as s2s_connections where $wildcard_filter_IN$ index=customer_metrics sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count as s2s_connections where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
 | eval s2s_connections=s2s_connections/$seconds_for_bin$
 | stats 
     avg(s2s_connections) as avg_s2s_connections_per_second 
@@ -96,7 +93,7 @@
       <unset token="blocked_queues_runtime"></unset>
       <set token="blocked_queues_progress">$job.doneProgress$</set>
     </progress>
-    <query>| tstats count as blocked_queues where $wildcard_filter_IN$ index=customer_metrics TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count as blocked_queues where $indexer_filter_IN$ index=_internal TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
 | eval blocked_queues_ps=blocked_queues/$seconds_for_bin$
 | stats 
     avg(blocked_queues_ps) as avg_blocked_queues_ps 
@@ -117,7 +114,7 @@
       <set token="broken_pipes_runtime">$job.runDuration$</set>
       <set token="broken_pipes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as broken_pipes where index=customer_splunkd $wildcard_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=$seconds_for_bin$s
+    <query>| tstats count as broken_pipes where index=_internal $indexer_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=$seconds_for_bin$s
 | eval broken_pipes=broken_pipes/$seconds_for_bin$
 | stats 
     max(broken_pipes) as max_broken_pipes
@@ -143,9 +140,9 @@
     sum(data.num_of_requests) as hec_requests
     sum(data.total_bytes_received) as hec_kb
     where data.num_of_requests &gt; 0 
-    index=customer_introspection 
+    index=_introspection 
     data.series::http_event_collector 
-    $wildcard_filter_IN$  by host _time span=$seconds_for_bin$s
+    $indexer_filter_IN$  by host _time span=$seconds_for_bin$s
 | makecontinuous _time
 | stats
     max(hec_requests) as max_hec_requests
@@ -170,7 +167,7 @@
       <set token="bucket_access_runtime">$job.runDuration$</set>
       <set token="bucket_access_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count where index=customer_splunkd sourcetype=splunkd_access* $wildcard_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
+    <query>| tstats count where index=_internal sourcetype=splunkd_access* $indexer_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
 | eval count_ps=count/$seconds_for_bin$
 | stats  
     max(count_ps) as max_buckets_touched_ps
@@ -192,11 +189,11 @@
       <set token="cachemanager_runtime">$job.runDuration$</set>
       <set token="cachemanager_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats prestats=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats prestats=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action="upload" 
-| tstats prestats=t append=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
+| tstats prestats=t append=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action=if(isnull(action),"download",action) 
-| tstats prestats=t append=t count where $wildcard_filter_IN$ index=customer_splunkd sourcetype=splunkd TERM(CacheManager) TERM(INFO) TERM(Eviction) TERM(results) by host _time span=$seconds_for_bin$sec
+| tstats prestats=t append=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(CacheManager) TERM(INFO) TERM(Eviction) TERM(results) by host _time span=$seconds_for_bin$sec
 | eval action=if(isnull(action),"eviction",action) 
 
 | stats count as count by host _time action 
@@ -226,7 +223,7 @@
       <set token="ingestion_runtime">$job.runDuration$</set>
       <set token="ingestion_progress">$job.doneProgress$</set>
     </done>
-    <query>index=customer_metrics Metrics sourcetype=splunkd $wildcard_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
+    <query>index=_internal Metrics sourcetype=splunkd $indexer_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
 | eval delay=_indextime-_time
 | fields - kb total_k_processed eps instantaneous_eps ev
 | eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
@@ -253,9 +250,9 @@
     by host
 | eval normalized_stdev_ingestion=stdev_instantaneous_kbps/avg_instantaneous_kbps
 | addinfo 
-| eval expected_metrics_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
-| eval skipped_readings=expected_metrics_readings-metrics_readings
-| fields - info_* expected_metrics_readings</query>
+| eval expected_internal_readings=round(info_max_time-info_min_time,0)/$seconds_for_bin$
+| eval skipped_readings=expected_internal_readings-metrics_readings
+| fields - info_* expected_internal_readings</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -275,8 +272,8 @@
     avg(data.cpu_idle_pct) as cpu_idle_pct
     avg(data.mem_used) as mem_used
     avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
-    where component=hostwide index=customer_introspection 
-    $wildcard_filter_IN$ 
+    where component=hostwide index=_introspection 
+    $indexer_filter_IN$ 
     by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host _time span=$seconds_for_bin$sec 
 | eval cpu_used_pct=100-cpu_idle_pct 
 | fields - cpu_idle_pct 
@@ -305,7 +302,7 @@
       <set token="search_startup_delay_runtime">$job.runDuration$</set>
       <set token="search_startup_delay_progress">$job.doneProgress$</set>
     </done>
-    <query>index=customer_internal $wildcard_filter_IN$ sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting)  ZERO_TIME
+    <query>index=_internal $indexer_filter_IN$ sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting)  ZERO_TIME
 | rex field=_raw "_(?&lt;search_creation_time&gt;155\d{7}[_\.]\d+)" 
 | eval search_creation_time=replace(search_creation_time,"_","."),
     delay=_time-search_creation_time 
@@ -327,7 +324,7 @@
       <set token="count_search_progress">$job.doneProgress$</set>
     </done>
     <query>
-| tstats count where index=customer_internal $wildcard_filter_IN$
+| tstats count where index=_internal $indexer_filter_IN$
     sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting) by host _time span=$seconds_for_bin$sec
 | eval count=count/$seconds_for_bin$
 | stats 
@@ -358,8 +355,8 @@
     avg(data.reads_kb_ps) as reads_kb_ps 
     avg(data.writes_kb_ps) as writes_kb_ps 
     where 
-    $wildcard_filter_IN$ 
-    index=customer_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=$seconds_for_bin$sec 
+    $indexer_filter_IN$ 
+    index=_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=$seconds_for_bin$sec 
 | stats 
     max(avg_service_ms) as max_avg_service_ms
     avg(avg_service_ms) as avg_avg_service_ms
@@ -395,7 +392,7 @@
       <set token="concurrency_progress">$job.doneProgress$</set>
     </done>
     <query>| tstats count as search_concurrency where 
-    index=customer_introspection $wildcard_filter_IN$ 
+    index=_introspection $indexer_filter_IN$ 
     component=PerProcess 
     data.search_props.sid=* by host _time span=$seconds_for_bin$sec
 | stats 
@@ -412,22 +409,15 @@
       <unset token="all_indexers_IN"></unset>
     </progress>
     <done>
-      <set token="StackNames_IN">$result.stackNameFilter_IN$</set>
-      <set token="wildcard_filter_IN">$result.wildcard_filter_IN$</set>
+      <set token="indexer_filter_IN">$result.indexer_IN$</set>
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
     </done>
-    <query>| inputlookup aws_inventory where $selected_stacks$ role=indexer $selected_regions$
-| stats 
-    values(eval(if(role="indexer",FQDN,""))) as all_indexers by stack 
-| stats values(*) as * 
-| eval
-    stackNameFilter_IN="(".mvjoin(StackNameFilter," OR ").")",
-    all_indexers_IN="host IN (".mvjoin(mvfilter(all_indexers!=""),", ").")",
-    wildcard_filter_IN="host IN (idx*.".mvjoin(mvfilter(stack!=""),".*, idx*.").".*)" 
-| fields - all_indexers index</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
+    <query>| dbinspect index=* 
+| stats values(splunk_server) as indexer 
+| eval host_count=mvcount(indexer), indexer_IN="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+    <earliest>-1hr</earliest>
+    <latest>now</latest>
     <sampleRatio>1</sampleRatio>
   </search>
   <search base="result_set" id="filtered_result_set">
@@ -450,85 +440,23 @@ $single_indexer_only$
         <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
     </input>
-    <input type="multiselect" token="customer_type">
+    <input type="multiselect" token="_type">
       <label>Customer type</label>
       <choice value="*">All</choice>
       <default>*</default>
       <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>customer_type</fieldForValue>
+      <fieldForValue>_type</fieldForValue>
       <search>
         <query>| inputlookup aws_inventory where role=indexer
-| stats count by customer_type 
+| stats count by _type 
 | sort - count 
-| eval label=customer_type." (".count.")" 
+| eval label=_type." (".count.")" 
 | fields - count</query>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
-      <valuePrefix>customer_type=</valuePrefix>
+      <valuePrefix>_type=</valuePrefix>
       <delimiter> OR </delimiter>
-    </input>
-    <input type="multiselect" token="selected_regions">
-      <label>Select region</label>
-      <choice value="*">*</choice>
-      <choice value="ap-southeast*">ap-southeast*</choice>
-      <choice value="ca-central*">ca-central*</choice>
-      <choice value="eu-west*">eu-west*</choice>
-      <choice value="sa-east*">sa-east*</choice>
-      <choice value="us-east*">us-east*</choice>
-      <choice value="ap-southeast-1">ap-southeast-1</choice>
-      <choice value="ap-southeast-2">ap-southeast-2</choice>
-      <choice value="ca-central-1">ca-central-1</choice>
-      <choice value="eu-central-1">eu-central-1</choice>
-      <choice value="eu-west-1">eu-west-1</choice>
-      <choice value="eu-west-2">eu-west-2</choice>
-      <choice value="sa-east-1">sa-east-1</choice>
-      <choice value="us-east-1">us-east-1</choice>
-      <choice value="us-west-2">us-west-2</choice>
-      <change>
-        <unset token="StackNames_IN"></unset>
-        <unset token="sample_indexers_OR"></unset>
-        <unset token="sample_indexers_IN"></unset>
-        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
-        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
-        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
-      </change>
-      <default>*</default>
-      <valuePrefix>region=</valuePrefix>
-      <delimiter> OR </delimiter>
-    </input>
-    <input type="multiselect" token="selected_stacks">
-      <label>Select stacks to chart</label>
-      <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>stack_derived</fieldForValue>
-      <search>
-        <query>| inputlookup aws_inventory where role="indexer" $customer_type$ $selected_regions$
-| stats count by stack instance_type aws_account_id 
-| rename stack AS stack_derived 
-| sort - count 
-| eval label=count." x ".mvjoin(instance_type,", ") 
-| stats sum(count) as count values(label) as label by stack_derived aws_account_id 
-| lookup aws_accounts aws_account_id
-| eval label=stack_derived." (".mvjoin(label,", ").")"
-| stats sum(count) as count values(label) as label by stack_derived
-| sort - count
-| eval label=mvjoin(label,", ")</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
-      </search>
-      <delimiter> OR </delimiter>
-      <prefix>(</prefix>
-      <suffix>)</suffix>
-      <change>
-        <unset token="StackNames_IN"></unset>
-        <unset token="sample_indexers_OR"></unset>
-        <unset token="sample_indexers_IN"></unset>
-        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
-        <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
-        <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
-      </change>
-      <valuePrefix>stack=</valuePrefix>
-      <choice value="*">*</choice>
     </input>
     <input type="dropdown" token="refresh_rate_seconds">
       <label>Refresh rate</label>
@@ -577,7 +505,7 @@ $single_indexer_only$
       </input>
     </panel>
   </row>
-  <row depends="$selected_stacks$">
+  <row depends="">
     <panel>
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
@@ -637,12 +565,11 @@ $single_indexer_only$
       </input>
       <input type="dropdown" token="split_by">
         <label>Split by</label>
-        <choice value="stack">Stack</choice>
         <choice value="| noop">No split by</choice>
         <choice value="splunk_version">splunk_version</choice>
         <choice value="instance_type">instance_type</choice>
         <choice value="cloud_flavor">cloud_flavor</choice>
-        <default>stack</default>
+        <default>| noop</default>
         <change>
           <set token="selected_stack">*</set>
         </change>
@@ -703,7 +630,7 @@ $single_indexer_only$
       </chart>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_table$">
+  <row depends=",$show_table$">
     <panel>
       <input type="checkbox" token="single_indexer_filter">
         <label></label>
@@ -770,7 +697,7 @@ $single_indexer_only$
           </done>
           <query>$show_table$
           | rename stack as stack_name
-| table short_host_for_pretty_output
+| table host
 stack_name
 splunk_version
 instance_type
@@ -878,6 +805,7 @@ $transpose_table$</query>
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">cell</option>
         <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <format type="number" field="indexer_cluster_size">
@@ -1995,14 +1923,14 @@ $transpose_table$</query>
       </table>
     </panel>
   </row>
-  <row rejects="$selected_stacks$,$selected_stacks$">
+  <row rejects=",">
     <panel>
       <html>
                 <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
             </html>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_bubble$">
+  <row depends=",$show_bubble$">
     <panel>
       <input type="dropdown" token="bubble_selected_field_x">
         <label>X series</label>
