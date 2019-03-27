@@ -1,5 +1,5 @@
 <form>
-  <label>Discovery queries</label>
+  <label>Discovery searches</label>
   <fieldset submitButton="false">
     <input type="text" token="selected_internal">
       <label>Override _internal index selection</label>
@@ -98,8 +98,9 @@
       <table>
         <title>Site discovery</title>
         <search>
-          <query>| rest /services/cluster/slave/info
-| stats dc(splunk_server) as host_count values(splunk_server) as indexer by site
+          <query>| rest /services/cluster/config
+| rex field=master_uri "https://(?&lt;cluster_master&gt;[^:]+)"
+| stats dc(splunk_server) as host_count values(splunk_server) as indexer by site cluster_master cluster_label
 | eval indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
@@ -125,13 +126,14 @@
         <search>
           <query>$selected_internal$ sourcetype=splunkd CMMaster status=success site*
 | rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
-| fields + site_pair
+| eval cluster_master=host
+| fields + site_pair cluster_master
 | fields - _*
 | dedup site_pair
 | mvexpand site_pair
 | dedup site_pair
 | rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;indexer&gt;.*)"
-| stats values(indexer) as indexer by site_id
+| stats values(indexer) as indexer by site_id cluster_master
 | eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
           <earliest>$time_site_cmmaster.earliest$</earliest>
           <latest>$time_site_cmmaster.latest$</latest>
