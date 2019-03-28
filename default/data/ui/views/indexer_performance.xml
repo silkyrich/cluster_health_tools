@@ -1,6 +1,12 @@
 <form>
   <label>Indexer performance and stability</label>
   <description>Another groovy operations dashboard brought to you by Richard Morgan Productions</description>
+  <init>
+    <eval token="duration_seconds">3100</eval>
+    <eval token="readings_per_bin_31">1</eval>
+    <eval token="seconds_for_bin">31</eval>
+    <eval token="seconds_for_bin_62">62</eval>
+  </init>
   <search id="result_set">
     <query>| union 
     [| loadjob $broken_pipes_sid$ ]
@@ -16,6 +22,7 @@
     [| loadjob $concurrency_sid$ ]
     [| loadjob $bucket_access_sid$ ]
     [| loadjob $cachemanager_sid$ ]
+    [| loadjob $site_membership_sid$ ]
 | stats list(*) as * by host 
 | table host *</query>
     <earliest>$earliest$</earliest>
@@ -31,7 +38,7 @@
       <set token="final_report_runtime">$job.runDuration$</set>
       <set token="final_report_progress">$job.doneProgress$</set>
       <set token="all_indexers">$job.resultCount$</set>
-      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$bucket_access_runtime$+$cachemanager_runtime$+$crashes_runtime$+$search_startup_delay_sid$+$count_search_runtime$+$final_report_runtime$</eval>
+      <eval token="total_time">$broken_pipes_runtime$+$blocked_queues_runtime$+$s2s_connections_runtime$+$hec_connections_runtime$+$ingestion_runtime$+$cpu_load_runtime$+$io_measure_runtime$+$concurrency_runtime$+$bucket_access_runtime$+$cachemanager_runtime$+$crashes_runtime$+$search_startup_delay_sid$+$count_search_runtime$+$site_membership_sid$+$final_report_runtime$</eval>
     </done>
   </search>
   <search id="crashes_sid">
@@ -78,6 +85,33 @@
     sparkline(sum(s2s_connections),$seconds_for_bin$sec) as s2s_connections 
     by host
 | eval avg_s2s_connections_per_second=round(avg_s2s_connections_per_second,3)</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="site_membership_sid">
+    <done>
+      <set token="site_membership_sid">$job.sid$</set>
+      <set token="site_membership_runtime">$job.runDuration$</set>
+      <set token="site_membership_progress">$job.doneProgress$</set>
+    </done>
+    <progress>
+      <unset token="site_membership_sid"></unset>
+      <unset token="site_membership_runtime"></unset>
+      <set token="site_membership_progress">$job.doneProgress$</set>
+    </progress>
+    <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-1hr latest=now
+| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
+| eval cluster_master=host
+| fields + site_pair cluster_master
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;host&gt;.*)"
+| eval cm_site_id=cluster_master."-".site_id
+| table host cluster_master site_id cm_site_id
+
+</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -136,7 +170,8 @@
       <set token="hec_connections_runtime">$job.runDuration$</set>
       <set token="hec_connections_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats 
+    <query>
+| tstats 
     sum(data.num_of_requests) as hec_requests
     sum(data.total_bytes_received) as hec_kb
     where data.num_of_requests &gt; 0 
@@ -405,15 +440,15 @@
   </search>
   <search id="get_lists">
     <progress>
-      <unset token="StackNames_IN"></unset>
-      <unset token="all_indexers_IN"></unset>
+      <unset token="indexer_filter_IN"></unset>
     </progress>
     <done>
       <set token="indexer_filter_IN">$result.indexer_IN$</set>
       <set token="get_lists_runtime">$job.runDuration$</set>
       <set token="get_lists_sid">$job.sid$</set>
+      <set token="get_lists_progress">$job.doneProgress$</set>
     </done>
-    <query>| dbinspect index=* 
+    <query>| dbinspect index=_internal 
 | stats values(splunk_server) as indexer 
 | eval host_count=mvcount(indexer), indexer_IN="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
     <earliest>-1hr</earliest>
@@ -423,7 +458,7 @@
   <search base="result_set" id="filtered_result_set">
     <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
 $single_indexer_only$
-| fields - data.os_version data.instance_guid data.os_build host launch_time
+| fields - data.os_version data.instance_guid data.os_build launch_time
 | sort - $selected_field$</query>
   </search>
   <fieldset submitButton="false">
@@ -439,24 +474,6 @@ $single_indexer_only$
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
         <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
-    </input>
-    <input type="multiselect" token="_type">
-      <label>Customer type</label>
-      <choice value="*">All</choice>
-      <default>*</default>
-      <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>_type</fieldForValue>
-      <search>
-        <query>| inputlookup aws_inventory where role=indexer
-| stats count by _type 
-| sort - count 
-| eval label=_type." (".count.")" 
-| fields - count</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
-      </search>
-      <valuePrefix>_type=</valuePrefix>
-      <delimiter> OR </delimiter>
     </input>
     <input type="dropdown" token="refresh_rate_seconds">
       <label>Refresh rate</label>
@@ -567,9 +584,10 @@ $single_indexer_only$
         <label>Split by</label>
         <choice value="| noop">No split by</choice>
         <choice value="splunk_version">splunk_version</choice>
-        <choice value="instance_type">instance_type</choice>
-        <choice value="cloud_flavor">cloud_flavor</choice>
-        <default>| noop</default>
+        <choice value="site_id">site_id</choice>
+        <choice value="cluster_master">cluster_master</choice>
+        <choice value="cm_site_id">cluster_master + site id</choice>
+        <default>site_id</default>
         <change>
           <set token="selected_stack">*</set>
         </change>
@@ -630,7 +648,7 @@ $single_indexer_only$
       </chart>
     </panel>
   </row>
-  <row depends=",$show_table$">
+  <row depends="$show_table$">
     <panel>
       <input type="checkbox" token="single_indexer_filter">
         <label></label>
@@ -638,14 +656,6 @@ $single_indexer_only$
         <change>
           <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
         </change>
-      </input>
-      <input type="checkbox" token="transpose_table">
-        <label></label>
-        <choice value="| transpose header_field=short_host_for_pretty_output">Transpose table</choice>
-        <change>
-          <eval token="transpose_table">if(isnull($transpose_table$),"| noop",$transpose_table$)</eval>
-        </change>
-        <delimiter/>
       </input>
       <html>
                 <style>#filter {
@@ -697,7 +707,11 @@ $single_indexer_only$
           </done>
           <query>$show_table$
           | rename stack as stack_name
-| table host
+| table 
+host
+cluster_master
+site_id
+
 stack_name
 splunk_version
 instance_type
@@ -798,8 +812,7 @@ data.mem
 age_days
 cloud_flavor
 
-*
-$transpose_table$</query>
+*</query>
         </search>
         <option name="count">50</option>
         <option name="dataOverlayMode">none</option>
@@ -853,11 +866,11 @@ $transpose_table$</query>
         </format>
         <format type="color" field="avg_reads_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
-          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,1668</scale>
+          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,999999</scale>
         </format>
         <format type="color" field="max_reads_ps">
           <colorPalette type="list">[#E9FFD2,#E5FECF,#DDFDC8,#D2FCBD,#C2FAAD,#A9F79A,#88F582,#65F171,#46ED6F,#25E979,#03E495,#00DEC6,#00B1D7,#006BCF,#0023C7,#2200BD,#6300B3,#9C00A9,#9E0070,#920034,#870002]</colorPalette>
-          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,1668</scale>
+          <scale type="threshold">0.0006,0.001259,0.002644,0.005552,0.01166,0.024485,0.051419,0.10798,0.226757,0.47619,1,2.1,4.4,9.3,19.4,40.8,85.8,180.1,378.2,794.3,16999968</scale>
         </format>
         <format type="number" field="avg_reads_ps">
           <option name="precision">0</option>
@@ -1199,7 +1212,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.95:1">#e9ffd2</option>
+            <option name="0:1">#e9ffd2</option>
             <option name="0.9:0.95">#e5fecf</option>
             <option name="0.85:0.9">#ddfdc8</option>
             <option name="0.80:0.85">#d2fcbd</option>
@@ -1254,7 +1267,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.060927:0.106622">#e9ffd2</option>
+            <option name="0:0.106622">#e9ffd2</option>
             <option name="0.106622:0.186589">#e5fecf</option>
             <option name="0.186589:0.326531">#ddfdc8</option>
             <option name="0.326531:0.571429">#d2fcbd</option>
@@ -1533,7 +1546,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.000854:0.001195">#e9ffd2</option>
+            <option name="0:0.001195">#e9ffd2</option>
             <option name="0.001673:0.002343">#e5fecf</option>
             <option name="0.003280:0.004591">#ddfdc8</option>
             <option name="0.004591:0.006428">#d2fcbd</option>
@@ -1672,7 +1685,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.049735:0.067142">#e9ffd2</option>
+            <option name="0:0.067142">#e9ffd2</option>
             <option name="0.090642:0.122367">#e5fecf</option>
             <option name="0.122367:0.165195">#ddfdc8</option>
             <option name="0.165195:0.223014">#d2fcbd</option>
@@ -1700,7 +1713,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="2.1:2.5">#e9ffd2</option>
+            <option name="0:2.5">#e9ffd2</option>
             <option name="2.5:3.0">#e5fecf</option>
             <option name="3.0:3.6">#ddfdc8</option>
             <option name="3.6:4.3">#d2fcbd</option>
@@ -1728,7 +1741,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.002130:0.003940">#e9ffd2</option>
+            <option name="0:0.003940">#e9ffd2</option>
             <option name="0.540541:1.000000">#e5fecf</option>
             <option name="3.42:6.33">#ddfdc8</option>
             <option name="6.33:11.71">#d2fcbd</option>
@@ -1782,7 +1795,7 @@ $transpose_table$</query>
           <option name="type">bar</option>
           <option name="chartRangeMin">0</option>
           <option name="colorMap">
-            <option name="0.000858:0.001631">#e9ffd2</option>
+            <option name="0:0.001631">#e9ffd2</option>
             <option name="0.001631:0.003099">#e5fecf</option>
             <option name="0.003099:0.005888">#ddfdc8</option>
             <option name="0.005888:0.011187">#d2fcbd</option>
@@ -1918,7 +1931,7 @@ $transpose_table$</query>
           <option name="barWidth">2px</option>
         </format>
         <drilldown>
-          <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack_name$&amp;form.selected_host=$row.short_host_for_pretty_output$.$row.stack_name$.splunkcloud.com</link>
+          <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack_name$&amp;form.selected_host=$row.host$.$row.stack_name$.splunkcloud.com</link>
         </drilldown>
       </table>
     </panel>
@@ -2097,15 +2110,15 @@ $transpose_table$</query>
       </input>
       <input type="dropdown" token="bubble_split_by">
         <label>Split by</label>
-        <choice value="stack">Stack</choice>
         <choice value="| noop">No split by</choice>
         <choice value="splunk_version">splunk_version</choice>
-        <choice value="instance_type">instance_type</choice>
-        <choice value="cloud_flavor">cloud_flavor</choice>
-        <default>stack</default>
+        <choice value="site_id">site_id</choice>
+        <choice value="cluster_master">cluster_master</choice>
+        <choice value="cm_site id">site id</choice>
         <change>
           <set token="selected_stack">*</set>
         </change>
+        <default>site_id</default>
       </input>
       <html>
                 <style>#filter {
@@ -2278,9 +2291,9 @@ $show_bubble$</query>
             <th>Description</th>
         </tr>
         <tr>
-            <td>short_host_for_pretty_output</td>
+            <td>host</td>
             <td>hostname</td>
-            <td>A short name for the indexer, it has been truncated to remove redunddant information. The old StackMakr instances have names like idx1 idx2 etc, whereas the CloudWorks names include the AWS instance GUID embedded meaning very name is unique. When an indexer dies it is automatically replaced via the magic of automation with a new name, the stackmakr names are recycled.</td>
+            <td>The name of the indexer</td>
         </tr>
         <tr>
             <td>stack_name</td>
@@ -2591,7 +2604,11 @@ $show_bubble$</query>
   padding:20px
 }</style>
                 <div id="sid">
-                    <br/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
+                    <br/> get_lists=$get_lists_sid$ runtime=$get_lists_runtime$ progress=$get_lists_progress$
+                    
+                    <br/> get_lists=$site_membership_sid$ runtime=$site_membership_runtime$ progress=$site_membership_progress$
+
+                    <br/> broken_pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
 
                     <br/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$ progress=$blocked_queues_progress$
 
