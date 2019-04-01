@@ -522,7 +522,7 @@ $single_indexer_only$
       </input>
     </panel>
   </row>
-  <row depends="">
+  <row depends="$final_report$">
     <panel>
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
@@ -648,7 +648,7 @@ $single_indexer_only$
       </chart>
     </panel>
   </row>
-  <row depends="$show_table$">
+  <row depends="$show_table$,$final_report$">
     <panel>
       <input type="checkbox" token="single_indexer_filter">
         <label></label>
@@ -1934,13 +1934,6 @@ cloud_flavor
           <link target="_blank">/app/stk-app-SEArchitects/host_information?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_stack=$row.stack_name$&amp;form.selected_host=$row.host$.$row.stack_name$.splunkcloud.com</link>
         </drilldown>
       </table>
-    </panel>
-  </row>
-  <row rejects=",">
-    <panel>
-      <html>
-                <h1 align="center">Please select one or more stacks to analyse, alternatively select a region and * for all indexers in that region.</h1>
-            </html>
     </panel>
   </row>
   <row depends=",$show_bubble$">
