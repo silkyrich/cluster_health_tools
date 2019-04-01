@@ -53,9 +53,9 @@
       <set token="crashes_runtime">$job.runDuration$</set>
       <set token="crashes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats prestats=t count where index=_internal sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
+    <query>| tstats prestats=t count where $internal$ sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) NOT (TERM(Process) TERM(renamed)) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type="mothership" 
-| tstats prestats=t append=t count where index=_internal sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
+| tstats prestats=t append=t count where $internal$ sourcetype=splunkd_crash_log $indexer_filter_IN$ TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC) by host _time span=$seconds_for_bin$s 
 | eval crash_type=if(isnull(crash_type),"search","mothership") 
 | stats count by host crash_type _time 
 | bin span=$seconds_for_bin$sec _time 
@@ -78,7 +78,7 @@
       <set token="s2s_connections_runtime">$job.runDuration$</set>
       <set token="s2s_connections_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as s2s_connections where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count as s2s_connections where $indexer_filter_IN$ $internal$ sourcetype=splunkd TERM(METRICS) TERM(hostname=*) by host _time span=$seconds_for_bin$sec 
 | eval s2s_connections=s2s_connections/$seconds_for_bin$
 | stats 
     avg(s2s_connections) as avg_s2s_connections_per_second 
@@ -99,7 +99,7 @@
       <unset token="site_membership_runtime"></unset>
       <set token="site_membership_progress">$job.doneProgress$</set>
     </progress>
-    <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-1hr latest=now
+    <query>$internal$ sourcetype=splunkd CMMaster status=success site* earliest=-1hr latest=now
 | rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
 | eval cluster_master=host
 | fields + site_pair cluster_master
@@ -127,7 +127,7 @@
       <unset token="blocked_queues_runtime"></unset>
       <set token="blocked_queues_progress">$job.doneProgress$</set>
     </progress>
-    <query>| tstats count as blocked_queues where $indexer_filter_IN$ index=_internal TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count as blocked_queues where $indexer_filter_IN$ $internal$ TERM(group=queue) TERM(blocked=true) TERM(name=*) by host _time span=$seconds_for_bin$sec 
 | eval blocked_queues_ps=blocked_queues/$seconds_for_bin$
 | stats 
     avg(blocked_queues_ps) as avg_blocked_queues_ps 
@@ -148,7 +148,7 @@
       <set token="broken_pipes_runtime">$job.runDuration$</set>
       <set token="broken_pipes_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count as broken_pipes where index=_internal $indexer_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=$seconds_for_bin$s
+    <query>| tstats count as broken_pipes where $internal$ $indexer_filter_IN$ TcpInputProc Error encountered for connection Broken pipe sourcetype=splunkd by _time host span=$seconds_for_bin$s
 | eval broken_pipes=broken_pipes/$seconds_for_bin$
 | stats 
     max(broken_pipes) as max_broken_pipes
@@ -175,7 +175,7 @@
     sum(data.num_of_requests) as hec_requests
     sum(data.total_bytes_received) as hec_kb
     where data.num_of_requests &gt; 0 
-    index=_introspection 
+    $introspection$ 
     data.series::http_event_collector 
     $indexer_filter_IN$  by host _time span=$seconds_for_bin$s
 | makecontinuous _time
@@ -202,7 +202,7 @@
       <set token="bucket_access_runtime">$job.runDuration$</set>
       <set token="bucket_access_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats count where index=_internal sourcetype=splunkd_access* $indexer_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
+    <query>| tstats count where $internal$ sourcetype=splunkd_access* $indexer_filter_IN$  POST services admin cacheman bid close by host _time span=$seconds_for_bin$s
 | eval count_ps=count/$seconds_for_bin$
 | stats  
     max(count_ps) as max_buckets_touched_ps
@@ -224,11 +224,11 @@
       <set token="cachemanager_runtime">$job.runDuration$</set>
       <set token="cachemanager_progress">$job.doneProgress$</set>
     </done>
-    <query>| tstats prestats=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats prestats=t count where $indexer_filter_IN$ $internal$ sourcetype=splunkd TERM(cachemanager) TERM(action=upload) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action="upload" 
-| tstats prestats=t append=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
+| tstats prestats=t append=t count where $indexer_filter_IN$ $internal$ sourcetype=splunkd TERM(cachemanager) TERM(action=download) TERM(status=succeeded) TERM(INFO) by host _time span=$seconds_for_bin$sec 
 | eval action=if(isnull(action),"download",action) 
-| tstats prestats=t append=t count where $indexer_filter_IN$ index=_internal sourcetype=splunkd TERM(CacheManager) TERM(INFO) TERM(Eviction) TERM(results) by host _time span=$seconds_for_bin$sec
+| tstats prestats=t append=t count where $indexer_filter_IN$ $internal$ sourcetype=splunkd TERM(CacheManager) TERM(INFO) TERM(Eviction) TERM(results) by host _time span=$seconds_for_bin$sec
 | eval action=if(isnull(action),"eviction",action) 
 
 | stats count as count by host _time action 
@@ -258,7 +258,7 @@
       <set token="ingestion_runtime">$job.runDuration$</set>
       <set token="ingestion_progress">$job.doneProgress$</set>
     </done>
-    <query>index=_internal Metrics sourcetype=splunkd $indexer_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
+    <query>$internal$ Metrics sourcetype=splunkd $indexer_filter_IN$  TERM(group=thruput) TERM(name=thruput) 
 | eval delay=_indextime-_time
 | fields - kb total_k_processed eps instantaneous_eps ev
 | eval ingest_pipe=if(isnull(ingest_pipe), 0, ingest_pipe) 
@@ -307,7 +307,7 @@
     avg(data.cpu_idle_pct) as cpu_idle_pct
     avg(data.mem_used) as mem_used
     avg(data.normalized_load_avg_1min) as normalized_load_avg_1min 
-    where component=hostwide index=_introspection 
+    where component=hostwide $introspection$ 
     $indexer_filter_IN$ 
     by data.os_build data.os_version data.splunk_version data.cpu_count data.mem data.instance_guid host _time span=$seconds_for_bin$sec 
 | eval cpu_used_pct=100-cpu_idle_pct 
@@ -337,7 +337,7 @@
       <set token="search_startup_delay_runtime">$job.runDuration$</set>
       <set token="search_startup_delay_progress">$job.doneProgress$</set>
     </done>
-    <query>index=_internal $indexer_filter_IN$ sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting)  ZERO_TIME
+    <query>$internal$ $indexer_filter_IN$ sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting)  ZERO_TIME
 | rex field=_raw "_(?&lt;search_creation_time&gt;155\d{7}[_\.]\d+)" 
 | eval search_creation_time=replace(search_creation_time,"_","."),
     delay=_time-search_creation_time 
@@ -359,7 +359,7 @@
       <set token="count_search_progress">$job.doneProgress$</set>
     </done>
     <query>
-| tstats count where index=_internal $indexer_filter_IN$
+| tstats count where $internal$ $indexer_filter_IN$
     sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting) by host _time span=$seconds_for_bin$sec
 | eval count=count/$seconds_for_bin$
 | stats 
@@ -391,7 +391,7 @@
     avg(data.writes_kb_ps) as writes_kb_ps 
     where 
     $indexer_filter_IN$ 
-    index=_introspection (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=$seconds_for_bin$sec 
+    $introspection$ (data.device="dm-0" OR data.device="md127") component::iostats by host _time span=$seconds_for_bin$sec 
 | stats 
     max(avg_service_ms) as max_avg_service_ms
     avg(avg_service_ms) as avg_avg_service_ms
@@ -427,7 +427,7 @@
       <set token="concurrency_progress">$job.doneProgress$</set>
     </done>
     <query>| tstats count as search_concurrency where 
-    index=_introspection $indexer_filter_IN$ 
+    $introspection$ $indexer_filter_IN$ 
     component=PerProcess 
     data.search_props.sid=* by host _time span=$seconds_for_bin$sec
 | stats 
@@ -448,7 +448,7 @@
       <set token="get_lists_sid">$job.sid$</set>
       <set token="get_lists_progress">$job.doneProgress$</set>
     </done>
-    <query>| dbinspect index=_internal 
+    <query>| dbinspect $internal$ 
 | stats values(splunk_server) as indexer 
 | eval host_count=mvcount(indexer), indexer_IN="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
     <earliest>-1hr</earliest>
@@ -519,6 +519,23 @@ $single_indexer_only$
         <label></label>
         <choice value="| noop">Bar chart</choice>
         <delimiter/>
+      </input>
+      <input type="checkbox" token="show_index_override">
+        <label></label>
+        <choice value="| noop">Index override</choice>
+        <delimiter/>
+      </input>
+    </panel>
+  </row>
+  <row depends="$show_index_override$">
+    <panel>
+      <input type="text" token="introspection">
+        <label>Introspection index name</label>
+        <default>index=_introspection</default>
+      </input>
+      <input type="text" token="internal">
+        <label>Internal index name</label>
+        <default>index=_internal</default>
       </input>
     </panel>
   </row>
@@ -2599,7 +2616,7 @@ $show_bubble$</query>
                 <div id="sid">
                     <br/> get_lists=$get_lists_sid$ runtime=$get_lists_runtime$ progress=$get_lists_progress$
                     
-                    <br/> get_lists=$site_membership_sid$ runtime=$site_membership_runtime$ progress=$site_membership_progress$
+                    <br/> site_membership=$site_membership_sid$ runtime=$site_membership_runtime$ progress=$site_membership_progress$
 
                     <br/> broken_pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
 
