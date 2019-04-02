@@ -107,8 +107,8 @@
       <set token="site_membership_progress">$job.doneProgress$</set>
       <set token="site_membership_count">$job.resultCount$</set>
     </progress>
-    <query>$internal$ sourcetype=splunkd CMMaster status=success site* earliest=-1hr latest=now
-| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
+    <query>$internal$ sourcetype=splunkd CMMaster TERM(status=success) TERM(event=addBucket) site* NOT(source=*remote_searches.log) earliest=-1hr latest=now
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
 | eval cluster_master=host
 | fields + site_pair cluster_master
 | fields - _*
@@ -635,7 +635,7 @@ $single_indexer_only$
         <choice value="site_id">site_id</choice>
         <choice value="cluster_master">cluster_master</choice>
         <choice value="cm_site_id">cluster_master + site id</choice>
-        <default>site_id</default>
+        <default>splunk_version</default>
         <change>
           <set token="selected_stack">*</set>
         </change>
