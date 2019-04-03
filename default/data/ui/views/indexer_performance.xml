@@ -1,6 +1,12 @@
 <form>
   <label>Indexer performance and stability</label>
   <description>Another groovy operations dashboard brought to you by Richard Morgan Productions</description>
+  <init>
+    <eval token="duration_seconds">3100</eval>
+    <eval token="readings_per_bin_31">1</eval>
+    <eval token="seconds_for_bin">31</eval>
+    <eval token="seconds_for_bin_62">62</eval>
+  </init>
   <search id="result_set">
     <query>| union 
     [| loadjob $broken_pipes_sid$ ]
@@ -2663,7 +2669,7 @@ $show_bubble$</query>
   padding:20px
 }</style>
                 <div id="sid">
-                    <br/> broken pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
+                    <br/> broken_pipes=$broken_pipes_sid$ runtime=$broken_pipes_runtime$ progress=$broken_pipes_progress$
 
                     <br/> blocked_queues=$blocked_queues_sid$ runtime=$blocked_queues_runtime$ progress=$blocked_queues_progress$
 
