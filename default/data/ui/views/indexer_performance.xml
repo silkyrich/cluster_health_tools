@@ -4,6 +4,7 @@
   <init>
     <eval token="duration_seconds">3100</eval>
     <eval token="readings_per_bin_31">1</eval>
+    <eval token="readings_per_bin_62">62</eval>
     <eval token="seconds_for_bin">31</eval>
     <eval token="seconds_for_bin_62">62</eval>
   </init>
@@ -26,7 +27,7 @@
 | lookup aws_inventory FQDN AS host output stack cloud_flavor instance_type launch_time region
 | lookup AWS_EC2_Costs_1year_no_upfront.csv "API Name" AS instance_type, Location AS region OUTPUT "Linux On Demand cost" 
 | rex field="Linux On Demand cost" "\$(?&lt;cost_per_hour&gt;[^\s]*)" 
-| fields - "Linux On Demand cost"
+| fields - "Linux On Demand cost"	    
 | rex field=host "(?&lt;short_host_for_pretty_output&gt;idx*[^\.]+)\."
 | eval age_days=round((now()-strptime(launch_time, "%Y-%m-%dT%H:%M:%S.000Z"))/(24*60*60),0)
 | table host *</query>
@@ -455,6 +456,7 @@ $single_indexer_only$
       <change>
         <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
         <eval token="readings_per_bin_31">ceiling($duration_seconds$/100/31)</eval>
+        <eval token="readings_per_bin_62">ceiling($duration_seconds$/100/62)</eval>
         <eval token="seconds_for_bin">ceiling($duration_seconds$/100/31)*31</eval>
         <eval token="seconds_for_bin_62">ceiling($duration_seconds$/100/62)*62</eval>
       </change>
@@ -586,7 +588,7 @@ $single_indexer_only$
       </input>
     </panel>
   </row>
-  <row depends="$selected_stacks$">
+  <row depends="$selected_stacks$,$final_report$">
     <panel>
       <title>Select an attribute to analyse. You can select a stack by clicking on a series and filter the list by interacting with the sliders on the chart.</title>
       <input type="dropdown" token="selected_field">
@@ -712,7 +714,7 @@ $single_indexer_only$
       </chart>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_table$">
+  <row depends="$selected_stacks$,$show_table$,$final_report$">
     <panel>
       <input type="checkbox" token="single_indexer_filter">
         <label></label>
@@ -2011,7 +2013,7 @@ $transpose_table$</query>
             </html>
     </panel>
   </row>
-  <row depends="$selected_stacks$,$show_bubble$">
+  <row depends="$selected_stacks$,$show_bubble$,$final_report$">
     <panel>
       <input type="dropdown" token="bubble_selected_field_x">
         <label>X series</label>
@@ -2214,7 +2216,7 @@ $show_bubble$</query>
       </chart>
     </panel>
   </row>
-  <row depends="$show_bar$">
+  <row depends="$show_bar$,$final_report$">
     <panel>
       <input type="dropdown" token="bar_kpi">
         <label>Select KPI</label>
@@ -2287,7 +2289,7 @@ $show_bubble$</query>
         <choice value="var">variance</choice>
         <choice value="count">count</choice>
         <choice value="dc">dc</choice>
-        <default>sum</default>
+        <default>count</default>
       </input>
       <input type="dropdown" token="bar_split_by">
         <label>Select split by</label>
