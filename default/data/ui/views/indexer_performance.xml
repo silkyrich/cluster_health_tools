@@ -191,7 +191,7 @@
     where data.num_of_requests &gt; 0 
     $introspection$ 
     data.series::http_event_collector 
-    $indexer_filter_IN$  by host _time span=$seconds_for_bin$s
+    $indexer_filter_IN$  by host _time span=$seconds_for_bin_62$s
 | makecontinuous _time
 | stats
     max(hec_requests) as max_hec_requests
