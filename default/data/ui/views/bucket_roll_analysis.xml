@@ -1,7 +1,7 @@
 <form>
   <label>Bucket roll analysis</label>
   <search id="freeze_base">
-    <query>index=_internal source=*splunkd.log sourcetype=splunkd freeze completed succesfully
+    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
 | rex field=bid "(?&lt;idx&gt;[^~]+)"
 | table size _time idx host
 </query>
@@ -15,7 +15,7 @@
     </done>
   </search>
   <search id="hot_roll_base">
-    <query>index=_internal source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
+    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
 | rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
 | eval duration=to-from 
 | table duration size _time caller idx host</query>
@@ -39,8 +39,8 @@
         ] 
     | table *
 </query>
-    <earliest>-24h@h</earliest>
-    <latest>now</latest>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
   </search>
   <search base="merge_hot_frozen_report" id="merge_hot_frozen_report_per_indexer">
     <query>| stats 
@@ -53,6 +53,40 @@
     | table *
 </query>
   </search>
+  <search id="annotations_base">
+    <query>| union 
+    [ search index=_internal component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
+    | eval annotation_label= case(searchmatch("finished"),"Finished RR", searchmatch("rebalance"), "Trigger Rebalance", searchmatch("Starting"),"Starting RR"), annotation_category= case(searchmatch("finished"),"Finished", searchmatch("rebalance"), "Rebalance", searchmatch("Starting"),"Starting") 
+    | table _time anno* _raw
+        ] 
+    [| tstats count prestats=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s 
+    | eval type="startup" 
+    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s 
+    | eval type=if(isNull(type),"guid change",type) 
+    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s 
+    | eval type=if(isNull(type),"shutdown",type) 
+    | rex field=host "^(?&lt;host_short&gt;[^.]+)" 
+    | stats count by host_short type _time 
+    | rex field=queue "^(?&lt;queue_short&gt;[^q]+)queue" 
+    | eval annotation_label=type." on ".host_short, annotation_category=type 
+    | sort - _time 
+    | fields _time host_short anno* ] 
+    [ search index=_internal host=c0m1* log_level=info TERM(from=*) TERM(to=*) TERM(reason=*) transitioning (up OR down OR restarting) 
+    | eval host=peer_name
+    | search $selected_indexers$
+    | rex field=peer_name "^(?&lt;short_name&gt;[^\.]+)" 
+    | eval annotation_label=from."-&gt;".to." ".short_name,
+        annotation_category="CMPeer - ".reason 
+    | table _time annotation_label annotation_category] 
+| table *</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="annotations_base" id="annotations">
+    <query>
+            | search $selected_annotations$
+          </query>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label></label>
@@ -60,31 +94,70 @@
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </default>
+      <change>
+        <eval token="sample_ratio">round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/86400)</eval>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+      </change>
     </input>
-    <input type="dropdown" token="selected_stack">
-      <label>Select stack</label>
+    <input type="multiselect" token="selected_indexers">
+      <label>Select CM, site or hosts</label>
+      <choice value="host=idx*">*</choice>
+      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>stack_derived</fieldForValue>
+      <fieldForValue>search</fieldForValue>
       <search>
-        <query>| inputlookup aws_inventory where role="indexer" 
-| stats count by stack instance_type aws_account_id 
-| rename stack AS stack_derived 
-| sort - count 
-| eval label=count." x ".mvjoin(instance_type,", ") 
-| stats sum(count) as count values(label) as label by stack_derived aws_account_id 
-| eval label=stack_derived." (".mvjoin(label,", ").") - " 
-| stats sum(count) as count values(label) as label by stack_derived
-| sort - count
-| eval label=mvjoin(label,", ")</query>
+        <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)" 
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort - count</query>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
+      <default>host=idx*</default>
+    </input>
+    <input type="multiselect" token="selected_annotations">
+      <label>Select annotation overlay</label>
+      <fieldForLabel>annotation_category</fieldForLabel>
+      <fieldForValue>annotation_category</fieldForValue>
+      <search base="annotations_base">
+        <query>| stats count by annotation_category </query>
+      </search>
+      <default>CMPeer - streaming failure,CMPeer - restart peer</default>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>annotation_category="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR </delimiter>
+      <choice value="*">*</choice>
     </input>
   </fieldset>
   <row>
     <panel>
+      <title></title>
       <html>
-        <h1>High level summary</h1>
+        <h1 style="text-align:center">High level summary</h1>
       </html>
     </panel>
   </row>
@@ -93,7 +166,7 @@
       <title>Indexes rolling hot buckets</title>
       <single>
         <search base="hot_roll_base">
-          <query>| stats dc(idx)
+          <query>| stats dc(idx) as indexes
 </query>
         </search>
         <option name="drilldown">all</option>
@@ -104,25 +177,27 @@
       </single>
     </panel>
     <panel>
+      <title>Indexes freezing buckets</title>
+      <single>
+        <search base="freeze_base">
+          <query>| stats dc(idx) as count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
       <title>Hot buckets rolled</title>
       <single>
         <search base="hot_roll_base">
           <query>| stats count</query>
+          <done>
+            <set token="hot_rolled_count">$result.count$</set>
+          </done>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
         <option name="underLabel">total</option>
-      </single>
-    </panel>
-    <panel>
-      <title>Indexes freezing buckets</title>
-      <single>
-        <search base="freeze_base">
-          <query>| stats dc(idx)
-</query>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
       </single>
     </panel>
     <panel>
@@ -130,10 +205,24 @@
       <single>
         <search base="freeze_base">
           <query>| stats count</query>
+          <done>
+            <set token="frozen_rolled_count">$result.count$</set>
+          </done>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
         <option name="underLabel">total</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Net change</title>
+      <single>
+        <title></title>
+        <search base="merged_finished">
+          <query>| reverse | head 1 | fields + inflation</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
       </single>
     </panel>
   </row>
@@ -171,7 +260,7 @@
   <row>
     <panel>
       <html>
-        <h1>Buckets creations and freezing over time</h1>
+        <h1 style="text-align:center">Buckets creation and freezing over time</h1>
       </html>
     </panel>
   </row>
@@ -179,9 +268,10 @@
     <panel>
       <title>Rate of change in bucket creation</title>
       <chart>
-        <search base="merge_hot_frozen_report">
+        <search base="annotations" type="annotation"></search>
+        <search base="merge_hot_frozen_report" id="merged_finished">
           <query>
-| timechart bins=500 minspan=2min count by column 
+| timechart span=$seconds_for_bin$ count by column 
 | eval frozen=-frozen, 
     inflation=created+frozen 
 | streamstats sum(inflation) as inflation</query>
@@ -190,23 +280,36 @@
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
         <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
+        <option name="charting.drilldown">all</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">513</option>
         <option name="refresh.display">progressbar</option>
         <selection>
-          <set token="per_indexer_earliest">$earliest$</set>
-          <set token="per_indexer_latest">$earliest$</set>
+          <set token="merged_earliest">$start$</set>
+          <set token="merged_latest">$end$</set>
+          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/800)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/800))</eval>
+          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
+          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
         </selection>
       </chart>
     </panel>
   </row>
   <row>
     <panel>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="bucket_roll_analysis?form.time.earliest=$merged_earliest$&amp;form.time.latest=$merged_latest$&amp;form.annotations=$merged_annotations$&amp;form.selected_indexers=$merged_selected_indexers$&amp;form.seconds_for_bin=$drilldown_seconds_for_bin$">Open this dashboard in a new window with the time selection above</a>
+        </h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <chart>
         <title>Rolling of buckets over time by caller</title>
+        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base">
-          <query>| timechart limit=100 count by caller</query>
+          <query>| timechart span=$seconds_for_bin$ limit=100 count by caller</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -221,8 +324,9 @@
     <panel>
       <chart>
         <title>Freezing (removal) of buckets over time</title>
+        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
-          <query>| timechart limit=100 count
+          <query>| timechart span=$seconds_for_bin$ limit=100 count
 | eval count=-count</query>
         </search>
         <option name="charting.chart">column</option>
@@ -237,7 +341,7 @@
   <row>
     <panel>
       <html>
-        <h1>Per indexer analysis </h1>
+        <h1 style="text-align:center">Per indexer analysis </h1>
       </html>
     </panel>
   </row>
@@ -269,7 +373,7 @@
         <search base="hot_roll_base">
           <query>| eval size_gb=size/pow(2,16)
 | chart 
-    sum(size)
+    sum(size_gb) as size_gb
     by host caller
 | sort - host</query>
         </search>
@@ -320,7 +424,7 @@ $show_index_table$</query>
   <row>
     <panel>
       <html>
-        <h1>Per index analysis</h1>
+        <h1 style="text-align:center">Per index analysis</h1>
       </html>
     </panel>
   </row>
@@ -415,9 +519,9 @@ $show_index_table$</query>
     <panel>
       <chart>
         <title>Creation of buckets over time by caller</title>
+        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
-          <query>
-| timechart limit=50 count by idx</query>
+          <query>| timechart span=$seconds_for_bin$ limit=50 count by idx</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
