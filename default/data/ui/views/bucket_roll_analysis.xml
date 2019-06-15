@@ -1,0 +1,431 @@
+<form>
+  <label>Bucket roll analysis</label>
+  <search id="freeze_base">
+    <query>index=_internal source=*splunkd.log sourcetype=splunkd freeze completed succesfully
+| rex field=bid "(?&lt;idx&gt;[^~]+)"
+| table size _time idx host
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <progress>
+      <unset token="freeze_base"></unset>
+    </progress>
+    <done>
+      <set token="freeze_base">$job.sid$</set>
+    </done>
+  </search>
+  <search id="hot_roll_base">
+    <query>index=_internal source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
+| rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
+| eval duration=to-from 
+| table duration size _time caller idx host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+    <progress>
+      <unset token="hot_roll_base"></unset>
+    </progress>
+    <done>
+      <set token="hot_roll_base">$job.sid$</set>
+    </done>
+  </search>
+  <search id="merge_hot_frozen_report">
+    <query>| union 
+    [| loadjob $freeze_base$ 
+    | eval column="frozen" 
+        ] 
+    [| loadjob $hot_roll_base$ 
+    | eval column="created" 
+        ] 
+    | table *
+</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+  </search>
+  <search base="merge_hot_frozen_report" id="merge_hot_frozen_report_per_indexer">
+    <query>| stats 
+    sparkline(sum(size)) as buckets_created_size_kb 
+    sparkline(count(eval(column="created"))) as buckets_created_count 
+    sparkline(count(eval(column="frozen"))) as buckets_frozen_count
+    count(eval(column="frozen")) as total_frozen
+    count(eval(column="created")) as total_created
+    by host
+    | table *
+</query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="selected_stack">
+      <label>Select stack</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>stack_derived</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory where role="indexer" 
+| stats count by stack instance_type aws_account_id 
+| rename stack AS stack_derived 
+| sort - count 
+| eval label=count." x ".mvjoin(instance_type,", ") 
+| stats sum(count) as count values(label) as label by stack_derived aws_account_id 
+| eval label=stack_derived." (".mvjoin(label,", ").") - " 
+| stats sum(count) as count values(label) as label by stack_derived
+| sort - count
+| eval label=mvjoin(label,", ")</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <h1>High level summary</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexes rolling hot buckets</title>
+      <single>
+        <search base="hot_roll_base">
+          <query>| stats dc(idx)
+</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="show_index_table">| noop</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Hot buckets rolled</title>
+      <single>
+        <search base="hot_roll_base">
+          <query>| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">total</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Indexes freezing buckets</title>
+      <single>
+        <search base="freeze_base">
+          <query>| stats dc(idx)
+</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Buckets freezing</title>
+      <single>
+        <search base="freeze_base">
+          <query>| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">total</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Reasons for rolling buckets by count</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| chart limit=50 count by caller 
+| noop</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Reasons for rolling buckets by size</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| chart limit=50 sum(size) as size by caller
+| eval size_gb=size/pow(1024,4)
+| fields - size</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Buckets creations and freezing over time</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Rate of change in bucket creation</title>
+      <chart>
+        <search base="merge_hot_frozen_report">
+          <query>
+| timechart bins=500 minspan=2min count by column 
+| eval frozen=-frozen, 
+    inflation=created+frozen 
+| streamstats sum(inflation) as inflation</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+        <selection>
+          <set token="per_indexer_earliest">$earliest$</set>
+          <set token="per_indexer_latest">$earliest$</set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Rolling of buckets over time by caller</title>
+        <search base="hot_roll_base">
+          <query>| timechart limit=100 count by caller</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Freezing (removal) of buckets over time</title>
+        <search base="freeze_base">
+          <query>| timechart limit=100 count
+| eval count=-count</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Per indexer analysis </h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexers rolling buckets by count</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| chart 
+    count
+    by host caller
+| sort - host</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexers rolling buckets by size</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| eval size_gb=size/pow(2,16)
+| chart 
+    sum(size)
+    by host caller
+| sort - host</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Table of all indexes</title>
+      <table>
+        <search base="merge_hot_frozen_report_per_indexer">
+          <query>| table host *
+$show_index_table$</query>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Table of all indexes</title>
+      <chart>
+        <search base="merge_hot_frozen_report_per_indexer">
+          <query>| table host *
+| sort - host
+| eval total_frozen=-total_frozen</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Per index analysis</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| chart limit=50 count by caller idx
+| noop</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| chart limit=50 sum(size) by caller idx
+</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Creation of buckets by index over time</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| timechart limit=50 count by idx</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>by count</title>
+        <search base="hot_roll_base">
+          <query>| chart limit=0 count by idx caller 
+| eval total=0
+| fillnull value=0
+| foreach * 
+    [| eval total=total+if("&lt;&lt;FIELD&gt;&gt;"!="idx",&lt;&lt;FIELD&gt;&gt;,0)]
+| sort - total
+| fields - total
+| head 20</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">627</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>by size</title>
+        <search base="hot_roll_base">
+          <query>| chart limit=0 sum(size) as total_size by idx caller 
+| eval total=0
+| fillnull value=0
+| foreach * 
+    [| eval total=total+if("&lt;&lt;FIELD&gt;&gt;"!="idx",&lt;&lt;FIELD&gt;&gt;,0)]
+| sort - total
+| fields - total
+| head 20</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">627</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Creation of buckets over time by caller</title>
+        <search base="freeze_base">
+          <query>
+| timechart limit=50 count by idx</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">598</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
