@@ -14,6 +14,17 @@
       <set token="freeze_base">$job.sid$</set>
     </done>
   </search>
+  <search>
+    <query>|makeresults</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <progress>
+      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+    </progress>
+    <done>
+      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+    </done>
+  </search>
   <search id="hot_roll_base">
     <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
 | rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
@@ -95,7 +106,6 @@
         <latest>now</latest>
       </default>
       <change>
-        <eval token="sample_ratio">round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/86400)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
       </change>
     </input>
@@ -268,7 +278,7 @@
     <panel>
       <title>Rate of change in bucket creation</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
+        <title>Select a time range to drill in and reload page using link below</title>
         <search base="merge_hot_frozen_report" id="merged_finished">
           <query>
 | timechart span=$seconds_for_bin$ count by column 
@@ -276,6 +286,14 @@
     inflation=created+frozen 
 | streamstats sum(inflation) as inflation</query>
         </search>
+        <search base="annotations" type="annotation"></search>
+        <selection>
+          <set token="merged_earliest">$start$</set>
+          <set token="merged_latest">$end$</set>
+          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/800)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/800))</eval>
+          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
+          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
+        </selection>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
@@ -284,13 +302,6 @@
         <option name="charting.legend.placement">top</option>
         <option name="height">513</option>
         <option name="refresh.display">progressbar</option>
-        <selection>
-          <set token="merged_earliest">$start$</set>
-          <set token="merged_latest">$end$</set>
-          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/800)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/800))</eval>
-          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
-          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
-        </selection>
       </chart>
     </panel>
   </row>
@@ -307,10 +318,10 @@
     <panel>
       <chart>
         <title>Rolling of buckets over time by caller</title>
-        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base">
           <query>| timechart span=$seconds_for_bin$ limit=100 count by caller</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -324,11 +335,11 @@
     <panel>
       <chart>
         <title>Freezing (removal) of buckets over time</title>
-        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
           <query>| timechart span=$seconds_for_bin$ limit=100 count
 | eval count=-count</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -391,19 +402,6 @@
   <row>
     <panel>
       <title>Table of all indexes</title>
-      <table>
-        <search base="merge_hot_frozen_report_per_indexer">
-          <query>| table host *
-$show_index_table$</query>
-        </search>
-        <option name="count">100</option>
-        <option name="drilldown">none</option>
-      </table>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Table of all indexes</title>
       <chart>
         <search base="merge_hot_frozen_report_per_indexer">
           <query>| table host *
@@ -423,6 +421,10 @@ $show_index_table$</query>
   </row>
   <row>
     <panel>
+      <input type="text" token="filter_head_indexes">
+        <label>Show top indexes</label>
+        <default>20</default>
+      </input>
       <html>
         <h1 style="text-align:center">Per index analysis</h1>
       </html>
@@ -461,7 +463,7 @@ $show_index_table$</query>
       <title>Creation of buckets by index over time</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| timechart limit=50 count by idx</query>
+          <query>| timechart span=$seconds_for_bin$ limit=50 count by idx</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -469,6 +471,19 @@ $show_index_table$</query>
         <option name="height">373</option>
         <option name="refresh.display">progressbar</option>
       </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>asdf</title>
+      <table>
+        <search>
+          <query>| makeresults</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
     </panel>
   </row>
   <row>
@@ -483,7 +498,7 @@ $show_index_table$</query>
     [| eval total=total+if("&lt;&lt;FIELD&gt;&gt;"!="idx",&lt;&lt;FIELD&gt;&gt;,0)]
 | sort - total
 | fields - total
-| head 20</query>
+| head $filter_head_indexes$</query>
         </search>
         <option name="charting.chart">bar</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -504,7 +519,7 @@ $show_index_table$</query>
     [| eval total=total+if("&lt;&lt;FIELD&gt;&gt;"!="idx",&lt;&lt;FIELD&gt;&gt;,0)]
 | sort - total
 | fields - total
-| head 20</query>
+| head $filter_head_indexes$</query>
         </search>
         <option name="charting.chart">bar</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -519,10 +534,10 @@ $show_index_table$</query>
     <panel>
       <chart>
         <title>Creation of buckets over time by caller</title>
-        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
-          <query>| timechart span=$seconds_for_bin$ limit=50 count by idx</query>
+          <query>| timechart span=$seconds_for_bin$  limit=50 count by idx</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
