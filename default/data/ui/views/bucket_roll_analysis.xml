@@ -279,14 +279,13 @@
       <title>Rate of change in bucket creation</title>
       <chart>
         <title>Select a time range to drill in and reload page using link below</title>
+        <search base="annotations" type="annotation"></search>
         <search base="merge_hot_frozen_report" id="merged_finished">
-          <query>
-| timechart span=$seconds_for_bin$ count by column 
+          <query>| timechart span=$seconds_for_bin$ count by column 
 | eval frozen=-frozen, 
     inflation=created+frozen 
 | streamstats sum(inflation) as inflation</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <selection>
           <set token="merged_earliest">$start$</set>
           <set token="merged_latest">$end$</set>
@@ -318,10 +317,13 @@
     <panel>
       <chart>
         <title>Rolling of buckets over time by caller</title>
-        <search base="hot_roll_base">
-          <query>| timechart span=$seconds_for_bin$ limit=100 count by caller</query>
-        </search>
         <search base="annotations" type="annotation"></search>
+        <search base="hot_roll_base">
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| stats count by caller _time
+| xyseries _time caller count</query>
+        </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -330,16 +332,16 @@
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
-  </row>
-  <row>
     <panel>
       <chart>
         <title>Freezing (removal) of buckets over time</title>
+        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
-          <query>| timechart span=$seconds_for_bin$ limit=100 count
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| stats count by _time
 | eval count=-count</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -361,7 +363,9 @@
       <title>Indexers rolling buckets by count</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| chart 
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart 
     count
     by host caller
 | sort - host</query>
@@ -382,7 +386,9 @@
       <title>Indexers rolling buckets by size</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| eval size_gb=size/pow(2,16)
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| eval size_gb=size/pow(2,16)
 | chart 
     sum(size_gb) as size_gb
     by host caller
@@ -434,7 +440,9 @@
     <panel>
       <chart>
         <search base="hot_roll_base">
-          <query>| chart limit=50 count by caller idx
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart limit=50 count by caller idx
 | noop</query>
         </search>
         <option name="charting.chart">column</option>
@@ -447,8 +455,9 @@
     <panel>
       <chart>
         <search base="hot_roll_base">
-          <query>| chart limit=50 sum(size) by caller idx
-</query>
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart limit=50 sum(size) by caller idx</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -463,7 +472,10 @@
       <title>Creation of buckets by index over time</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| timechart span=$seconds_for_bin$ limit=50 count by idx</query>
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| stats count by idx _time
+| xyseries _time idx count</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -475,23 +487,12 @@
   </row>
   <row>
     <panel>
-      <title>asdf</title>
-      <table>
-        <search>
-          <query>| makeresults</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-        </search>
-        <option name="drilldown">none</option>
-      </table>
-    </panel>
-  </row>
-  <row>
-    <panel>
       <chart>
         <title>by count</title>
         <search base="hot_roll_base">
-          <query>| chart limit=0 count by idx caller 
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart limit=0 count by idx caller 
 | eval total=0
 | fillnull value=0
 | foreach * 
@@ -512,7 +513,9 @@
       <chart>
         <title>by size</title>
         <search base="hot_roll_base">
-          <query>| chart limit=0 sum(size) as total_size by idx caller 
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart limit=0 sum(size) as total_size by idx caller 
 | eval total=0
 | fillnull value=0
 | foreach * 
@@ -534,10 +537,13 @@
     <panel>
       <chart>
         <title>Creation of buckets over time by caller</title>
-        <search base="freeze_base">
-          <query>| timechart span=$seconds_for_bin$  limit=50 count by idx</query>
-        </search>
         <search base="annotations" type="annotation"></search>
+        <search base="freeze_base">
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| stats count by idx _time
+| xyseries _time idx count</query>
+        </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
