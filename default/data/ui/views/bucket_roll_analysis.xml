@@ -266,6 +266,23 @@
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
+    <panel>
+      <title>Breakdown of buckets by size</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>
+| eval size_gb=size/(1024*1024)
+| bin size_gb span=log2
+| chart limit=50 count by size_gb
+| fields - size_gb</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">373</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
   </row>
   <row>
     <panel>
@@ -279,13 +296,13 @@
       <title>Rate of change in bucket creation</title>
       <chart>
         <title>Select a time range to drill in and reload page using link below</title>
+        <search base="annotations" type="annotation"></search>
         <search base="merge_hot_frozen_report" id="merged_finished">
           <query>| timechart span=$seconds_for_bin$ count by column 
 | eval frozen=-frozen, 
     inflation=created+frozen 
 | streamstats sum(inflation) as inflation</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <selection>
           <set token="merged_earliest">$start$</set>
           <set token="merged_latest">$end$</set>
@@ -315,15 +332,36 @@
   </row>
   <row>
     <panel>
+      <title>Size of bucket creation</title>
+      <chart>
+        <search base="annotations" type="annotation"></search>
+        <search base="hot_roll_base">
+          <query>| eval size_gb=size/(1024*1024)
+| bin size_gb span=log2
+| timechart limit=100 span=$seconds_for_bin$ count by size_gb</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">count</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <chart>
         <title>Rolling of buckets over time by caller</title>
+        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base">
           <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | stats count by caller _time
 | xyseries _time caller count</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -335,13 +373,13 @@
     <panel>
       <chart>
         <title>Freezing (removal) of buckets over time</title>
+        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
           <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | stats count by _time
 | eval count=-count</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -362,6 +400,7 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base">
           <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | timechart span=$drilldown_seconds_for_bin$
@@ -369,7 +408,6 @@
     count
     by host</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
@@ -564,6 +602,7 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search base="annotations" type="annotation"></search>
         <search base="freeze_base">
           <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$ 
 | timechart 
@@ -573,7 +612,6 @@
     count by idx
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
