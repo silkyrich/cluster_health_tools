@@ -12,6 +12,7 @@
     </progress>
     <done>
       <set token="freeze_base">$job.sid$</set>
+      <eval token="freeze_base_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
   <search>
@@ -28,7 +29,8 @@
   <search id="hot_roll_base">
     <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
 | rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
-| eval duration=to-from 
+| eval size_gb=size/(1024*1024) 
+| eval duration=to-from
 | table duration size _time caller idx host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -37,6 +39,7 @@
       <unset token="hot_roll_base"></unset>
     </progress>
     <done>
+      <eval token="hot_roll_base_url">urlencode("| loadjob ".$job.sid$)</eval>
       <set token="hot_roll_base">$job.sid$</set>
     </done>
   </search>
@@ -255,8 +258,7 @@
       <title>Reasons for rolling buckets by size</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| chart limit=50 sum(size) as size by caller
-| eval size_gb=size/pow(1024,4)
+          <query>| chart limit=50 sum(size_gb) as size_gb by caller
 | fields - size</query>
         </search>
         <option name="charting.chart">pie</option>
@@ -270,7 +272,7 @@
       <title>Breakdown of buckets by size</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| eval size_gb=size/(1024*1024)
+          <query>
 | bin size_gb span=log2
 | chart limit=50 count by size_gb</query>
         </search>
@@ -333,7 +335,7 @@
       <title>Size of bucket creation</title>
       <chart>
         <search base="hot_roll_base">
-          <query>| eval size_gb=size/(1024*1024)
+          <query>
 | bin size_gb span=log2
 | timechart limit=100 span=$seconds_for_bin$ count by size_gb</query>
         </search>
@@ -447,7 +449,6 @@
         <search base="hot_roll_base">
           <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | bin _time span=$drilldown_seconds_for_bin$ 
-| eval size_gb=size/pow(2,16)
 | chart 
     sum(size_gb) as size_gb
     by host caller
@@ -622,10 +623,10 @@
   </row>
   <row><panel><html>
 <p style="text-align:center">  
-freeze_base=$freeze_base$
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_url$">freeze_base=$freeze_base$</a>
 </p>
 <p style="text-align:center">  
-hot_roll_base=$hot_roll_base$    
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_url$">hot_roll_base=$hot_roll_base$</a>
 </p>
   </html></panel></row>
 </form>
