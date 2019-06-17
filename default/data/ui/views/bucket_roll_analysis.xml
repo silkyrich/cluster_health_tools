@@ -31,7 +31,7 @@
 | rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
 | eval size_gb=size/(1024*1024) 
 | eval duration=to-from
-| table duration size _time caller idx host</query>
+| table duration size_gb _time caller idx host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
