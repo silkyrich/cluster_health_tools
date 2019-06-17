@@ -73,17 +73,6 @@
       <set token="merge_hot_frozen_report">$job.sid$</set>
     </done>
   </search>
-  <search base="merge_hot_frozen_report" id="merge_hot_frozen_report_per_indexer">
-    <query>| stats 
-    sparkline(sum(size)) as buckets_created_size_kb 
-    sparkline(count(eval(column="created"))) as buckets_created_count 
-    sparkline(count(eval(column="frozen"))) as buckets_frozen_count
-    count(eval(column="frozen")) as total_frozen
-    count(eval(column="created")) as total_created
-    by host
-    | table *
-</query>
-  </search>
   <search id="annotations_base">
     <query>| union 
     [ search index=_internal component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
@@ -477,26 +466,6 @@
     sum(size_gb) as size_gb
     by host caller
 | sort - host</query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">513</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Table of all indexers</title>
-      <chart>
-        <search base="merge_hot_frozen_report_per_indexer">
-          <query>| table host *
-| sort - host
-| eval total_frozen=-total_frozen</query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
