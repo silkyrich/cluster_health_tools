@@ -396,49 +396,6 @@
   </row>
   <row>
     <panel>
-      <title>Table of all indexes</title>
-      <chart>
-        <search base="merge_hot_frozen_report_per_indexer">
-          <query>| table host *
-| sort - host
-| eval total_frozen=-total_frozen</query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">513</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Indexers rolling buckets by size</title>
-      <chart>
-        <search base="hot_roll_base">
-          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$ 
-| eval size_gb=size/(1024*1024) 
-| bin size_gb span=log2 
-| chart 
-    limit=50
-    count
-    by host size_gb 
-| sort - host</query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">513</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
       <title>Indexers creating buckets count</title>
       <chart>
         <search base="hot_roll_base">
@@ -456,6 +413,73 @@
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">544</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexers rolling buckets by count</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| chart 
+    count
+    by host caller
+| sort - host</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexers rolling buckets by size</title>
+      <chart>
+        <search base="hot_roll_base">
+          <query>| where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| bin _time span=$drilldown_seconds_for_bin$ 
+| eval size_gb=size/pow(2,16)
+| chart 
+    sum(size_gb) as size_gb
+    by host caller
+| sort - host</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Table of all indexes</title>
+      <chart>
+        <search base="merge_hot_frozen_report_per_indexer">
+          <query>| table host *
+| sort - host
+| eval total_frozen=-total_frozen</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -596,4 +620,12 @@
       </chart>
     </panel>
   </row>
+  <row><panel><html>
+<p style="text-align:center">  
+freeze_base=$freeze_base$
+</p>
+<p style="text-align:center">  
+hot_roll_base=$hot_roll_base$    
+</p>
+  </html></panel></row>
 </form>
