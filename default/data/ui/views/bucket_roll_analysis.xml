@@ -354,7 +354,6 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search base="merge_hot_frozen_report" id="merged_finished">
           <query>| timechart span=$seconds_for_bin$ count by column 
 | eval frozen=-frozen, inflation=0
@@ -362,6 +361,7 @@
     [| eval inflation='&lt;&lt;FIELD&gt;&gt;'+inflation ] 
 | streamstats sum(inflation) as inflation</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <selection>
           <set token="merged_earliest">$start$</set>
           <set token="merged_latest">$end$</set>
@@ -399,12 +399,12 @@
         <default>count by size_gb</default>
       </input>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | bin size_gb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ $bucket_creation_split_by$</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">count</option>
@@ -418,13 +418,13 @@
     <panel>
       <chart>
         <title>Rolling of buckets over time by caller</title>
-        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | bin _time span=$drilldown_seconds_for_bin$ 
 | stats count by caller _time
 | xyseries _time caller count</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -445,7 +445,6 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | timechart 
@@ -455,6 +454,7 @@
     count
     by host</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
@@ -515,13 +515,13 @@
     <panel>
       <title>Inflation of buckets per index</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search base="merge_hot_frozen_report_time_narrowed_index_filtered">
           <query>| bin _time span=$drilldown_seconds_for_bin$sec
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
         <option name="charting.axisTitleY2.visibility">visible</option>
@@ -542,6 +542,7 @@
           <query>| timechart 
     fixedrange=false 
     span=$drilldown_seconds_for_bin$ 
+    limit=0
     count by idx</query>
         </search>
         <option name="charting.chart">column</option>
@@ -555,6 +556,7 @@
   </row>
   <row>
     <panel>
+      <title>asdf</title>
       <chart>
         <title>Bucket creation by size</title>
         <search base="hot_roll_base_time_narrowed_index_filtered">
@@ -596,7 +598,6 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search base="freeze_base_time_narrowed_index_filtered">
           <query>| timechart 
     fixedrange=false 
@@ -605,6 +606,7 @@
     count by idx
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
