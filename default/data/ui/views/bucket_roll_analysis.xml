@@ -117,10 +117,10 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <progress>
-      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
     </progress>
     <done>
-      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
     </done>
   </search>
   <search id="hot_roll_base">
@@ -248,7 +248,7 @@
         <latest>now</latest>
       </default>
       <change>
-        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/800))</eval>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
       </change>
     </input>
     <input type="multiselect" token="selected_indexers">
@@ -369,12 +369,13 @@
       <title>Buckets freezing</title>
       <single>
         <search>
-          <query>
-| loadjob $hot_roll_base$
-| stats count</query>
           <done>
             <set token="frozen_rolled_count">$result.count$</set>
           </done>
+          <query>| loadjob $freeze_base$
+| stats count</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -457,16 +458,16 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>
             | loadjob $merged_finished$
           </query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <selection>
           <set token="merged_earliest">$start$</set>
           <set token="merged_latest">$end$</set>
-          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/800)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/800))</eval>
+          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/500)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/500))</eval>
           <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
           <eval token="merged_annotations">urlencode($form.annotations$)</eval>
         </selection>
@@ -495,13 +496,13 @@
       <title>Size of bucket creation</title>
       <chart>
         <title>$hot_roll_base_time_narrowed$</title>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$            
 | bin size_gb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ $bucket_creation_split_by$</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">count</option>
@@ -518,7 +519,6 @@
       <title>Rolling of buckets over time by caller</title>
       <chart>
         <title>$hot_roll_base_time_narrowed$</title>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -527,6 +527,7 @@
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -547,7 +548,6 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -558,6 +558,7 @@
     count
     by host</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
@@ -641,7 +642,6 @@
     <panel>
       <title>Inflation of buckets per index</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -650,6 +650,7 @@
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
         <option name="charting.axisTitleY2.visibility">visible</option>
@@ -712,7 +713,6 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
-        <search base="annotations" type="annotation"></search>
         <search>
           <query>
 | loadjob $freeze_base_time_narrowed_index_filtered$
@@ -723,6 +723,7 @@
     count by idx
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
+        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
