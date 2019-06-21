@@ -458,12 +458,16 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
             | loadjob $merged_finished$
           </query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <selection>
           <set token="merged_earliest">$start$</set>
           <set token="merged_latest">$end$</set>
@@ -495,14 +499,17 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
-        <title>$hot_roll_base_time_narrowed$</title>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$            
 | bin size_gb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ $bucket_creation_split_by$</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">count</option>
@@ -518,7 +525,11 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
-        <title>$hot_roll_base_time_narrowed$</title>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -527,7 +538,6 @@
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -548,6 +558,11 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -558,7 +573,6 @@
     count
     by host</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">inflation</option>
@@ -642,6 +656,11 @@
     <panel>
       <title>Inflation of buckets per index</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -650,7 +669,6 @@
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
         <option name="charting.axisTitleY2.visibility">visible</option>
@@ -713,6 +731,11 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $freeze_base_time_narrowed_index_filtered$
@@ -723,7 +746,6 @@
     count by idx
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
-        <search base="annotations" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
