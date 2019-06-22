@@ -125,10 +125,10 @@
   </search>
   <search id="hot_roll_base">
     <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
-| rex field=to "db_(?&lt;to&gt;[0-9]{10})_(?&lt;from&gt;[0-9]{10})" 
+| rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
 | eval size_gb=size/(1024*1024) 
-| eval duration=to-from
-| table duration size_gb _time caller idx host</query>
+| eval duration=to_time-from_time
+| table _time host idx bid duration from to size_gb caller to_time from_time</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
@@ -211,14 +211,12 @@
   </search>
   <search>
     <progress>
-      <unset token="annotation"></unset>
       <unset token="selected_indexes"></unset>
       <unset token="included"></unset>
       <unset token="excluded_by_limit"></unset>
       <unset token="excluded_by_name"></unset>
     </progress>
     <done>
-      <set token="annotation">$job.sid$</set>
       <set token="selected_indexes">$result.search$</set>
       <set token="included">$result.included$</set>
       <set token="excluded_by_limit">$result.excluded_by_limit$</set>
@@ -654,6 +652,34 @@
   </row>
   <row>
     <panel>
+      <title>Freezing of buckets by index</title>
+      <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
+        <search>
+          <query>
+| loadjob $freeze_base_time_narrowed_index_filtered$
+| timechart 
+    fixedrange=false 
+    span=$drilldown_seconds_for_bin$ 
+    limit=0
+    count by idx
+| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">430</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <title>Inflation of buckets per index</title>
       <chart>
         <search type="annotation">
@@ -685,9 +711,9 @@
   </row>
   <row>
     <panel>
-      <title>asdf</title>
+      <title></title>
       <chart>
-        <title>Bucket creation by size</title>
+        <title>Bucket creation by ???</title>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed_index_filtered$
@@ -696,9 +722,21 @@
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
+        <option name="charting.drilldown">all</option>
         <option name="height">420</option>
         <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_index">$click.name2$</set>
+          <eval token="selected_caller">if(isnull($click.value$),"*",$click.value$)</eval>
+          <unset token="selected_bucket"/>
+          <unset token="selected_to_time"/>
+          <unset token="selected_from_time"/>
+          <unset token="selected_host"/>
+          <unset token="selected_from_bucket"/>
+          <unset token="selected_to_bucket"/>
+          <unset token="bucket_contents_search"/>
+          <unset token="bucket_contents_search_url"/>
+        </drilldown>
       </chart>
     </panel>
     <panel>
@@ -720,43 +758,86 @@
         </search>
         <option name="charting.chart">bar</option>
         <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
+        <option name="charting.drilldown">all</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">447</option>
         <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_caller">$click.name2$</set>
+          <eval token="selected_index">if(isnull($click.value$),"*",$click.value$)</eval>
+          <unset token="selected_bucket"/>
+          <unset token="selected_to_time"/>
+          <unset token="selected_from_time"/>
+          <unset token="selected_host"/>
+          <unset token="selected_from_bucket"/>
+          <unset token="selected_to_bucket"/>
+          <unset token="bucket_contents_search"/>
+          <unset token="bucket_contents_search_url"/>
+        </drilldown>
       </chart>
+    </panel>
+  </row>
+  <row depends="$selected_index$,$selected_caller$">
+    <panel>
+      <title>Buckets</title>
+      <table>
+        <title>selected_caller=$selected_caller$ selected_index=$selected_index$</title>
+        <search id="buckets">
+          <query>| loadjob $hot_roll_base$
+| search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
+| table  idx caller _time duration size_gb host from to *
+| eval event_density_gbps=size_gb/duration</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <progress>
+            <unset token="buckets"></unset>
+            <unset token="buckets"></unset>
+          </progress>
+          <done>
+            <set token="buckets">$job.sid$</set>
+          </done>
+        </search>
+        <option name="drilldown">cell</option>
+        <format type="number" field="size_gb">
+          <option name="unit">GB</option>
+        </format>
+        <format type="number" field="duration">
+          <option name="precision">0</option>
+          <option name="unit">s</option>
+        </format>
+        <drilldown>
+          <set token="selected_bucket">$row.bid$</set>
+          <set token="selected_to_time">$row.to_time$</set>
+          <set token="selected_from_time">$row.from_time$</set>
+          <set token="selected_host">$row.host$</set>
+          <set token="selected_from_bucket">$row.from$</set>
+          <set token="selected_to_bucket">$row.to$</set>
+          <set token="bucket_contents_search">Search bucket $selected_bucket$</set>
+          <eval token="bucket_contents_search_url">urlencode("index=".$row.idx$." earliest=".$selected_from_time$." latest=".$selected_to_time$." splunk_server=".$selected_host$." | where _bkt=\"".$selected_bucket$."\"")</eval>
+          <set token="bucket_history_search">Search history for $selected_bucket$ and $selected_from_bucket$ and $selected_to_bucket$</set>
+          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection) ".$selected_bucket$." OR ".$selected_from_bucket$." OR ".$selected_to_bucket$." (sourcetype=splunkd OR sourcetype=splunk_resource_usage)")</eval>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_bucket$">
+    <panel>
+      <html>
+<h1 style="text-align:center">        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$selected_from_time$&amp;latest=$selected_to_time$&amp;q=$bucket_contents_search_url$">
+          $selected_bucket$
+        </a>
+</h1>
+
+<h2 style="text-align:center">        <a target="_blank" rel="noopener noreferrer" href="search?earliest=0&amp;latest=&amp;q=$bucket_history_search_url$">
+         $selected_from_bucket$ -> $selected_to_bucket$
+        </a></h2>
+
+  </html>
     </panel>
   </row>
   <row>
     <panel>
-      <title>Freezing of buckets by index</title>
-      <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <search>
-          <query>
-| loadjob $freeze_base_time_narrowed_index_filtered$
-| timechart 
-    fixedrange=false 
-    span=$drilldown_seconds_for_bin$ 
-    limit=0
-    count by idx
-| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">430</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
+      <title>Hyperlinks into the base reports</title>
       <html>
 <p style="text-align:center">  
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_url$">freeze_base=$freeze_base$</a>
@@ -791,8 +872,6 @@
 <p style="text-align:center">  
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merged_finished_url_url$">merged_finished=$merged_finished$</a>
 </p>
-
-
 <p style="text-align:center">  
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merge_hot_frozen_report_time_narrowed_index_filtered_url$">merge_hot_frozen_report_time_narrowed_index_filtered=$merge_hot_frozen_report_time_narrowed_index_filtered$</a>
 </p>
@@ -801,9 +880,11 @@
 <p style="text-align:center">  
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$annotations_base_url$">annotations_base=$annotations_base$</a>
 </p>
+<p/>
 
-
-
+<p style="text-align:center">  
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$annotations_base_url$">annotations=$annotations$</a>
+</p>
   </html>
     </panel>
   </row>
