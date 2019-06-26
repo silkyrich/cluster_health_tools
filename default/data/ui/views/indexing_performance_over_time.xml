@@ -98,6 +98,11 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
           <latest>$time.latest$</latest>
           <sampleRatio>1</sampleRatio>
         </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/500)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/500))</eval>
+        </selection>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
         <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
         <option name="charting.axisTitleX.visibility">visible</option>
@@ -154,8 +159,8 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
 | timechart span=$seconds_for_bin$sec limit=0 count by short_name 
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
           <sampleRatio>1</sampleRatio>
         </search>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
@@ -197,9 +202,10 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
 | eval indexing_delay=_indextime-_time 
 | eval _time=_indextime 
 | timechart limit=0 span=$seconds_for_bin$sec max(indexing_delay) by short_name</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.legend.placement">top</option>
@@ -219,9 +225,10 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
 | eval sum=0 
 | foreach * 
     [| eval sum=if(isnull('&lt;&lt;FIELD&gt;&gt;'),sum,sum+'&lt;&lt;FIELD&gt;&gt;')]</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
@@ -235,17 +242,25 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
   <row>
     <panel>
       <title>HEC event distribution across indexers</title>
+      <input type="dropdown" token="selected_hec_metric">
+        <label>Selected HEC metric</label>
+        <choice value="data.num_of_events">num_of_events</choice>
+        <choice value="data.total_bytes_indexed">total_bytes_indexed</choice>
+        <choice value="data.total_bytes_received">total_bytes_received</choice>
+        <default>data.num_of_events</default>
+      </input>
       <chart>
         <title>Select window and indexer to drill in</title>
         <search>
-          <query>| tstats sum(data.num_of_events) as events where $indexer_list$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
+          <query>| tstats sum($selected_hec_metric$) as events where $indexer_list$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval label=short_name." (".instance_type."+".os_version.")"
 | eval label=short_name
 | xyseries _time short_name events</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -266,9 +281,10 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
 | eval active_indexers=0 
 | foreach * 
     [| eval active_indexers=if(isnull('&lt;&lt;FIELD&gt;&gt;') OR "&lt;&lt;FIELD&gt;&gt;"="active_indexers",active_indexers,active_indexers+1)]</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -343,9 +359,10 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
 | eval label=short_name
 | xyseries _time short_name $hostwide_parameter$
 $overlay_option$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -358,6 +375,41 @@ $overlay_option$</query>
           <set token="selected_shortname_blocked">$click.name2$</set>
         </drilldown>
       </chart>
+    </panel>
+  </row>
+  <row depends="$never_show$">
+    <panel>
+      <title>annotation</title>
+      <table>
+        <search id="annotation">
+          <query>| multisearch 
+    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    | eval column="started" ] 
+    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    | eval column="new" ] 
+    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    | eval column="shutdown" ] 
+    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    | eval column="crash" ] 
+| fields + _time host column 
+| appendpipe 
+    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
+    | eval column=mvjoin(column,"-&gt;"), 
+        _time=_time+duration] 
+| where column!="started" 
+| eval annotation_label=host, annotation_category=column</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
     </panel>
   </row>
 </form>
