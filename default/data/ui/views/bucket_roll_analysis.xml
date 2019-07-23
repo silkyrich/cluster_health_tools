@@ -238,16 +238,6 @@
     excluded_by_name=mvjoin(excluded_by_name," "),
     excluded_by_limit=mvjoin(excluded_by_limit," ")</query>
   </search>
-  <search base="selected_dbinspect">
-    <progress>
-      <unset token="bucket_contents_search_url"></unset>
-    </progress>
-    <done>
-      <eval token="bucket_contents_search_url">urlencode("index=".$selected_index$." earliest=".$selected_from_time$." latest=".$selected_to_time$." ".$result.indexer_list$." | where _bkt=\"".$selected_bucket$."\"")</eval>
-    </done>
-    <query>| stats values(splunk_server) as indexers
-| eval indexer_list="(splunk_server=".mvjoin(indexers, " OR splunk_server=").")"</query>
-  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label></label>
@@ -726,10 +716,11 @@
       <chart>
         <title>Buckets created by the caller and the index</title>
         <search>
-          <query>
-| loadjob $hot_roll_base_time_narrowed_index_filtered$
+          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | chart limit=0 sum(size_gb) by caller idx</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -745,8 +736,6 @@
           <unset token="selected_host"></unset>
           <unset token="selected_from_bucket"></unset>
           <unset token="selected_to_bucket"></unset>
-          <unset token="bucket_contents_search"></unset>
-          <unset token="bucket_contents_search_url"></unset>
         </drilldown>
       </chart>
     </panel>
@@ -781,8 +770,6 @@
           <unset token="selected_host"></unset>
           <unset token="selected_from_bucket"></unset>
           <unset token="selected_to_bucket"></unset>
-          <unset token="bucket_contents_search"></unset>
-          <unset token="bucket_contents_search_url"></unset>
         </drilldown>
       </chart>
     </panel>
@@ -890,23 +877,24 @@
     <panel>
       <table>
         <title>DBinspect results for $selected_bucket$</title>
-        <search id="selected_dbinspect">
-          <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$</query>
+        <search>
+          <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$
+| eventstats values(splunk_server) as _indexers
+| eval _indexer_list="(splunk_server=".mvjoin(_indexers, " OR splunk_server=").")"</query>
           <earliest>$selected_from_time$</earliest>
           <latest>$selected_to_time$</latest>
         </search>
-        <option name="drilldown">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$selected_index$ $row._indexer_list$  | search _bkt=$selected_bucket$&amp;earliest=$selected_from_time$&amp;latest=$selected_to_time$</link>
+        </drilldown>
       </table>
     </panel>
   </row>
-  <row depends="$selected_bucket$,$bucket_contents_search_url$">
+  <row depends="$selected_bucket$">
     <panel>
       <html>
-<h1 style="text-align:center">        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$selected_from_time$&amp;latest=$selected_to_time$&amp;q=$bucket_contents_search_url$">
-          Search contents of $selected_bucket$
-        </a>
-</h1>
-
 <h2 style="text-align:center">        <a target="_blank" rel="noopener noreferrer" href="search?earliest=0&amp;latest=&amp;q=$bucket_history_search_url$">
          Search history of $selected_to_bucket$
         </a>
