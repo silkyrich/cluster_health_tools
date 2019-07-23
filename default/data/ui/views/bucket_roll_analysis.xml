@@ -875,7 +875,7 @@
           <set token="selected_from_bucket">$row.from$</set>
           <set token="selected_to_bucket">$row.to$</set>
           <set token="bucket_history_search">Search history for $selected_bucket$ and $selected_from_bucket$ and $selected_to_bucket$</set>
-          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR ".$selected_from_bucket$." OR ".$selected_to_bucket$."")</eval>
+          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.") OR ".$selected_to_bucket$."")</eval>
         </drilldown>
       </table>
     </panel>
@@ -883,7 +883,28 @@
   <row depends="$selected_bucket$">
     <panel>
       <table>
-        <title>DBinspect results for $selected_bucket$</title>
+        <title>Reasons for rolling bucket $selected_bucket$ - missed nearest bucket by earliest=$display_miss_earliest$ latest=$display_miss_latest$</title>
+        <search>
+          <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
+| eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
+| table _time host message _miss*
+| eventstats values(_m*) as _m*</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <done>
+            <set token="display_miss_latest">$result._miss_latest_str$</set>
+            <set token="display_miss_earliest">$result._miss_earliest_str$</set>
+          </done>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_bucket$">
+    <panel>
+      <table>
+        <title>DBinspect results for $selected_bucket$ - click to drill down to see the contents of the bucket</title>
         <search>
           <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$
 | eventstats values(splunk_server) as _indexers
@@ -892,7 +913,6 @@
           <latest>$selected_to_time$</latest>
         </search>
         <option name="drilldown">cell</option>
-        <option name="refresh.display">progressbar</option>
         <drilldown>
           <link target="_blank">search?q=index=$selected_index$ $row._indexer_list$  | search _bkt=$selected_bucket$&amp;earliest=$selected_from_time$&amp;latest=$selected_to_time$</link>
         </drilldown>
@@ -961,13 +981,6 @@
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$annotations_base_url$">annotations=$annotations$</a>
 </p>
   </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="roll_roll_base"></search>
-      </table>
     </panel>
   </row>
 </form>
