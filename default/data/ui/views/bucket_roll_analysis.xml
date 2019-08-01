@@ -1,5 +1,9 @@
 <form>
   <label>Bucket roll analysis</label>
+  <init>
+    <eval token="form.time.earliest">-24h@h</eval>
+    <eval token="form.time.latest">now</eval>
+  </init>
   <search id="hot_roll_base_time_narrowed">
     <query>
       | loadjob $hot_roll_base$
@@ -247,6 +251,7 @@
       </default>
       <change>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
+        <set token="time_duration">tostring(round(relative_time(now(), if("$time.latest$"="now","-0@m","$time.latest$")))-round(relative_time(now(), "$time.earliest$")), "duration")</set>
       </change>
     </input>
     <input type="multiselect" token="selected_indexers">
@@ -314,7 +319,7 @@
   <row>
     <panel>
       <html>
-        <h1 style="text-align:center">High level summary</h1>
+        <h1 style="text-align:center">High level summary $time_duration$</h1>
       </html>
     </panel>
   </row>
@@ -781,8 +786,9 @@
   </row>
   <row depends="$selected_index$,$selected_caller$">
     <panel>
+      <title>$selected_duration_filter$</title>
       <chart>
-        <title>Count of buckets by size and duration</title>
+        <title>Count of buckets by size and duration size=$selected_size$ ($selected_size_lower$-$selected_size_upper$) duration=$selected_duration$</title>
         <search>
           <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
@@ -799,13 +805,13 @@
         <option name="refresh.display">progressbar</option>
         <drilldown>
           <eval token="selected_size">if(isnull($click.value$),NULL,$click.value$)</eval>
-          <eval token="selected_duration">if(isnull($click.name2$),NULL,$click.name2$)</eval>
+          <eval token="selected_duration">if(isnull($click.name2$),NULL,if($click.name2$="0","0-0", $click.name2$))</eval>
           <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
           <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&gt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
+          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
           <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
           <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
-          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&gt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
+          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
         </drilldown>
       </chart>
     </panel>
@@ -828,19 +834,20 @@
         <option name="refresh.display">progressbar</option>
         <drilldown>
           <eval token="selected_size">if(isnull($click.name2$),NULL,$click.name2$)</eval>
-          <eval token="selected_duration">if(isnull($click.value$),NULL,$click.value$)</eval>
+          <eval token="selected_duration">if(isnull($click.value$),NULL,if($click.value$="0","0-0", $click.value$))</eval>
           <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
           <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&gt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
+          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
           <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
           <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
-          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&gt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
+          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
         </drilldown>
       </chart>
     </panel>
   </row>
   <row depends="$selected_index$,$selected_caller$,$selected_size_filter$">
     <panel>
+      <title></title>
       <table>
         <title>List of rolled buckets where selected_caller=$selected_caller$ AND selected_index=$selected_index$ AND size_gb&gt;=$selected_size$ AND duration&gt;=$selected_duration$</title>
         <search id="buckets">
@@ -891,6 +898,10 @@
 | eventstats values(_m*) as _m*</query>
           <earliest>0</earliest>
           <latest></latest>
+          <progress>
+            <set token="display_miss_latest">$result._miss_latest_str$</set>
+            <set token="display_miss_earliest">$result._miss_earliest_str$</set>
+          </progress>
           <done>
             <set token="display_miss_latest">$result._miss_latest_str$</set>
             <set token="display_miss_earliest">$result._miss_earliest_str$</set>
