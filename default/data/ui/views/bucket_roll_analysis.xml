@@ -130,9 +130,9 @@
   <search id="hot_roll_base">
     <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
 | rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
-| eval size_gb=size/(1024*1024) 
+| eval size_mb=size/(1024*1024) 
 | eval duration=to_time-from_time
-| table _time host idx bid duration from to size_gb caller to_time from_time</query>
+| table _time host idx bid duration from to size_mb caller to_time from_time</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
@@ -251,7 +251,8 @@
       </default>
       <change>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
-        <eval token="time_duration">tostring(round(relative_time(now(), if("$time.latest$"="now","-0@m","$time.latest$")))-round(relative_time(now(), "$time.earliest$")), "duration")</eval>
+        <eval token="time_duration">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</eval>
+        <set token="time_duration_str">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</set>
       </change>
     </input>
     <input type="multiselect" token="selected_indexers">
@@ -309,15 +310,10 @@
       <delimiter> OR </delimiter>
       <choice value="*">*</choice>
     </input>
-    <input type="dropdown" token="bucket_creation_split_by">
-      <label>Split by</label>
-      <choice value="count by size_gb">count by size</choice>
-      <choice value="count">count</choice>
-      <default>count by size_gb</default>
-    </input>
   </fieldset>
   <row>
     <panel>
+      <title>$time_duration_str$</title>
       <html>
         <h1 style="text-align:center">High level summary $time_duration$</h1>
       </html>
@@ -407,25 +403,8 @@
       <chart>
         <search>
           <query>| loadjob $hot_roll_base$
-| chart limit=50 sum(size_gb) as size_gb by caller
+| chart limit=50 sum(size_mb) as size_mb by caller
 | fields - size</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">pie</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="height">373</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Breakdown of buckets by count</title>
-      <chart>
-        <search>
-          <query>| loadjob $hot_roll_base$
-| bin size_gb span=log2
-| chart limit=50 count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
@@ -448,15 +427,15 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search>
-          <query>
-            | loadjob $merged_finished$
-          </query>
-        </search>
         <search type="annotation">
           <query>
         | loadjob $annotations$
         </query>
+        </search>
+        <search>
+          <query>
+            | loadjob $merged_finished$
+          </query>
         </search>
         <selection>
           <set token="merged_earliest">$start$</set>
@@ -489,22 +468,23 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
-        <search>
-          <query>
-| loadjob $hot_roll_base_time_narrowed$            
-| bin size_gb span=log2 
-| timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ $bucket_creation_split_by$</query>
-        </search>
         <search type="annotation">
           <query>
         | loadjob $annotations$
         </query>
         </search>
+        <search>
+          <query>| loadjob $hot_roll_base_time_narrowed$            
+| bin size_mb span=log2 
+| timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">count</option>
         <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
+        <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">415</option>
         <option name="refresh.display">progressbar</option>
@@ -515,6 +495,11 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -522,11 +507,6 @@
 | xyseries _time caller count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -548,6 +528,11 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -557,11 +542,6 @@
     limit=0
     count
     by host</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -647,6 +627,11 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $freeze_base_time_narrowed_index_filtered$
 | timechart 
@@ -657,11 +642,6 @@
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -676,6 +656,11 @@
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -683,11 +668,6 @@
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
@@ -713,7 +693,7 @@
 | bin _time span=$drilldown_seconds_for_bin$ 
 | chart 
     limit=$filter_head_indexes$
-    sum(size_gb) by caller idx</query>
+    sum(size_mb) by caller idx</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
@@ -805,9 +785,9 @@
         <search>
           <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-| bin size_gb span=log2 
+| bin size_mb span=log2 
 | bin duration span=log2 
-| chart limit=0 count by size_gb duration</query>
+| chart limit=0 count by size_mb duration</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
@@ -821,7 +801,7 @@
           <eval token="selected_duration">if(isnull($click.name2$),NULL,if($click.name2$="0","0-0", $click.name2$))</eval>
           <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
           <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
+          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_mb AND size_mb&lt;=".$selected_size_upper$)</eval>
           <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
           <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
           <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
@@ -842,9 +822,9 @@
         <search>
           <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-| bin size_gb span=log2 
+| bin size_mb span=log2 
 | bin duration span=log2 
-| chart limit=0 count by  duration size_gb</query>
+| chart limit=0 count by  duration size_mb</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
         </search>
@@ -858,7 +838,7 @@
           <eval token="selected_duration">if(isnull($click.value$),NULL,if($click.value$="0","0-0", $click.value$))</eval>
           <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
           <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_gb AND size_gb&lt;=".$selected_size_upper$)</eval>
+          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_mb AND size_mb&lt;=".$selected_size_upper$)</eval>
           <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
           <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
           <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
@@ -878,7 +858,7 @@
     <panel>
       <title></title>
       <table>
-        <title>List of rolled buckets where selected_caller=$selected_caller$ AND selected_index=$selected_index$ AND size_gb&gt;=$selected_size$ AND duration&gt;=$selected_duration$</title>
+        <title>List of rolled buckets where selected_caller=$selected_caller$ AND selected_index=$selected_index$ AND size_mb&gt;=$selected_size$ AND duration&gt;=$selected_duration$</title>
         <search id="buckets">
           <progress>
             <unset token="buckets"></unset>
@@ -891,13 +871,14 @@
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | where $selected_size_filter$ AND $selected_duration_filter$ 
 | eval duration_str=tostring(duration,"duration")
-| table  idx caller _time duration* size_gb host from to *</query>
+| table  idx caller _time duration* size_mb host from to *
+| eval _from_time=from_time-1, _to_time=to_time+1</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
         <option name="drilldown">cell</option>
         <option name="refresh.display">progressbar</option>
-        <format type="number" field="size_gb">
+        <format type="number" field="size_mb">
           <option name="unit">GB</option>
         </format>
         <format type="number" field="duration">
@@ -906,8 +887,8 @@
         </format>
         <drilldown>
           <set token="selected_bucket">$row.bid$</set>
-          <set token="selected_to_time">$row.to_time$</set>
-          <set token="selected_from_time">$row.from_time$</set>
+          <set token="selected_to_time">$row._to_time$</set>
+          <set token="selected_from_time">$row._from_time$</set>
           <set token="selected_host">$row.host$</set>
           <set token="selected_from_bucket">$row.from$</set>
           <set token="selected_to_bucket">$row.to$</set>
@@ -922,12 +903,6 @@
       <table>
         <title>Reasons for rolling bucket $selected_bucket$ - missed nearest bucket by earliest=$display_miss_earliest$ latest=$display_miss_latest$</title>
         <search>
-          <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
-| eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
-| table _time host message _miss*
-| eventstats values(_m*) as _m*</query>
-          <earliest>0</earliest>
-          <latest></latest>
           <progress>
             <set token="display_miss_latest">$result._miss_latest_str$</set>
             <set token="display_miss_earliest">$result._miss_earliest_str$</set>
@@ -936,8 +911,15 @@
             <set token="display_miss_latest">$result._miss_latest_str$</set>
             <set token="display_miss_earliest">$result._miss_earliest_str$</set>
           </done>
+          <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
+| eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
+| table _time host message _miss*
+| eventstats values(_m*) as _m*</query>
+          <earliest>0</earliest>
+          <latest></latest>
         </search>
         <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
@@ -949,10 +931,11 @@
           <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$
 | eventstats values(splunk_server) as _indexers
 | eval _indexer_list="(splunk_server=".mvjoin(_indexers, " OR splunk_server=").")"</query>
-          <earliest>$selected_from_time$</earliest>
-          <latest>$selected_to_time$</latest>
+          <earliest>0</earliest>
+          <latest></latest>
         </search>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <drilldown>
           <link target="_blank">search?q=index=$selected_index$ $row._indexer_list$  | search _bkt=$selected_bucket$&amp;earliest=$selected_from_time$&amp;latest=$selected_to_time$</link>
         </drilldown>
@@ -1057,9 +1040,6 @@
 <p>selected_duration_lower=$selected_duration_lower$</p>
 <p>selected_duration_upper=$selected_duration_upper$</p>
 <p>selected_duration_filter=$selected_duration_filter$</p>
-
-
-
   </html>
     </panel>
   </row>
