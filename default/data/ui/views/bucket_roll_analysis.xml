@@ -22,10 +22,10 @@
     <query>
 | loadjob $merge_hot_frozen_report$ 
 | timechart span=$seconds_for_bin$ count by column 
-| eval frozen=-frozen, inflation=0
+| eval frozen=-frozen, _inflation=0
 | foreach * 
-    [| eval inflation='&lt;&lt;FIELD&gt;&gt;'+inflation ] 
-| streamstats sum(inflation) as inflation</query>
+    [| eval _inflation='&lt;&lt;FIELD&gt;&gt;'+_inflation ] 
+| streamstats sum(_inflation) as inflation</query>
     <progress>
       <unset token="merged_finished"></unset>
     </progress>
@@ -104,7 +104,7 @@
   <search id="freeze_base">
     <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
 | rex field=bid "(?&lt;idx&gt;[^~]+)"
-| table size _time idx host
+| stats min(_time) as _time values(idx) as idx values(host) as hosts by bid
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -381,6 +381,26 @@
         <option name="underLabel">total</option>
       </single>
     </panel>
+    <panel>
+      <title>Net increase in buckets</title>
+      <single>
+        <search>
+          <done>
+            <set token="frozen_rolled_count">$result.count$</set>
+          </done>
+          <query>| loadjob $merged_finished$
+| reverse
+| head 1
+| fields + inflation
+| fields - _*</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">total</option>
+      </single>
+    </panel>
   </row>
   <row>
     <panel>
@@ -427,15 +447,15 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search>
-          <query>
-            | loadjob $merged_finished$
-          </query>
-        </search>
         <search type="annotation">
           <query>
         | loadjob $annotations$
         </query>
+        </search>
+        <search>
+          <query>
+            | loadjob $merged_finished$
+          </query>
         </search>
         <selection>
           <set token="merged_earliest">$start$</set>
@@ -468,17 +488,17 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$            
 | bin size_mb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -495,6 +515,11 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -502,11 +527,6 @@
 | xyseries _time caller count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -528,6 +548,11 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -537,11 +562,6 @@
     limit=0
     count
     by host</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -627,6 +647,11 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $freeze_base_time_narrowed_index_filtered$
 | timechart 
@@ -637,11 +662,6 @@
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -656,6 +676,11 @@
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -663,11 +688,6 @@
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
