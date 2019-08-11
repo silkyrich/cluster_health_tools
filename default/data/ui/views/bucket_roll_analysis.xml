@@ -1,9 +1,5 @@
 <form>
   <label>Bucket roll analysis</label>
-  <init>
-    <eval token="form.time.earliest">-24h@h</eval>
-    <set token="form.time.latest">now</set>
-  </init>
   <search id="hot_roll_base_time_narrowed">
     <query>
       | loadjob $hot_roll_base$
@@ -243,7 +239,7 @@
     excluded_by_limit=mvjoin(excluded_by_limit," ")</query>
   </search>
   <fieldset submitButton="false">
-    <input type="time" token="time">
+    <input type="time" token="time" depends="$selected_indexers$">
       <label></label>
       <default>
         <earliest>-24h@h</earliest>
@@ -257,7 +253,6 @@
     </input>
     <input type="multiselect" token="selected_indexers">
       <label>Select CM, site or hosts</label>
-      <choice value="host=idx*">*</choice>
       <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
@@ -291,9 +286,13 @@
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
-      <default>host=idx*</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
+        <eval token="time_duration">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</eval>
+        <set token="time_duration_str">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</set>
+      </change>
     </input>
-    <input type="multiselect" token="selected_annotations">
+    <input type="multiselect" token="selected_annotations" depends="$selected_indexers$">
       <label>Select annotation overlay</label>
       <fieldForLabel>annotation_category</fieldForLabel>
       <fieldForValue>annotation_category</fieldForValue>
@@ -311,23 +310,61 @@
       <choice value="*">*</choice>
     </input>
   </fieldset>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
-      <title>$time_duration_str$</title>
       <html>
         <h1 style="text-align:center">High level summary $time_duration$</h1>
       </html>
     </panel>
   </row>
-  <row>
+    <row depends="$selected_indexers$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Buckets creation and freezing over time</h1>
+      </html>
+    </panel>
+  </row>
+    <row depends="$selected_indexers$">
+    <panel>
+      <title>Master panel - select a time range to update dashboard</title>
+      <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
+        <search>
+          <query>
+            | loadjob $merged_finished$
+          </query>
+        </search>
+        <selection>
+          <set token="merged_earliest">$start$</set>
+          <set token="merged_latest">$end$</set>
+          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/500)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/500))</eval>
+          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
+          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
+        </selection>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">inflation</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">513</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+    <row depends="$selected_indexers$">
     <panel>
       <title>Indexes rolling hot buckets</title>
       <single>
         <search>
-          <query>
-            | loadjob $hot_roll_base$
-            | stats dc(idx) as indexes
-</query>
+          <query>| loadjob $hot_roll_base_time_narrowed$
+            | stats dc(idx) as indexes</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
         </search>
         <option name="drilldown">all</option>
         <option name="refresh.display">progressbar</option>
@@ -340,28 +377,13 @@
       <title>Indexes freezing buckets</title>
       <single>
         <search>
-          <query>
-            | loadjob $freeze_base$
+          <query>| loadjob $freeze_base_time_narrowed$
             | stats dc(idx) as count</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
-      </single>
-    </panel>
-    <panel>
-      <title>Hot buckets rolled</title>
-      <single>
-        <search>
-          <done>
-            <set token="hot_rolled_count">$result.count$</set>
-          </done>
-          <query>
-| loadjob $hot_roll_base$
-| stats count</query>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="underLabel">total</option>
       </single>
     </panel>
     <panel>
@@ -371,7 +393,24 @@
           <done>
             <set token="frozen_rolled_count">$result.count$</set>
           </done>
-          <query>| loadjob $freeze_base$
+          <query>| loadjob $freeze_base_time_narrowed$
+| stats count</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">total</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Hot buckets rolled</title>
+      <single>
+        <search>
+          <done>
+            <set token="hot_rolled_count">$result.count$</set>
+          </done>
+          <query>| loadjob $hot_roll_base_time_narrowed$
 | stats count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
@@ -402,7 +441,7 @@
       </single>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Reasons for rolling buckets by count</title>
       <chart>
@@ -436,46 +475,7 @@
       </chart>
     </panel>
   </row>
-  <row>
-    <panel>
-      <html>
-        <h1 style="text-align:center">Buckets creation and freezing over time</h1>
-      </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Master panel - select a time range to update dashboard</title>
-      <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <search>
-          <query>
-            | loadjob $merged_finished$
-          </query>
-        </search>
-        <selection>
-          <set token="merged_earliest">$start$</set>
-          <set token="merged_latest">$end$</set>
-          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/500)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/500))</eval>
-          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
-          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
-        </selection>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">513</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <html>
         <h2 style="text-align:center">
@@ -484,7 +484,7 @@
       </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Size of bucket creation</title>
       <chart>
@@ -511,7 +511,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
@@ -537,14 +537,14 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <html>
         <h1 style="text-align:center">Per indexer analysis </h1>
       </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
@@ -574,7 +574,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Indexers rolling buckets by count</title>
       <chart>
@@ -598,7 +598,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <input type="text" token="filter_head_indexes">
         <label>Show top indexes</label>
@@ -620,7 +620,7 @@
       </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Creation of buckets by index over time</title>
       <chart>
@@ -643,7 +643,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
@@ -672,7 +672,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
@@ -703,7 +703,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title></title>
       <chart>
@@ -973,7 +973,7 @@
   </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Hyperlinks into the base reports</title>
       <html>
@@ -1061,6 +1061,13 @@
 <p>selected_duration_upper=$selected_duration_upper$</p>
 <p>selected_duration_filter=$selected_duration_filter$</p>
   </html>
+    </panel>
+  </row>
+  <row rejects="$selected_indexers$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select an cluster master and site</h1>
+      </html>
     </panel>
   </row>
 </form>
