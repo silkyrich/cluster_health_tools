@@ -317,26 +317,26 @@
       </html>
     </panel>
   </row>
-    <row depends="$selected_indexers$">
+  <row depends="$selected_indexers$">
     <panel>
       <html>
         <h1 style="text-align:center">Buckets creation and freezing over time</h1>
       </html>
     </panel>
   </row>
-    <row depends="$selected_indexers$">
+  <row depends="$selected_indexers$">
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>
             | loadjob $merged_finished$
           </query>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <selection>
           <set token="merged_earliest">$start$</set>
@@ -356,7 +356,7 @@
       </chart>
     </panel>
   </row>
-    <row depends="$selected_indexers$">
+  <row depends="$selected_indexers$">
     <panel>
       <title>Indexes rolling hot buckets</title>
       <single>
@@ -488,17 +488,17 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$            
 | bin size_mb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -515,11 +515,6 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -527,6 +522,11 @@
 | xyseries _time caller count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -548,11 +548,6 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -562,6 +557,11 @@
     limit=0
     count
     by host</query>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -647,11 +647,6 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>| loadjob $freeze_base_time_narrowed_index_filtered$
 | timechart 
@@ -662,6 +657,11 @@
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -676,11 +676,6 @@
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -688,6 +683,11 @@
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
+        </search>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
         </search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
@@ -913,7 +913,7 @@
           <set token="selected_from_bucket">$row.from$</set>
           <set token="selected_to_bucket">$row.to$</set>
           <set token="bucket_history_search">Search history for $selected_bucket$ and $selected_from_bucket$ and $selected_to_bucket$</set>
-          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.") OR ".$selected_to_bucket$."")</eval>
+          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.")) OR ".$selected_to_bucket$."")</eval>
         </drilldown>
       </table>
     </panel>
@@ -951,8 +951,8 @@
           <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$
 | eventstats values(splunk_server) as _indexers
 | eval _indexer_list="(splunk_server=".mvjoin(_indexers, " OR splunk_server=").")"</query>
-          <earliest>0</earliest>
-          <latest></latest>
+          <earliest>$selected_from_time$</earliest>
+          <latest>$selected_to_time$</latest>
         </search>
         <option name="drilldown">cell</option>
         <option name="refresh.display">progressbar</option>
