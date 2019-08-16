@@ -258,7 +258,7 @@
       <fieldForValue>search</fieldForValue>
       <search>
         <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
-| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
 | eval cluster_master=host 
 | fields + site_pair cluster_master 
 | fields - _* 
@@ -933,7 +933,7 @@
           </done>
           <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
 | eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
-| table _time host message _miss*
+| table _raw _*
 | eventstats values(_m*) as _m*</query>
           <earliest>0</earliest>
           <latest></latest>
