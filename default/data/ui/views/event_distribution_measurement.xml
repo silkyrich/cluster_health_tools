@@ -2,7 +2,6 @@
   <label>Event distribution measurements</label>
   <init>
     <set token="steps">19</set>
-    <set token="indexer_list">splunk_server=*</set>
   </init>
   <search id="baseSearch">
     <query>
@@ -25,21 +24,41 @@
       <valuePrefix>index=</valuePrefix>
       <delimiter> OR </delimiter>
     </input>
-    <input type="multiselect" token="selected_host">
-      <label>2. Filter to hosts in index</label>
+    <input type="multiselect" token="selected_indexers">
+      <label>2. Select CM, site or hosts</label>
+      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>host</fieldForValue>
+      <fieldForValue>search</fieldForValue>
       <search>
-        <query>| tstats count where $selected_index$ by host | eval label=host."(".count.")"</query>
+        <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort - count</query>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
-      <prefix>(</prefix>
-      <suffix>)</suffix>
-      <valuePrefix>host=</valuePrefix>
-      <delimiter> OR </delimiter>
-      <choice value="*">All</choice>
-      <default>*</default>
     </input>
     <input type="text" token="step_size">
       <label>3. Enter starting duration in seconds</label>
@@ -58,10 +77,6 @@
       <label>Show override panel</label>
       <choice value="*">Show panels</choice>
       <delimiter> </delimiter>
-    </input>
-    <input type="text" token="indexer_list">
-      <label>Indexers to target</label>
-      <default>splunk_server=*</default>
     </input>
   </fieldset>
   <row>
@@ -109,7 +124,7 @@
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
-".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $indexer_list$ $selected_host$ $selected_index$  by splunk_server $split_by$ 
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_host$ $selected_index$  by splunk_server $split_by$ 
 | eval period=if(isNull(period),\"".step_size."\",period)
 ", step_string=tostring(step_size,"duration")
 | fields - jump tstats_preamble
@@ -145,7 +160,7 @@
     </html>
     </panel>
   </row>
-  <row>
+  <row depends="$generated_search$">
     <panel>
       <title>Variation of events across the indexers $selected_index$</title>
       <input type="multiselect" token="filter_index">
@@ -184,7 +199,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$generated_search$">
     <panel>
       <title>What was the normalised standard deviation over time?</title>
       <chart>
@@ -208,7 +223,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$generated_search$">
     <panel>
       <title>How many indexers received data during each period?</title>
       <chart>
@@ -225,7 +240,7 @@
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$generated_search$">
     <panel>
       <title>Events scanned in each step</title>
       <chart>
@@ -240,20 +255,6 @@
         <option name="charting.legend.placement">top</option>
         <option name="height">372</option>
       </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <title>Coverage of indexes to servers</title>
-        <search base="baseSearch">
-          <query>| stats count by splunk_server index
-| xyseries splunk_server index count
-| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=if("&lt;&lt;FIELD&gt;&gt;"!="splunk_server",if(isnull(&lt;&lt;FIELD&gt;&gt;),1,0),&lt;&lt;FIELD&gt;&gt;)]</query>
-        </search>
-        <option name="count">100</option>
-        <option name="drilldown">none</option>
-      </table>
     </panel>
   </row>
 </form>
