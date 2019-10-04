@@ -107,12 +107,6 @@
     </panel>
     <panel>
       <title>7. Click on the duration to execute the search</title>
-      <input type="dropdown" token="split_by">
-        <label>8. Split by</label>
-        <choice value="host">host</choice>
-        <choice value="index">index</choice>
-        <default>index</default>
-      </input>
       <single>
         <title>The format is "days+hours:minutes:seconds" i.e 10+6:30:00 = 10 days and 6 hours 30 mins</title>
         <search>
@@ -124,7 +118,7 @@
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
-".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_index$  by splunk_server $split_by$ 
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_index$  by splunk_server index 
 | eval period=if(isNull(period),\"".step_size."\",period)
 ", step_string=tostring(step_size,"duration")
 | fields - jump tstats_preamble
@@ -133,7 +127,7 @@
 | eventstats last(step_string) as max_history_str last(step_size) as max_history
 | eval step_string=mvjoin(step_string,","), step_size=mvjoin(step_size,","), step=mvjoin(step,",")
 | eval post_process="| stats sum(count) as count by period splunk_server index"
-| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_index$ by splunk_server $split_by$ 
+| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_index$ by splunk_server index
     | stats count by splunk_server index 
     | eval count=0 
     | eval period=\"".step_size."\" 
@@ -156,7 +150,7 @@
   <row>
     <panel>
       <html>
-      You are viewing $steps$ steps starting with a period of $step_size$ seconds increasing at the power $power$ and spliting the data by $split_by$
+      You are viewing $steps$ steps starting with a period of $step_size$ seconds increasing at the power $power$ and spliting the data by index
     </html>
     </panel>
   </row>
@@ -212,7 +206,7 @@
      fixed_stdev=sqrt(fixed_variance)
 | eval normalized_stdev=fixed_stdev/avg 
 | fields -  avg fixed_stdev fixed_variance varience
-| chart limit=100 values(normalized_stdev) as normalized_stdev by  period $split_by$
+| chart limit=100 values(normalized_stdev) as normalized_stdev by  period index
 | eval period=tostring(period,"duration")</query>
         </search>
         <option name="charting.axisY.scale">linear</option>
@@ -230,7 +224,7 @@
         <title>We need this to ramp up as quickly as possible</title>
         <search base="baseSearch">
           <query>| where count!=0
-| chart limit=100 dc(splunk_server) by period $split_by$  
+| chart limit=100 dc(splunk_server) by period index
 | eval period=tostring(period,"duration")</query>
         </search>
         <option name="charting.chart">line</option>
@@ -246,7 +240,7 @@
       <chart>
         <title>Events scanned goes up quickly</title>
         <search base="baseSearch">
-          <query>| chart limit=100 sum(count) as ratio by  period $split_by$
+          <query>| chart limit=100 sum(count) as ratio by  period index
 | eval period=tostring(period,"duration")</query>
         </search>
         <option name="charting.axisY.scale">log</option>
