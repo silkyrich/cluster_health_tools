@@ -107,8 +107,10 @@
     </panel>
     <panel>
       <title>7. Click on the duration to execute the search</title>
+      <html>
+        When you click this link a search is generated in SPL and written to the base search for execution. The format is "days+hours:minutes:seconds", for example you can translate i.e 10+6:30:00 into 10 days and 6 hours 30 mins. It is best to measure event distribution over shorter lengths for instance an hour, if you aren't getting good event distribution within this time the platform needs tuning.
+      </html>
       <single>
-        <title>The format is "days+hours:minutes:seconds" i.e 10+6:30:00 = 10 days and 6 hours 30 mins</title>
         <search>
           <query>| makeresults 
 | eval step=mvrange(1,$steps$,1) 
