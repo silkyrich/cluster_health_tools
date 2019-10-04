@@ -9,23 +9,8 @@
     </query>
   </search>
   <fieldset submitButton="false">
-    <input type="multiselect" token="selected_index">
-      <label>1. Select indexes to sample (be patient)</label>
-      <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>index</fieldForValue>
-      <search>
-        <query>| eventcount index=* index=_* summarize=false | stats sum(count) as size by index | sort - size | eval label=index."(".size.")"</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
-      </search>
-      <default>main</default>
-      <prefix>(</prefix>
-      <suffix>)</suffix>
-      <valuePrefix>index=</valuePrefix>
-      <delimiter> OR </delimiter>
-    </input>
     <input type="multiselect" token="selected_indexers">
-      <label>2. Select CM, site or hosts</label>
+      <label>1. Select CM, site or hosts</label>
       <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
@@ -60,6 +45,26 @@
         <latest>now</latest>
       </search>
     </input>
+    <input type="multiselect" token="selected_index">
+      <label>2. Select indexes to sample (be patient)</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount index=* index=_* summarize=false 
+| rename server as host
+| search $selected_indexers$
+| stats sum(count) as size by index 
+| sort - size 
+| eval label=index."(".size.")"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>main</default>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <valuePrefix>index=</valuePrefix>
+      <delimiter> OR </delimiter>
+    </input>
     <input type="text" token="step_size">
       <label>3. Enter starting duration in seconds</label>
       <default>1</default>
@@ -72,11 +77,6 @@
       <label>5. Set the delay before starting sampling in seconds</label>
       <default>60</default>
       <initialValue>60</initialValue>
-    </input>
-    <input type="checkbox" token="show_override_panel">
-      <label>Show override panel</label>
-      <choice value="*">Show panels</choice>
-      <delimiter> </delimiter>
     </input>
   </fieldset>
   <row>
@@ -124,7 +124,7 @@
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
-".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_host$ $selected_index$  by splunk_server $split_by$ 
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_index$  by splunk_server $split_by$ 
 | eval period=if(isNull(period),\"".step_size."\",period)
 ", step_string=tostring(step_size,"duration")
 | fields - jump tstats_preamble
@@ -133,7 +133,7 @@
 | eventstats last(step_string) as max_history_str last(step_size) as max_history
 | eval step_string=mvjoin(step_string,","), step_size=mvjoin(step_size,","), step=mvjoin(step,",")
 | eval post_process="| stats sum(count) as count by period splunk_server index"
-| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_host$ $selected_index$ by splunk_server $split_by$ 
+| eval padding_search="[| tstats prestats=t count where earliest=-".max_history."sec latest=-60sec $selected_index$ by splunk_server $split_by$ 
     | stats count by splunk_server index 
     | eval count=0 
     | eval period=\"".step_size."\" 
