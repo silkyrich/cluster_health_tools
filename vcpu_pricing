@@ -13,7 +13,7 @@
     <h1>What is this dashboard and how do I use it?</h1>
     This dashboard as been created by Richard Morgan, a Principal architect in EMEA to discover the base data required for vCPU billing. <p/>
     It works by running a search that counts the vCPU count for each host and the idle time found in introspection. This information doesn't include the role of the host and various other searches are also run and used to reverse engineer the role of the component. You can see these discovery searches by checking the box "show discovery searches"<p/>
-    On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.
+    On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk, the customer may have miss classified their components. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.
     
   </html>
     </panel>
@@ -87,33 +87,6 @@
       </table>
     </panel>
     <panel>
-      <title>introspection_search $introspection_search$</title>
-      <table>
-        <search id="introspection_search">
-          <progress>
-            <unset token="introspection_search"></unset>
-          </progress>
-          <done>
-            <set token="introspection_search">$job.sid$</set>
-          </done>
-          <query>| tstats count values(data.search_props.search_head) as search_head where index=_introspection component=perprocess data.search_props.sid=* earliest=-24hour latest=now by host
-| where host=search_head
-| eval runs_search=1</query>
-          <earliest>-1d@d</earliest>
-          <latest>@d</latest>
-          <sampleRatio>1</sampleRatio>
-        </search>
-        <option name="count">1</option>
-        <option name="dataOverlayMode">none</option>
-        <option name="drilldown">none</option>
-        <option name="percentagesRow">false</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="rowNumbers">false</option>
-        <option name="totalsRow">false</option>
-        <option name="wrap">true</option>
-      </table>
-    </panel>
-    <panel>
       <title>metrics_instance - $metrics_instance$</title>
       <table>
         <search id="metrics_instance">
@@ -123,18 +96,22 @@
           <done>
             <set token="metrics_instance">$job.sid$</set>
           </done>
-          <query>index=_internal earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder) 
+          <query>index=_internal earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
 | stats count values(instance_roles) as roles by instance_guid server_name 
 | eval mv_roles=split(roles, ", ") 
 | stats 
-    count(eval(mv_roles="indexer")) as indexer_role
-    count(eval(mv_roles="search_peer")) as search_peer_role
-    count(eval(mv_roles="search_head")) as search_head_role
-    count(eval(mv_roles="cluster_slave")) as cluster_slave_role 
-    count(eval(mv_roles="kv_store")) as kv_store_role 
-    count(eval(mv_roles="cluster_master")) as cluster_master_role 
-    count(eval(mv_roles="license_master")) as license_master_role 
-    count(eval(mv_roles="deployment_server_master")) as deployment_server_role
+    count(eval(mv_roles="indexer")) as role_indexer
+    count(eval(mv_roles="search_peer")) as role_search_peer
+    count(eval(mv_roles="cluster_search_head")) as role_cluster_search_head
+    count(eval(mv_roles="search_head")) as role_search_head
+    count(eval(mv_roles="cluster_slave")) as role_cluster_slave
+    count(eval(mv_roles="kv_store")) as role_kv_store_role 
+    count(eval(mv_roles="cluster_master")) as role_cluster_master
+    count(eval(mv_roles="license_master")) as role_license_master
+    count(eval(mv_roles="deployment_server_master")) as role_deployment_server
+    count(eval(mv_roles="deployment_client")) as role_deployment_client
+    count(eval(mv_roles="shc_captain")) as role_shc_captain
+    count(eval(mv_roles="shc_member")) as role_shc_member
     by instance_guid server_name roles 
 | rename instance_guid as guid
 | rename server_name as host</query>
@@ -177,7 +154,7 @@
 | eval cpu_used=vcpu_count*(avg_cpu_usage_pct)/100
 | stats count as hosts 
     sum(vcpu_count) as total_vCPU
-    sum(cpu_used) as vCPU_usage
+    sum(cpu_used) as vCPU_used
     by primary_role billable
 | addcoltotals</query>
         </search>
@@ -194,24 +171,24 @@
     [| loadjob $metrics_instance$ ] 
     [| loadjob $tcpin_connections$ ] 
     [| loadjob $introspection_vcpu_count$ ] 
-    [| loadjob $introspection_search$ ] 
-| stats values(*) as * by host
-| eval primary_role=case(indexer_role=1,"indexer",
-    cluster_master_role=1,"cluster_master",
-    runs_search=1,"search_head",
+| stats values(*) as * by guid host 
+| eval primary_role=case(role_indexer=1,"indexer",
+    role_cluster_master=1,"cluster_master",
+    role_cluster_search_head=1,"search_head_cluster",
+    role_search_head=1,"search_head",
     fwdType="full","heavy_forwarder",
-    license_master_role=1,"license_master",
-    deployment_server_master_role=1,"deployment_server_master"
+    role_license_master=1,"license_master",
+    role_deployment_server_master=1,"deployment_server_master"
     ) 
 | eval billable=case(primary_role="indexer", 1,
     primary_role="cluster_master", 0,
     primary_role="search_head", 1,
+    primary_role="search_head_cluster", 1,
     primary_role="heavy_forwarder", 1,
     primary_role="license_master", 0,
     primary_role="deployment_server_master",0
-    )
-| eval avg_cpu_usage_pct=round(100-introspection_cpu_idle,0)
-| table host guid primary_role billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version
+    ) 
+| table host guid primary_role billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version 
 | rename introspection_splunk_version as splunk_version</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
