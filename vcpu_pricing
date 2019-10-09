@@ -12,9 +12,9 @@
       <html>
     <h1>What is this dashboard and how do I use it?</h1>
     This dashboard as been created by Richard Morgan, a Principal architect in EMEA to discover the base data required for vCPU billing. <p/>
-    It works by running a search that counts the vCPU count for each host and the idle time found in introspection. This information doesn't include the role of the host and various other searches are also run and used to reverse engineer the role of the component. You can see these discovery searches by checking the box "show discovery searches"<p/>
-    On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk, the customer may have miss classified their components. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.
-    
+    To install, simply create a new dashboard and paste in the contents. You might find a newer version <a href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/vcpu_pricing">here</a><p/>
+    The dashboard works by running a search that counts the vCPU count and utilization for each host introspection. On its own this information doesn't include the role of the host and various other searches are run to reverse engineer the role of the component. You can see these discovery searches by checking the box "show discovery searches" where you can also modify the function used to calculate usage, but default it is set to p99<p/>
+    On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk, the customer may have miss classified their components. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.<p/>
   </html>
     </panel>
   </row>
