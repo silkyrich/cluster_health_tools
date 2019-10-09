@@ -21,7 +21,18 @@
   <row depends="$show_base_searches$">
     <panel>
       <title>introspection_vcpu_count - $introspection_vcpu_count$</title>
+      <input type="dropdown" token="avg_function">
+        <label>Calculation for average</label>
+        <choice value="avg">mean</choice>
+        <choice value="mode">mode</choice>
+        <choice value="median">median</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <default>p99</default>
+      </input>
       <table>
+        <title>Collects the vCPU count from _introspection</title>
         <search id="introspection_vcpu_count">
           <progress>
             <unset token="introspection_vcpu_count"></unset>
@@ -29,13 +40,14 @@
           <done>
             <set token="introspection_vcpu_count">$job.sid$</set>
           </done>
-          <query>| tstats 
+          <query>index=_introspection component=hostwide 
+| eval cpu_usage_pct='data.cpu_system_pct'+'data.cpu_user_pct'
+| stats 
     values(data.cpu_count) as cpu_count
     values(data.virtual_cpu_count) as vcpu_count
     values(data.splunk_version) as introspection_splunk_version
     values(data.os_version) as introspection_os_version
-    avg(data.cpu_idle_pct) as introspection_cpu_idle
-    where index=_introspection component=hostwide 
+    $avg_function$(cpu_usage_pct) as avg_cpu_usage_pct
     by host data.instance_guid 
 | rename data.instance_guid as guid</query>
           <earliest>-24h@h</earliest>
@@ -55,6 +67,7 @@
     <panel>
       <title>tcpin_connections $tcpin_connections$</title>
       <table>
+        <title>Collects information about components acting as a HWF (can be a CM, LM, SH etc)</title>
         <search>
           <progress>
             <unset token="tcpin_connections"></unset>
@@ -80,7 +93,6 @@
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">none</option>
         <option name="percentagesRow">false</option>
-        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
@@ -89,6 +101,7 @@
     <panel>
       <title>metrics_instance - $metrics_instance$</title>
       <table>
+        <title>data mines the component classification, doesn't normally include a HWF</title>
         <search id="metrics_instance">
           <progress>
             <unset token="metrics_instance"></unset>
@@ -97,8 +110,13 @@
             <set token="metrics_instance">$job.sid$</set>
           </done>
           <query>index=_internal earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
-| stats count values(instance_roles) as roles by instance_guid server_name 
+| stats 
+    count 
+    values(instance_roles) as roles 
+    values(index_cluster_label) as idx_cluster_name
+    by instance_guid server_name 
 | eval mv_roles=split(roles, ", ") 
+| eval idx_cluster_name=if(idx_cluster_name="none", "", idx_cluster_name)
 | stats 
     count(eval(mv_roles="indexer")) as role_indexer
     count(eval(mv_roles="search_peer")) as role_search_peer
@@ -112,8 +130,8 @@
     count(eval(mv_roles="deployment_client")) as role_deployment_client
     count(eval(mv_roles="shc_captain")) as role_shc_captain
     count(eval(mv_roles="shc_member")) as role_shc_member
-    by instance_guid server_name roles 
-| rename instance_guid as guid
+    by instance_guid server_name roles idx_cluster_name
+| rename instance_guid as guid 
 | rename server_name as host</query>
           <earliest>-4h@m</earliest>
           <latest>now</latest>
@@ -144,21 +162,59 @@
         <option name="refresh.display">progressbar</option>
       </single>
     </panel>
+    <panel>
+      <title>vCPU in active use according to $avg_function$</title>
+      <single>
+        <search base="summarized_usage">
+          <query>| stats sum(vCPU_used)</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
   </row>
   <row>
     <panel>
       <title>Billable roles to vCPU count with utilisation measure</title>
       <table>
-        <search base="classified_hosts">
+        <search base="classified_hosts" id="summarized_usage">
           <query>| where billable=1
 | eval cpu_used=vcpu_count*(avg_cpu_usage_pct)/100
-| stats count as hosts 
+| stats count as instances 
     sum(vcpu_count) as total_vCPU
     sum(cpu_used) as vCPU_used
-    by primary_role billable
-| addcoltotals</query>
+    median(avg_cpu_usage_pct) as avg_cpu_usage_pct
+    by primary_role idx_cluster_name
+| table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct vCPU_used</query>
         </search>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">none</option>
         <option name="refresh.display">progressbar</option>
+        <format type="number" field="avg_cpu_usage_pct">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="number" field="vCPU_used">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="instances">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="total_vCPU">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="total_vCPU">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="avg_cpu_usage_pct">
+          <colorPalette type="list">[#65A637,#6DB7C6,#F7BC38,#F58F39,#D93F3C]</colorPalette>
+          <scale type="threshold">0,30,70,100</scale>
+        </format>
+        <format type="color" field="vCPU_used">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
       </table>
     </panel>
   </row>
@@ -188,14 +244,14 @@
     primary_role="license_master", 0,
     primary_role="deployment_server_master",0
     ) 
-| table host guid primary_role billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version 
+| table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version 
 | rename introspection_splunk_version as splunk_version</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
-        <option name="count">10</option>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">heatmap</option>
         <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
