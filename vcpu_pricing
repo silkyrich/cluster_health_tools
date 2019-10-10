@@ -12,7 +12,8 @@
       <html>
     <h1>What is this dashboard and how do I use it?</h1>
     This dashboard as been created by Richard Morgan, a Principal architect in EMEA to discover the base data required for vCPU billing. <p/>
-    To install, simply create a new dashboard and paste in the contents. You might find a newer version <a href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/vcpu_pricing">here</a><p/>
+    To install, simply create a new dashboard and paste in the contents. You might find a newer version <a href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/vcpu_pricing">here</a>
+        <p/>
     The dashboard works by running a search that counts the vCPU count and utilization for each host introspection. On its own this information doesn't include the role of the host and various other searches are run to reverse engineer the role of the component. You can see these discovery searches by checking the box "show discovery searches" where you can also modify the function used to calculate usage, but default it is set to p99<p/>
     On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk, the customer may have miss classified their components. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.<p/>
   </html>
@@ -147,6 +148,33 @@
         <option name="wrap">true</option>
       </table>
     </panel>
+    <panel>
+      <title>license_usage $license_usage$</title>
+      <table>
+        <title>license_usage $license_usage$</title>
+        <search>
+          <progress>
+            <unset token="license_usage"></unset>
+          </progress>
+          <done>
+            <set token="license_usage">$job.sid$</set>
+          </done>
+          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial)
+| bin span=1d@d _time
+| eval key="usage_".licenseGroup."_".productType
+| stats values(eval(b/1024/1024/1024)) as gb by key _time slave
+| stats p90(gb) as gb by key slave
+| eval gb=round(gb,0)
+| rename slave as guid
+| xyseries guid key gb</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
   </row>
   <row>
     <panel>
@@ -171,6 +199,21 @@
         <option name="drilldown">none</option>
       </single>
     </panel>
+    <panel>
+      <title>Licences detected</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial) earliest=-25hrs latest=now
+| stats count by productType licenseGroup subgroupId
+| table productType licenseGroup subgroupId</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
   </row>
   <row>
     <panel>
@@ -183,8 +226,10 @@
     sum(vcpu_count) as total_vCPU
     sum(cpu_used) as vCPU_used
     median(avg_cpu_usage_pct) as avg_cpu_usage_pct
+    avg(usage_*) as lic_*
     by primary_role idx_cluster_name
-| table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct vCPU_used</query>
+| table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct vCPU_used lic_*
+| foreach lic_* [| eval &lt;&lt;FIELD&gt;&gt;=round(&lt;&lt;FIELD&gt;&gt;,0) ]</query>
         </search>
         <option name="count">100</option>
         <option name="dataOverlayMode">none</option>
@@ -215,19 +260,27 @@
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
+        <format type="number" field="lic_Enterprise_enterprise">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="lic_Enterprise_enterprise">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
       </table>
     </panel>
   </row>
   <row>
     <panel>
-      <title>The inventory list with vCPU please export and return to HQ</title>
+      <title>The summarised inventory list with vCPU please export and bring home</title>
       <table>
         <search id="classified_hosts">
           <query>| union 
     [| loadjob $metrics_instance$ ] 
     [| loadjob $tcpin_connections$ ] 
     [| loadjob $introspection_vcpu_count$ ] 
-| stats values(*) as * by guid host 
+    [| loadjob $license_usage$ ] 
+| stats values(*) as * by guid 
 | eval primary_role=case(role_indexer=1,"indexer",
     role_cluster_master=1,"cluster_master",
     role_cluster_search_head=1,"search_head_cluster",
@@ -244,14 +297,35 @@
     primary_role="license_master", 0,
     primary_role="deployment_server_master",0
     ) 
-| table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version 
+| table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version usage*
 | rename introspection_splunk_version as splunk_version</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
-        <option name="count">100</option>
-        <option name="dataOverlayMode">heatmap</option>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
         <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="vcpu_count">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="cpu_count">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="number" field="avg_cpu_usage_pct">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="avg_cpu_usage_pct">
+          <colorPalette type="list">[#65A637,#6DB7C6,#F7BC38,#F58F39,#D93F3C]</colorPalette>
+          <scale type="threshold">0,30,70,100</scale>
+        </format>
+        <format type="color" field="usage_Enterprise_enterprise">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
       </table>
     </panel>
   </row>
