@@ -69,6 +69,15 @@ $overlay_option$</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="blocking">
+    <query>$_internal$ $selected_indexers$ TERM(blocked=true) sourcetype=splunkd 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| table _time short_name name
+</query>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
   <fieldset submitButton="false">
     <input type="multiselect" token="selected_indexers">
       <label>1. Select CM, site or hosts</label>
@@ -237,15 +246,12 @@ $overlay_option$</query>
         <default>indexqueue</default>
       </input>
       <chart>
-        <search>
-          <query>$_internal$ $selected_indexers$ TERM(name=$queue$) TERM(blocked=true) sourcetype=splunkd 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+        <search base="blocking">
+          <query>
+            | search name=$queue$
 | timechart span=$seconds_for_bin$sec limit=0 count by short_name 
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=if('&lt;&lt;FIELD&gt;&gt;'=0,0,1)]</query>
-          <earliest>$selection_earliest$</earliest>
-          <latest>$selection_latest$</latest>
-          <sampleRatio>1</sampleRatio>
         </search>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
         <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
@@ -284,6 +290,7 @@ $overlay_option$</query>
         <choice value="*scheduler.log">scheduler.log</choice>
         <choice value="*splunkd.log">splunkd.log</choice>
         <choice value="*splunkd_access.log">splunkd_access.log</choice>
+        <default>*splunkd.log</default>
       </input>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
@@ -364,9 +371,9 @@ $overlay_option$</query>
         <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_indexers$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
-    by _time host span=$seconds_for_bin$sec 
+    by _time host span=$seconds_for_bin_62$sec 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| timechart limit=0 sum(count) as readings span=$seconds_for_bin$sec by short_name 
+| timechart limit=0 sum(count) as readings span=$seconds_for_bin_62$sec by short_name 
 | eval active_indexers=0 
 | foreach * 
     [| eval active_indexers=if(isnull('&lt;&lt;FIELD&gt;&gt;') OR "&lt;&lt;FIELD&gt;&gt;"="active_indexers",active_indexers,active_indexers+1)]</query>
