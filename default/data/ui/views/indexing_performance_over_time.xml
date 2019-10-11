@@ -79,20 +79,6 @@
       <delimiter> </delimiter>
     </input>
   </fieldset>
-  <row depends="$show_override_panel$">
-    <panel>
-      <input type="text" token="indexer_list">
-        <label>Indexer override</label>
-      </input>
-      <input type="text" token="index_to_search">
-        <label>Index override</label>
-        <default>_internal</default>
-      </input>
-      <html>
-This dashboard uses searches to discovery your topology, if you explicitly list your hosts here in the form "host=a OR host=b" or "host=idx*" you will activite the dashboard panels        
-      </html>
-    </panel>
-  </row>
   <row>
     <panel>
       <title>RT indexing (refreshes very 30 seconds) we want this to be mostly flat and the stdev is low</title>
@@ -232,17 +218,16 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
     <panel>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
-        <search base="annotation" type="annotation"></search>
         <search>
-          <query>$_internal$ $selected_indexers$
-    sourcetype=splunkd source="*metrics.log" 
+          <query>| tstats max(_indextime) AS indexed_time count where sourcetype=splunkd source="*splunkd.log" $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by host _time span=1sec
+| eval _time=round(_time), indexing_delay=indexed_time-_time
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| eval indexing_delay=_indextime-_time 
-| eval _time=_indextime 
-| timechart limit=0 span=$seconds_for_bin$sec max(indexing_delay) by short_name</query>
-          <earliest>$selection_earliest$</earliest>
-          <latest>$selection_latest$</latest>
+| eval _time=indexed_time 
+| timechart fixedrange=false limit=0 span=31sec max(indexing_delay) by short_name</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.legend.placement">top</option>
@@ -255,7 +240,6 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
     <panel>
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_indexers$ TERM(eventtype=connect_done) by host _time span=$seconds_for_bin$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -266,6 +250,7 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
@@ -288,7 +273,6 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats sum($selected_hec_metric$) as events where $selected_indexers$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -298,6 +282,7 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -310,7 +295,6 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
     <panel>
       <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_indexers$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin$sec 
@@ -322,6 +306,7 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -377,7 +362,6 @@ This dashboard uses searches to discovery your topology, if you explicitly list 
       </input>
       <chart>
         <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats 
     $hostwide_aggregation_function$(data.cpu_idle_pct) as cpu_idle_pct 
@@ -400,6 +384,7 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
