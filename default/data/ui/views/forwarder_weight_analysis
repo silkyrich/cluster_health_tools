@@ -1,0 +1,531 @@
+<form>
+  <label>Forwarder weight analysis</label>
+  <description>This dashboard performs analytics on all the forwarder connections coming into a customer stack</description>
+  <init>
+    <set token="seconds_for_bin">62</set>
+    <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
+  </init>
+  <search id="forwarders_base">
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_indexers$
+
+| stats 
+    sum(kb) as sum_kb
+    avg(chan_new_kBps) as avg_chan_new_kBps
+    max(tcp_KBps) as avg_tcp_KBps
+    stdev(tcp_KBps) as stdev_tcp_KBps
+    values(connectionType) as connectionType
+    values(arch) as arch
+    values(version) as version
+    values(fwdType) as fwdType
+    values(ssl) as ssl
+    values(os) as os
+    values(guid) as guid
+    dc(guid) as guid_count
+    dc(sourceIp) as count_sources
+    dc(host) as indexer_count
+    by hostname
+| table *</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <progress>
+      <unset token="selected_forwarder"></unset>
+      <set token="total_forwarder_count">$job.resultCount$</set>
+    </progress>
+    <done>
+      <set token="total_forwarder_count">$job.resultCount$</set>
+    </done>
+  </search>
+  <search base="forwarders_base" id="forwarders_ranked">
+    <query>
+| eventstats 
+    sum(avg_tcp_KBps) as total_sum_avg_KBps
+    stdev(tcp_KBps) as avg_stdev_KBps
+    sum(sum_kb) as total_sum_kb 
+    dc(guid) as all_forwarders 
+    max(indexer_count) as all_indexers
+| eval indexer_coverage=indexer_count."/".all_indexers,
+indexer_coverage_pct=indexer_count/all_indexers
+| sort 0 - sum_kb 
+| streamstats 
+    sum(sum_kb) as accumlated_sum_kb 
+    count as ranking_most_data_kb
+    by all_forwarders 
+| eval coverage_kb=accumlated_sum_kb/total_sum_kb, 
+    progress_through_forwarders_kb=(ranking_most_data_kb/all_forwarders) * 100 
+| sort 0 - avg_tcp_KBps 
+| streamstats 
+    sum(avg_tcp_KBps) as accumlated_avg_kbps 
+    count as ranking_most_data_kbps
+    by all_forwarders 
+| eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
+    progress_through_forwarders_kbps=(ranking_most_data_kbps/all_forwarders) * 100 
+| table hostname guid guid_count *</query>
+    <progress>
+      <unset token="selected_forwarder"></unset>
+      <unset token="selected_forwarders"></unset>
+      <unset token="total_indexer_count"></unset>
+    </progress>
+    <done>
+      <set token="total_indexer_count">$result.all_indexers$</set>
+    </done>
+  </search>
+  <search id="single_forwarder_base">
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_forwarders$ $selected_indexers$
+    | table _time host kb tcp_avg_thruput tcp_eps tcp_KBps hostname guid guid_count chan_new_kBps 
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="forwarders_ranked" id="forwarders_filtered">
+    <progress>
+      <unset token="selected_forwarder"></unset>
+      <unset token="selected_forwarders"></unset>
+    </progress>
+    <query>| search (progress_through_forwarders_kbps&gt;=$selected_min$, progress_through_forwarders_kbps&lt;=$selected_max$) OR ( progress_through_forwarders_kb&gt;=$selected_min$, progress_through_forwarders_kb&lt;=$selected_max$) 
+| rename indexer_coverage_pct as "%" 
+| rename indexer_coverage as "indexer coverage"
+| rename ranking_most_data_kbps as "speed ranking" 
+| rename ranking_most_data_kb as "volume ranking" 
+| rename avg_tcp_KBps as "average speed" 
+| eval type=if(fwdType="full","HWF","UF")
+| eval "%"='%'*100,
+    "speed variability" = (stdev_tcp_KBps/'average speed')*100,
+    "data"=sum_kb/1024/1024,
+    "data %"= (sum_kb/total_sum_kb) * 100
+| table hostname guid guid_count "volume ranking" "speed ranking" "indexer coverage"  "%" "average speed" "speed variability" "data" "data %" "os" "type" "version" arch
+| sort 0 + "volume ranking"    
+</query>
+  </search>
+  <search id="annotation">
+    <query>| tstats count where $_internal$ Metrics sourcetype=splunkd $selected_indexers$ TERM(blocked=true) TERM(group=queue) TERM(name=tcpin*) by host _time span=$seconds_for_bin$sec 
+| table _time host count 
+| eval annotation_label="Blocked input",
+    annotation_category=host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="multiselect" token="selected_indexers">
+      <label>1. Select CM, site or hosts</label>
+      <delimiter> OR </delimiter>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>search</fieldForValue>
+      <search>
+        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort 0 - count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="time" token="time">
+      <label>Select time range of the report</label>
+      <default>
+        <earliest>-15m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="checkbox" token="show_doc">
+      <label>Show documentation panel</label>
+      <choice value="hide">Show documentation</choice>
+      <delimiter> </delimiter>
+      <default>hide</default>
+    </input>
+  </fieldset>
+  <row depends="$show_doc$">
+    <panel>
+      <html>
+    <style>
+			
+			
+#documentation_table {
+  font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#documentation_table td, #documentation_table th {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+#documentation_table tr:nth-child(even){background-color: #f2f2f2;}
+
+#documentation_table tr:hover {background-color: #ddd;}
+
+#documentation_table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: #4CAF50;
+  color: white;
+}
+			</style>
+        
+<h1>What is this dashboard and how do I use it?</h1>        
+    
+When a forwarder connects to a target, that targets report details about the connected forwarder. This information includes all sorts of interesting datapoints including, the version, the operating system, how much data has been sent and the average data rate.<p/>
+
+This dashboard aggressively data mines indexers for this information about its connecting forwarder and creates a tooling that lets you explore and visualize how the forwarder pool and how they are interacting with the indexers. This dashboard is specifically built to identify the problematic forwarders with a focus on “super-giant forwarders”. <p/>
+
+It is surprisingly common for 1% of the forwarder pool to be sending more than 50% of all the data into a cluster. This can be highly problematic as they can cause excessive amounts of data to be delivered into the cluster. This is often referred as “laser beams of death” that sweep the cluster causing ingestion hotspots, event distribution problems, slow search times, event delay and instability. It is very important that these forwarders are configured to minimise these affects. <p/>
+
+The top chart visualises the entire population of forwarders on the x-axis, from 0% percent of the pool to 100% the pool. The Y axis shows all data being sent into the cluster five forwarders, again from 0% percent of the data to 100% the data. The curve that is generated describes how data is being received into the cluster. If every forwarder sent exactly the same amount of data (perfect distribution) we would have a straight-line cutting across to chart. The greater the deviation the straight line the greater the asymmetry between forwarders. <p/>
+
+Select ranges in the chart and the table below will be filtered. For instance if you select the first 5% in the chart you will get the top 5% forwarders by received data volume or by peak speed. This interaction quickly allows you to filter to the most important forwarders and whether they are configured to work well. <p/>
+
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Selected range covers from $selected_min$% to $selected_max$%</title>
+      <chart>
+        <search base="forwarders_ranked">
+          <query>| bin progress_through_forwarders_kb bins=1000 
+| bin progress_through_forwarders_kbps bins=1000 
+| appendpipe 
+    [| stats max(coverage_kb) as coverage 
+        by progress_through_forwarders_kb all_forwarders 
+    | sort + progress_through_forwarders_kb 
+    | fields progress_through_forwarders_kb coverage 
+    | rename progress_through_forwarders_kb as progress_through_forwarders
+    | eval column="kb"]
+| appendpipe 
+    [| stats max(coverage_kbps) as coverage 
+        by progress_through_forwarders_kbps all_forwarders 
+    | sort + progress_through_forwarders_kbps 
+    | fields progress_through_forwarders_kbps coverage 
+    | rename progress_through_forwarders_kbps as progress_through_forwarders
+    | eval column="kbps"]
+| where isnotnull(column)
+| rex field=progress_through_forwarders "(?&lt;sort&gt;/d+)-" 
+| chart values(coverage) by progress_through_forwarders column
+| rename kb as volume
+| rename kbps as data_rate</query>
+        </search>
+        <selection>
+          <eval token="selected_min">substr($start$,1,len(rtrim($start$,"0123456789."))-1)</eval>
+          <eval token="selected_max">substr($end$,-(len($end$)-len(rtrim($end$,"0123456789."))))</eval>
+        </selection>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-90</option>
+        <option name="charting.axisTitleX.text">All forwarders sorted from the largest to the smallest</option>
+        <option name="charting.axisTitleY.text">percentage of data covered by the forwarders</option>
+        <option name="charting.axisY.maximumNumber">1</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">425</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_doc$">
+    <panel>
+      <html>
+          <table id="documentation_table">
+        <tr>
+            <th>Variable</th>
+            <th>Description</th>
+        </tr>
+
+        <tr>
+            <td>hostname</td>
+			<td>The hostname of the forwarder as reported by the receiving indexer. This might not be the same as the DNS hostname, and might not match the “host” value written into the index.</td>
+		</tr>
+
+        <tr>
+            <td>guid</td>
+			<td>The GUID for the forwarder. Sometimes this can have multiple values, I don't know what is causing this. Maybe the GUID is changing, maybe there are multiple forwarders with the same name.</td>
+		</tr>
+
+        <tr>
+            <td>volume ranking</td>
+			<td>How the forwarder was ranking for data generation, #1 is the forwarder that sent the most data for the duration of the report.</td>
+		</tr>
+		
+        <tr>
+            <td>speed ranking</td>
+			<td>How the forwarder was ranked by peak ingestion rate, #1 is the forwarder with the highest ingestion peak. These forwarders might be suffering event delay if they have saturatied the ingestion queue of the indexers
+</td>
+		</tr>
+        <tr>
+            <td>indexer coverage</td>
+			<td>How many of the of the indexers pool did the forwarder connect to during the duration of the report? This needs to happen quickly to get good event distribution. The bigger the indexing cluster the longer it takes to sweep the cluster. Ideally very forwarder should sweep the entire pool within 15mins to get good balanced search performance for small search windows. 
+</td>
+		</tr>
+		<tr>
+            <td>%</td>
+			<td>This is a percentage coverage for indexer coverage. It is normalized to so that values less than 100% can be highlighted.</td>
+		</tr>
+		<tr>
+            <td>average speed</td>
+			<td>The average speed for the forwarder sending data.</td>
+		</tr>
+		<tr>
+            <td>speed variability</td>
+			<td>The variation in speed generated by the forwarder, a low value implies a nice constant speed, a high value implies variable data rates. Forwarders with high variation should be configured with autoLBVolume so that the switching rate increases as data rates increase. 
+</td>
+		</tr>
+		<tr>
+            <td>Data</td>
+			<td>The total amount of data sent by the forwarder into the pool.</td>
+		</tr>
+		<tr>
+            <td>data %</td>
+			<td>The data sent by the forwarder as a percentage of the total ingestion.</td>
+		</tr>
+		<tr>
+            <td>OS</td>
+			<td>The operating system of the forwarder, typically Linux or Windows</td>
+		</tr>
+		<tr>
+            <td>Type</td>
+			<td>The type of the forwarder, UF or HWF</td>
+		</tr>
+		<tr>
+            <td>Version</td>
+			<td>The version of the forwarder, some versions have bugs, some don’t have features. </td>
+		</tr>
+		<tr>
+            <td>Arch</td>
+			<td>The architecture of the CPU for the forwarder</td>
+		</tr>
+</table>
+    
+    
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Showing $selected_forwarder_count$ of $total_forwarder_count$ forwarders</title>
+      <input type="dropdown" token="selected_forwarder_version">
+        <label>Filter forwarder version</label>
+        <choice value="*">*</choice>
+        <search base="forwarders_filtered">
+          <query>| stats count by version
+| eval label=version." (".count." instances)"</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>version</fieldForValue>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_forwarder_type">
+        <label>Filter forwarder type</label>
+        <choice value="*">*</choice>
+        <search base="forwarders_filtered">
+          <query>| stats count by type
+| eval label=type." (".count." instances)"
+| sort - count</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>type</fieldForValue>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_forwarder_os">
+        <label>Filter forwarder OS</label>
+        <choice value="*">*</choice>
+        <search base="forwarders_filtered">
+          <query>| stats count by os
+| eval label=os." (".count." instances)"
+| sort - count</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>os</fieldForValue>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_forwarder_coverage">
+        <label>Filter forwarder coverage</label>
+        <choice value="*">*</choice>
+        <search base="forwarders_filtered">
+          <query>| stats count by "indexer coverage"
+| rename "indexer coverage" as coverage 
+| eval label=coverage." (".count." instances)"
+| sort - count</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>coverage</fieldForValue>
+        <default>*</default>
+      </input>
+      <table>
+        <title>For more detail click on some forwarders and more charts will open allowing you to compare performance and behaviours of those you selected</title>
+        <search base="forwarders_filtered" id="selected_forwarders">
+          <progress>
+            <set token="selected_forwarder_count">$job.resultCount$</set>
+          </progress>
+          <done>
+            <set token="selected_forwarder_count">$job.resultCount$</set>
+          </done>
+          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ "indexer coverage"="$selected_forwarder_coverage$"
+| rename guid_count as "# guids"</query>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="number" field="indexer coverage">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="number" field="average speed">
+          <option name="precision">0</option>
+          <option name="unit">KBps</option>
+        </format>
+        <format type="number" field="speed variability">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="%">
+          <colorPalette type="list">[#D93F3C,#FFFFFF]</colorPalette>
+          <scale type="threshold">99</scale>
+        </format>
+        <format type="color" field="average speed">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="speed variability">
+          <colorPalette type="minMidMax" maxColor="#1E93C6" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="data">
+          <option name="unit">GB</option>
+        </format>
+        <format type="color" field="data">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="data %">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="data %">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="%">
+          <option name="precision">0</option>
+        </format>
+        <drilldown>
+          <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+          <eval token="selected_forwarder">mvdedup(mvappend($selected_forwarder$,$row.hostname$))</eval>
+          <eval token="selected_forwarders">"hostname=".mvjoin($selected_forwarder$," OR hostname=")</eval>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_forwarders$">
+    <panel>
+      <title>The volume of data generated by each forwarder</title>
+      <chart>
+        <title>Does the forwarder send data constantly or periodically? How do the forwarders compare in terms of volume?</title>
+        <search base="single_forwarder_base">
+          <query>| timechart limit=0 span=$seconds_for_bin$sec sum(kb) by hostname</query>
+        </search>
+        <search base="annotation" type="annotation"></search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">286</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_forwarders$">
+    <panel>
+      <title>The peak data rates for each forwarder</title>
+      <chart>
+        <title>Does the forwarders send data in spikes? Does this translate into event delay?</title>
+        <search base="single_forwarder_base">
+          <query>| timechart limit=0 span=$seconds_for_bin$sec max(tcp_avg_thruput) by hostname</query>
+        </search>
+        <search base="annotation" type="annotation"></search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">344</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_forwarders$">
+    <panel>
+      <title>The percentage of the cluster the forwarder sent to over time</title>
+      <chart>
+        <title>How did each forwarder connect to the cluster over time? Did it connect to every indexer in the cluster? How long did it take to sweep all indexers?</title>
+        <search base="single_forwarder_base">
+          <query>| bin span=$seconds_for_bin$sec _time
+| sort 0 + hostname _time
+| streamstats dc(host) as count by  hostname 
+| xyseries _time hostname count
+| eval all_indexers=$total_indexer_count$
+| addinfo
+| eval time_mins = round((_time - info_min_time) / 60,0)
+| fields - info_* _time
+| table time_mins all_indexers *</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">315</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_forwarders$">
+    <panel>
+      <title>New channel creation (experimental)</title>
+      <chart>
+        <title>Is channel creation healthy for each forwarder? The excessive channel creation can cause throughput problems on the indexers</title>
+        <search base="single_forwarder_base">
+          <query>| timechart limit=0 span=$seconds_for_bin$sec max(chan_new_kBps) by hostname</query>
+        </search>
+        <search base="annotation" type="annotation"></search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">344</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
