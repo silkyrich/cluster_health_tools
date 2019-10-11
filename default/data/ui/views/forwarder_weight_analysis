@@ -11,7 +11,7 @@
 | stats 
     sum(kb) as sum_kb
     avg(chan_new_kBps) as avg_chan_new_kBps
-    max(tcp_KBps) as avg_tcp_KBps
+    max(tcp_KBps) as max_tcp_KBps
     stdev(tcp_KBps) as stdev_tcp_KBps
     values(connectionType) as connectionType
     values(arch) as arch
@@ -38,7 +38,7 @@
   <search base="forwarders_base" id="forwarders_ranked">
     <query>
 | eventstats 
-    sum(avg_tcp_KBps) as total_sum_avg_KBps
+    sum(max_tcp_KBps) as total_sum_avg_KBps
     stdev(tcp_KBps) as avg_stdev_KBps
     sum(sum_kb) as total_sum_kb 
     dc(guid) as all_forwarders 
@@ -52,9 +52,9 @@ indexer_coverage_pct=indexer_count/all_indexers
     by all_forwarders 
 | eval coverage_kb=accumlated_sum_kb/total_sum_kb, 
     progress_through_forwarders_kb=(ranking_most_data_kb/all_forwarders) * 100 
-| sort 0 - avg_tcp_KBps 
+| sort 0 - max_tcp_KBps 
 | streamstats 
-    sum(avg_tcp_KBps) as accumlated_avg_kbps 
+    sum(max_tcp_KBps) as accumlated_avg_kbps 
     count as ranking_most_data_kbps
     by all_forwarders 
 | eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
@@ -86,13 +86,13 @@ indexer_coverage_pct=indexer_count/all_indexers
 | rename indexer_coverage as "indexer coverage"
 | rename ranking_most_data_kbps as "speed ranking" 
 | rename ranking_most_data_kb as "volume ranking" 
-| rename avg_tcp_KBps as "average speed" 
+| rename max_tcp_KBps as "max speed" 
 | eval type=if(fwdType="full","HWF","UF")
 | eval "%"='%'*100,
-    "speed variability" = (stdev_tcp_KBps/'average speed')*100,
+    "speed variability" = (stdev_tcp_KBps/'max speed')*100,
     "data"=sum_kb/1024/1024,
     "data %"= (sum_kb/total_sum_kb) * 100
-| table hostname guid guid_count "volume ranking" "speed ranking" "indexer coverage"  "%" "average speed" "speed variability" "data" "data %" "os" "type" "version" arch
+| table hostname guid guid_count "volume ranking" "speed ranking" "indexer coverage"  "%" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch
 | sort 0 + "volume ranking"    
 </query>
   </search>
@@ -298,8 +298,8 @@ Select ranges in the chart and the table below will be filtered. For instance if
 			<td>This is a percentage coverage for indexer coverage. It is normalized to so that values less than 100% can be highlighted.</td>
 		</tr>
 		<tr>
-            <td>average speed</td>
-			<td>The average speed for the forwarder sending data.</td>
+            <td>max speed</td>
+			<td>The max speed for the forwarder sending data.</td>
 		</tr>
 		<tr>
             <td>speed variability</td>
@@ -406,7 +406,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
           <option name="precision">0</option>
           <option name="unit">%</option>
         </format>
-        <format type="number" field="average speed">
+        <format type="number" field="max speed">
           <option name="precision">0</option>
           <option name="unit">KBps</option>
         </format>
@@ -418,7 +418,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
           <colorPalette type="list">[#D93F3C,#FFFFFF]</colorPalette>
           <scale type="threshold">99</scale>
         </format>
-        <format type="color" field="average speed">
+        <format type="color" field="max speed">
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
