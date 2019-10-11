@@ -59,6 +59,16 @@ $overlay_option$</query>
     <earliest>0</earliest>
     <latest></latest>
   </search>
+  <search id="event_delay">
+    <query>| tstats max(_indextime) AS indexed_time count where $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by source host _time span=1sec 
+| eval _time=round(_time), indexing_delay=indexed_time-_time 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| eval _time=indexed_time     
+          | table *
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="multiselect" token="selected_indexers">
       <label>1. Select CM, site or hosts</label>
@@ -267,17 +277,22 @@ $overlay_option$</query>
   </row>
   <row>
     <panel>
+      <input type="dropdown" token="selected_log_file">
+        <label>Select internal log file</label>
+        <choice value="*metrics.log">metrics.log</choice>
+        <choice value="*remote_searches.log">remote_searches.log</choice>
+        <choice value="*scheduler.log">scheduler.log</choice>
+        <choice value="*splunkd.log">splunkd.log</choice>
+        <choice value="*splunkd_access.log">splunkd_access.log</choice>
+      </input>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search base="annotation" type="annotation"></search>
-        <search>
-          <query>| tstats max(_indextime) AS indexed_time count where $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by host _time span=1sec
-| eval _time=round(_time), indexing_delay=indexed_time-_time
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| eval _time=indexed_time 
-| timechart fixedrange=false limit=0 span=$seconds_for_bin_1$ max(indexing_delay) by short_name</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+        <search base="event_delay">
+          <query>
+| search source=$selected_log_file$ 
+| timechart fixedrange=false limit=0 span=$seconds_for_bin_1$
+    max(indexing_delay) by short_name</query>
         </search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
