@@ -1,7 +1,52 @@
 <form>
   <label>Indexing performance over time</label>
+  <search id="iostats">
+    <query>| tstats 
+    $iostats_aggregation_function$(data.avg_service_ms) as avg_service_ms
+    $iostats_aggregation_function$(data.avg_total_ms) as avg_total_ms
+    $iostats_aggregation_function$(data.cpu_pct) as cpu_pct
+    $iostats_aggregation_function$(data.reads_kb_ps) as reads_kb_ps
+    $iostats_aggregation_function$(data.reads_ps) as reads_ps
+    $iostats_aggregation_function$(data.writes_kb_ps) as writes_kb_ps
+    $iostats_aggregation_function$(data.writes_ps) as writes_ps
+    where component::iostats index=_introspection $selected_indexers$
+    by host
+    data.device
+    data.mount_point
+    data.fs_type 
+    data.interval
+    _time span=$seconds_for_bin_62$sec
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| eval label=short_name
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="hostwide">
+    <query>| tstats 
+    $hostwide_aggregation_function$(data.cpu_idle_pct) as cpu_idle_pct 
+    $hostwide_aggregation_function$(data.cpu_user_pct) as cpu_user_pct 
+    $hostwide_aggregation_function$(data.cpu_system_pct) as cpu_system_pct 
+    $hostwide_aggregation_function$(data.mem) as mem 
+    $hostwide_aggregation_function$(data.mem_used) as mem_used 
+    $hostwide_aggregation_function$(data.normalized_load_avg_1min) as normalized_load_avg_1min 
+    $hostwide_aggregation_function$(data.pg_paged_out) as pg_paged_out 
+    $hostwide_aggregation_function$(data.pg_swapped_out) as pg_swapped_out
+    $hostwide_aggregation_function$(data.runnable_process_count) as runnable_process_count 
+    $hostwide_aggregation_function$(data.swap) as swap 
+    $hostwide_aggregation_function$(data.swap_used) as swap_used 
+    where index=_introspection $selected_indexers$ by data.splunk_version data.os_version host _time span=$seconds_for_bin$sec 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| eval label=short_name." (".instance_type."+".os_version.")"
+| eval label=short_name
+$overlay_option$</query>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
+  </search>
   <init>
+    <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
     <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
+    <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
     <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
   </init>
   <search id="indexer_list_search">
@@ -58,7 +103,9 @@
         <latest>now</latest>
       </default>
       <change>
+        <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
+        <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
       </change>
     </input>
     <input type="dropdown" token="time_resolution">
@@ -70,7 +117,9 @@
       <choice value="999">Ultra</choice>
       <default>500</default>
       <change>
+        <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
+        <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
       </change>
     </input>
     <input type="checkbox" token="show_override_panel">
@@ -86,7 +135,9 @@
         <title>If no data appear here is it because the user doesn't have access to the REST API</title>
         <search>
           <progress>
+            <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
             <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
+            <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
           </progress>
           <query>| rest /services/server/introspection/indexer 
 | sort - splunk_server 
@@ -218,16 +269,16 @@
     <panel>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
+        <search base="annotation" type="annotation"></search>
         <search>
-          <query>| tstats max(_indextime) AS indexed_time count where sourcetype=splunkd source="*splunkd.log" $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by host _time span=1sec
+          <query>| tstats max(_indextime) AS indexed_time count where $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by host _time span=1sec
 | eval _time=round(_time), indexing_delay=indexed_time-_time
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval _time=indexed_time 
-| timechart fixedrange=false limit=0 span=31sec max(indexing_delay) by short_name</query>
+| timechart fixedrange=false limit=0 span=$seconds_for_bin_1$ max(indexing_delay) by short_name</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.legend.placement">top</option>
@@ -240,6 +291,7 @@
     <panel>
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
+        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_indexers$ TERM(eventtype=connect_done) by host _time span=$seconds_for_bin$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -250,7 +302,6 @@
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
@@ -273,6 +324,7 @@
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
+        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats sum($selected_hec_metric$) as events where $selected_indexers$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -282,7 +334,6 @@
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -295,6 +346,7 @@
     <panel>
       <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
+        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_indexers$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin$sec 
@@ -306,7 +358,6 @@
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -320,9 +371,9 @@
   </row>
   <row>
     <panel>
-      <title>Introspection metrics</title>
+      <title>Hostwide metrics</title>
       <input type="dropdown" token="hostwide_parameter">
-        <label>Selection hostwide variable function</label>
+        <label>Select variable</label>
         <choice value="cpu_idle_pct">cpu_idle_pct</choice>
         <choice value="cpu_system_pct">cpu_system_pct</choice>
         <choice value="cpu_user_pct">cpu_user_pct</choice>
@@ -362,29 +413,12 @@
       </input>
       <chart>
         <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
-        <search>
-          <query>| tstats 
-    $hostwide_aggregation_function$(data.cpu_idle_pct) as cpu_idle_pct 
-    $hostwide_aggregation_function$(data.cpu_user_pct) as cpu_user_pct 
-    $hostwide_aggregation_function$(data.cpu_system_pct) as cpu_system_pct 
-    $hostwide_aggregation_function$(data.mem) as mem 
-    $hostwide_aggregation_function$(data.mem_used) as mem_used 
-    $hostwide_aggregation_function$(data.normalized_load_avg_1min) as normalized_load_avg_1min 
-    $hostwide_aggregation_function$(data.pg_paged_out) as pg_paged_out 
-    $hostwide_aggregation_function$(data.pg_swapped_out) as pg_swapped_out
-    $hostwide_aggregation_function$(data.runnable_process_count) as runnable_process_count 
-    $hostwide_aggregation_function$(data.swap) as swap 
-    $hostwide_aggregation_function$(data.swap_used) as swap_used 
-    where index=_introspection $selected_indexers$ by host _time span=$seconds_for_bin$sec 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| eval label=short_name." (".instance_type."+".os_version.")"
-| eval label=short_name
+        <search base="annotation" type="annotation"></search>
+        <search base="hostwide">
+          <query>
 | xyseries _time short_name $hostwide_parameter$
 $overlay_option$</query>
-          <earliest>$selection_earliest$</earliest>
-          <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -405,13 +439,13 @@ $overlay_option$</query>
       <table>
         <search id="annotation">
           <query>| multisearch 
-    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
     | eval column="started" ] 
-    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
     | eval column="new" ] 
-    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
     | eval column="shutdown" ] 
-    [ search index=_internal host=*.*.splunkcloud.com sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    [ search $_internal$ $selected_indexers$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
     | eval column="crash" ] 
 | fields + _time host column 
 | appendpipe 
@@ -428,10 +462,66 @@ $overlay_option$</query>
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">none</option>
         <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
       </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>iostats measurement</title>
+      <input type="dropdown" token="selected_device">
+        <label>Select device</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>value</fieldForValue>
+        <search base="iostats">
+          <query>| stats count by 
+    data.device 
+    data.fs_type 
+    data.mount_point 
+| eval label='data.device'." ".'data.fs_type'." ".'data.mount_point',
+    value='data.device'</query>
+        </search>
+      </input>
+      <input type="dropdown" token="iostats_parameter">
+        <label>Select iostats variable</label>
+        <choice value="avg_service_ms">avg_service_ms</choice>
+        <choice value="avg_total_ms">avg_total_ms</choice>
+        <choice value="reads_kb_ps">reads_kb_ps</choice>
+        <choice value="reads_ps">reads_ps</choice>
+        <choice value="writes_kb_ps">writes_kb_ps</choice>
+        <choice value="writes_ps">writes_ps</choice>
+        <default>avg_service_ms</default>
+      </input>
+      <input type="dropdown" token="iostats_aggregation_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>p95</default>
+      </input>
+      <chart>
+        <search base="iostats">
+          <query>| search data.device="$selected_device$"
+| xyseries _time short_name $iostats_parameter$</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">428</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
 </form>
