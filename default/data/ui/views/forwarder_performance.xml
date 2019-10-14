@@ -94,6 +94,16 @@ indexer_coverage_pct=indexer_count/all_indexers
     avg(cumulative_hits) as cumulative_hits
     by _time processor ingest_pipe name</query>
   </search>
+  <search id="annotation_blocking">
+    <query>$_internal$ host=$selected_forwarder$ source=*metrics* TERM(blocked=true) 
+| stats values(name) as name by host _time ingest_pipe 
+| eval 
+    annotation_label= "pipeline #".ingest_pipe." blocked", 
+    annotation_category=mvjoin(name,"+") 
+| table _time anno* ingest_pipe</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -139,6 +149,7 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput_thruput">
           <query>| xyseries _time ingest_pipe $selected_thruput_variable$
 | eval *=0
@@ -146,7 +157,6 @@ indexer_coverage_pct=indexer_count/all_indexers
           
           </query>
         </search>
-        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -172,6 +182,9 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
 | bin _time span=31sec 
@@ -183,9 +196,6 @@ indexer_coverage_pct=indexer_count/all_indexers
     avg(avg_avg_age) as avg_age
     by _time series host
 | timechart span=31 limit=30 avg(kb) as kb by series</query>
-        </search>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -233,14 +243,21 @@ indexer_coverage_pct=indexer_count/all_indexers
     | eval search="name=* processor=".processor]</query>
         </search>
       </input>
+      <input type="dropdown" token="selected_processor_variable">
+        <label>Select variable to plot</label>
+        <choice value="cpu_seconds">cpu_seconds</choice>
+        <choice value="executes">executes</choice>
+        <choice value="cumulative_hits">cumulative_hits</choice>
+        <default>cpu_seconds</default>
+      </input>
       <chart>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
 | eval key=processor." &amp; ".name 
-| timechart limit=50 span=31sec avg(cpu_seconds) by key</query>
+| timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
+        </search>
+        <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -383,24 +400,6 @@ indexer_coverage_pct=indexer_count/all_indexers
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
-      </table>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search id="annotation_blocking">
-          <query>$_internal$ host=$selected_forwarder$ source=*metrics* TERM(blocked=true) 
-| stats values(name) as name by host _time ingest_pipe 
-| eval 
-    annotation_label= ingest_pipe." blocked", 
-    annotation_category=mvjoin(name,"+") 
-| table _time anno* ingest_pipe</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
