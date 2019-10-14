@@ -1,0 +1,409 @@
+<form>
+  <label>Intermediate forwarder performance</label>
+  <init>
+    <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="selected_ingest_pipe">*</set>
+  </init>
+  <search id="thruput_thruput">
+    <query>$_internal$ host=$selected_forwarder$ METRICS TERM(group=thruput) TERM(name=thruput) 
+| fillnull ingest_pipe 0 
+| bin _time span=31sec
+| stats
+    avg(instantaneous_kbps) as instantaneous_kbps
+    avg(instantaneous_eps) as instantaneous_eps
+    avg(average_kbps) as average_kbps
+    avg(total_k_processed) as total_k_processed
+    avg(kb) as kb
+    avg(ev) as ev
+    avg(load_average) as load_average
+    by _time ingest_pipe
+    
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="connecting_forwarders">
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_forwarder$
+
+| stats 
+    sum(kb) as sum_kb
+    avg(chan_new_kBps) as avg_chan_new_kBps
+    max(tcp_KBps) as max_tcp_KBps
+    stdev(tcp_KBps) as stdev_tcp_KBps
+    values(connectionType) as connectionType
+    values(arch) as arch
+    values(version) as version
+    values(fwdType) as type
+    values(ssl) as ssl
+    values(os) as os
+    values(guid) as guid
+    dc(guid) as guid_count
+    dc(sourceIp) as count_sources
+    by hostname
+| eventstats 
+    sum(max_tcp_KBps) as total_sum_avg_KBps
+    stdev(tcp_KBps) as avg_stdev_KBps
+    sum(sum_kb) as total_sum_kb 
+    dc(guid) as all_forwarders 
+    max(indexer_count) as all_indexers
+| eval indexer_coverage=indexer_count."/".all_indexers,
+indexer_coverage_pct=indexer_count/all_indexers
+| sort 0 - sum_kb 
+| streamstats 
+    sum(sum_kb) as accumlated_sum_kb 
+    count as ranking_most_data_kb
+    by all_forwarders 
+| eval coverage_kb=accumlated_sum_kb/total_sum_kb, 
+    progress_through_forwarders_kb=(ranking_most_data_kb/all_forwarders) * 100 
+| sort 0 - max_tcp_KBps 
+| streamstats 
+    sum(max_tcp_KBps) as accumlated_avg_kbps 
+    count as ranking_most_data_kbps
+    by all_forwarders 
+| eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
+    progress_through_forwarders_kbps=(ranking_most_data_kbps/all_forwarders) * 100 
+| rename ranking_most_data_kbps as "speed ranking" 
+| rename ranking_most_data_kb as "volume ranking" 
+| rename max_tcp_KBps as "max speed" 
+| eval "%"='%'*100,
+    "speed variability" = (stdev_tcp_KBps/'max speed')*100,
+    "data"=sum_kb/1024/1024,
+    "data %"= (sum_kb/total_sum_kb) * 100</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="per_series_thruput">
+    <query>$_internal$ host=$selected_forwarder$ METRICS sourcetype=splunkd TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
+| fillnull ingest_pipe 0
+| table _time host group ingest_pipe series eps ev kbps kb max_age avg_age</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="pipeline_processor">
+    <query>$_internal$ host=$selected_forwarder$ METRICS METRICS TERM(group=pipeline) TERM(processor=*)
+| table _time host ingest_pipe processor name executes cpu_seconds cumulative_hits
+| bin _time span=31sec 
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="pipeline_processor" id="pipeline_processor_aggregated">
+    <query>| stats avg(cpu_seconds) as cpu_seconds
+    avg(executes) as executes
+    avg(cumulative_hits) as cumulative_hits
+    by _time processor ingest_pipe name</query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select forwarder</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="selected_forwarder">
+      <label>Enter forwarder name</label>
+      <default>euwprodsplkhvyfwdr04v.splunk.tescocloud.com</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>The net throughput per pipeline for $selected_forwarder$ per pipeline</title>
+      <input type="dropdown" token="selected_thruput_variable">
+        <label>Select field to show</label>
+        <choice value="instantaneous_kbps">instantaneous_kbps</choice>
+        <choice value="instantaneous_eps">instantaneous_eps</choice>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="total_k_processed">total_k_processed</choice>
+        <choice value="kb">kb</choice>
+        <choice value="ev">ev</choice>
+        <choice value="load_average">load_average</choice>
+        <default>instantaneous_kbps</default>
+      </input>
+      <input type="dropdown" token="selected_thruput_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="thruput_thruput">
+          <query>| xyseries _time ingest_pipe $selected_thruput_variable$
+| eval *=0
+| foreach * [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']
+          
+          </query>
+        </search>
+        <search base="annotation_blocking" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">*</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">461</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_ingest_pipe">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="selected_ingest_pipe">
+    <panel>
+      <title>Drill down to pipeline $selected_ingest_pipe$</title>
+      <input type="dropdown" token="selected_group">
+        <label>Select series</label>
+        <choice value="per_index_thruput">per_index_thruput</choice>
+        <choice value="per_host_thruput">per_host_thruput</choice>
+        <choice value="per_source_thruput">per_source_thruput</choice>
+        <choice value="per_sourcetype_thruput">per_sourcetype_thruput</choice>
+        <default>per_sourcetype_thruput</default>
+      </input>
+      <chart>
+
+        <search base="per_series_thruput">
+          <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
+| bin _time span=31sec 
+| stats avg(eps) as eps
+    avg(kb) as kb
+    avg(ev) as ev
+    avg(kbps) as kbps
+    avg(max_age) as max_age
+    avg(avg_avg_age) as avg_age
+    by _time series host
+| timechart span=31 limit=30 avg(kb) as kb by series</query>
+        </search>
+        <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">352</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Pipeline processor cpu and execution for ingestion pipeline $selected_ingest_pipe$</title>
+      <input type="dropdown" token="selected_processor_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="selected_processor">
+        <label>Select process and name</label>
+        <choice value="processor=* name=*">processor=* name=*</choice>
+        <default>processor=* name=*</default>
+        <fieldForLabel>search</fieldForLabel>
+        <fieldForValue>search</fieldForValue>
+                <search base="annotation_blocking" type="annotation"></search>
+
+        <search base="pipeline_processor_aggregated">
+          <query>| stats count by processor name 
+| eval search="processor=".processor." name=".name 
+| appendpipe 
+    [| stats count by name 
+    | eval search="name=".name." processor=*"]
+
+| appendpipe 
+    [| stats count by processor 
+    | eval search="name=* processor=".processor]</query>
+        </search>
+      </input>
+      <chart>
+                <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
+
+        
+        <search base="pipeline_processor_aggregated">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
+| eval key=processor." &amp; ".name 
+| timechart limit=50 span=31sec avg(cpu_seconds) by key</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">371</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Forwarders connecting to $selected_forwarder$ showing $selected_forwarder_count$ forwarders</title>
+      <input type="dropdown" token="selected_forwarder_version">
+        <label>Filter forwarder version</label>
+        <choice value="*">*</choice>
+        <search base="connecting_forwarders">
+          <query>| stats count by version
+| eval label=version." (".count." instances)"</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>version</fieldForValue>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_forwarder_type">
+        <label>Filter forwarder type</label>
+        <choice value="*">*</choice>
+        <search base="connecting_forwarders">
+          <query>| stats count by type
+| eval label=type." (".count." instances)"
+| sort - count</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>type</fieldForValue>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_forwarder_os">
+        <label>Filter forwarder OS</label>
+        <choice value="*">*</choice>
+        <search base="connecting_forwarders">
+          <query>| stats count by os
+| eval label=os." (".count." instances)"
+| sort - count</query>
+        </search>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>os</fieldForValue>
+        <default>*</default>
+      </input>
+      <table>
+        <title>For more detail click on some forwarders and more charts will open allowing you to compare performance and behaviours of those you selected</title>
+        <search base="connecting_forwarders">
+          <progress>
+            <set token="selected_forwarder_count">$job.resultCount$</set>
+          </progress>
+          <done>
+            <set token="selected_forwarder_count">$job.resultCount$</set>
+          </done>
+          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ 
+| rename guid_count as "# guids"
+| table hostname guid guid_count "volume ranking" "speed ranking" "indexer coverage"  "%" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch</query>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">cell</option>
+        <format type="number" field="indexer coverage">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="number" field="max speed">
+          <option name="precision">0</option>
+          <option name="unit">KBps</option>
+        </format>
+        <format type="number" field="speed variability">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="%">
+          <colorPalette type="list">[#D93F3C,#FFFFFF]</colorPalette>
+          <scale type="threshold">99</scale>
+        </format>
+        <format type="color" field="max speed">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="speed variability">
+          <colorPalette type="minMidMax" maxColor="#1E93C6" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="data">
+          <option name="unit">GB</option>
+        </format>
+        <format type="color" field="data">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="data %">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="data %">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="number" field="%">
+          <option name="precision">0</option>
+        </format>
+        <drilldown>
+          <link target="_blank">/app/search/forwarder_performance?form.selected_forwarder=$row.hostname$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>annotations for restarts</title>
+      <table>
+        <search id="annotation_restarts">
+          <query>| multisearch 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    | eval column="started" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    | eval column="new" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    | eval column="shutdown" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    | eval column="crash" ] 
+| fields + _time host column 
+| appendpipe 
+    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
+    | eval column=mvjoin(column,"-&gt;"), 
+        _time=_time+duration] 
+| where column!="started" 
+| eval annotation_label=host, annotation_category=column</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search id="annotation_blocking">
+          <query>$_internal$ host=$selected_forwarder$ source=*metrics* TERM(blocked=true)
+| eval annotation_label= name." blocked", annotation_category=ingest_pipe
+| table _time anno* ingest_pipe</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
