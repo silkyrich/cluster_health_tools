@@ -9,13 +9,13 @@
 | fillnull ingest_pipe 0 
 | bin _time span=31sec
 | stats
-    avg(instantaneous_kbps) as instantaneous_kbps
-    avg(instantaneous_eps) as instantaneous_eps
-    avg(average_kbps) as average_kbps
-    avg(total_k_processed) as total_k_processed
-    avg(kb) as kb
-    avg(ev) as ev
-    avg(load_average) as load_average
+    $selected_thruput_function$(instantaneous_kbps) as instantaneous_kbps
+    $selected_thruput_function$(instantaneous_eps) as instantaneous_eps
+    $selected_thruput_function$(average_kbps) as average_kbps
+    $selected_thruput_function$(total_k_processed) as total_k_processed
+    $selected_thruput_function$(kb) as kb
+    $selected_thruput_function$(ev) as ev
+    $selected_thruput_function$(load_average) as load_average
     by _time ingest_pipe
     
 </query>
@@ -104,7 +104,7 @@ indexer_coverage_pct=indexer_count/all_indexers
     </input>
     <input type="text" token="selected_forwarder">
       <label>Enter forwarder name</label>
-      <default>euwprodsplkhvyfwdr04v.splunk.tescocloud.com</default>
+      <default></default>
     </input>
   </fieldset>
   <row>
@@ -172,7 +172,6 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
-
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
 | bin _time span=31sec 
@@ -222,8 +221,6 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>processor=* name=*</default>
         <fieldForLabel>search</fieldForLabel>
         <fieldForValue>search</fieldForValue>
-                <search base="annotation_blocking" type="annotation"></search>
-
         <search base="pipeline_processor_aggregated">
           <query>| stats count by processor name 
 | eval search="processor=".processor." name=".name 
@@ -237,11 +234,9 @@ indexer_coverage_pct=indexer_count/all_indexers
         </search>
       </input>
       <chart>
-                <search base="annotation_blocking" type="annotation">
+        <search base="annotation_blocking" type="annotation">
           <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
-
-        
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
 | eval key=processor." &amp; ".name 
@@ -395,8 +390,11 @@ indexer_coverage_pct=indexer_count/all_indexers
     <panel>
       <table>
         <search id="annotation_blocking">
-          <query>$_internal$ host=$selected_forwarder$ source=*metrics* TERM(blocked=true)
-| eval annotation_label= name." blocked", annotation_category=ingest_pipe
+          <query>$_internal$ host=$selected_forwarder$ source=*metrics* TERM(blocked=true) 
+| stats values(name) as name by host _time ingest_pipe 
+| eval 
+    annotation_label= ingest_pipe." blocked", 
+    annotation_category=mvjoin(name,"+") 
 | table _time anno* ingest_pipe</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
