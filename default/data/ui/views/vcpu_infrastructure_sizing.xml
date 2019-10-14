@@ -13,13 +13,13 @@
       <html>
 <h1>Introduction</h1>
 
-This dashboard contains a series of searches that attempt to reverse engineer and size your Splunk infrastructure. It classifies each host to its role, counts the number of CPUs, extracts the software version, measures CPU utilisation, assesses the search load for each component. The output can aid with vCPU pricing and allow the comparision with other instances of Splunk.<p/>
+This dashboard contains a series of searches that attempt to reverse engineer and size your Splunk infrastructure. It classifies each host to its role, counts the number of CPUs, extracts the software version, measures CPU utilisation, assesses the search load for each component. The output can aid with vCPU pricing and allow the comparision with other instances of Splunk. The latest version can be found <a href="https://github.com/silkyrich/cluster_health_tools/blob/master/default/data/ui/views/vcpu_infrastructure_sizing.xml">here</a><p/>
 
 <h2>Install the dashboard</h2>
 
 <ul>
-  <li>Install the dashboard with copy and paste on a suitable SH</li>
-  <li>Make sure your user has access to the _internal and _audit indexers</li>
+  <li>Install the dashboard with copy and paste on a suitable SH (not a CM, a SH connecting to many clusters)</li>
+  <li>Check that your user has access to the _internal and _audit indexers</li>
   <li>Review the “Billable roles to vCPU count with utilisation measure” and “Roles to versions” to make sure results are as expected.</li>
   <li>Optionally check the “show discovery searches” to understand how extraction is working</li>
   <li>Optionally obfuscate the data and export the bottom table – “The base report - please export this report for further processing”</li>
@@ -32,7 +32,7 @@ The design principal behind the dashboard is to use basic search on the _interna
 
 <h3>Disclaimer</h3>
 
-All information is provided at your own risk. Please review the CSV file to determine whether any information is sensitive. This has not been tested on all versions of Splunk and one or more base searches may fail. 
+All information is provided at your own risk. All data collected is classfied service data as described in <a href="https://www.splunk.com/en_us/legal/privacy/privacy-policy.html">SPLUNK PRIVACY POLICY</a>. Please review the CSV file to determine whether any information is sensitive. This has not been tested on all versions of Splunk and one or more base searches may fail. 
   </html>
     </panel>
   </row>
