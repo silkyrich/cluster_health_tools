@@ -410,7 +410,8 @@ All information is provided at your own risk. Please review the CSV file to dete
 | table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version tcp_* search* license* 
 | eval date_of_generation=now(), date_of_generation_str=strftime(date_of_generation,"%c")
 | eval version=coalesce(tcp_version, introspection_splunk_version)
-$obstification$</query>
+$obstification$
+| fillnull idx_cluster_name</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
