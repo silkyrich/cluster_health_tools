@@ -1,5 +1,6 @@
 <form>
-  <label>vCPU infrastructure sizing</label>
+  <label>Infrastructure assessment</label>
+  <description>Bought to you by Richard Morgan productions - a Principal Architect at Splunk</description>
   <fieldset submitButton="false">
     <input type="checkbox" token="show_base_searches">
       <label></label>
@@ -7,18 +8,31 @@
       <delimiter> </delimiter>
     </input>
   </fieldset>
-  <init>
-    <set token="_internal">index=_internal OR index=core_splunk_internal</set>
-  </init>
   <row>
     <panel>
       <html>
-    <h1>What is this dashboard and how do I use it?</h1>
-    This dashboard as been created by Richard Morgan, a Principal architect in EMEA to discover the base data required for vCPU billing. <p/>
-    To install, simply create a new dashboard and paste in the contents. You might find a newer version <a href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/vcpu_pricing">here</a>
-        <p/>
-    The dashboard works by running a search that counts the vCPU count and utilization for each host introspection. On its own this information doesn't include the role of the host and various other searches are run to reverse engineer the role of the component. You can see these discovery searches by checking the box "show discovery searches" where you can also modify the function used to calculate usage, but default it is set to p99<p/>
-    On a sunny day this will produce very accurate results, however there are many things that might go wrong. Data might be missing, the discovery searches might not be compatiable with newer versions of splunk, the customer may have miss classified their components. Therefore this dashboard is provided as is, and your milage may vary. Should have any questions please email the author rmorgan@splunk.com, but remember to debug I will need screen share access to the live enviroment.<p/>
+<h1>Introduction</h1>
+
+This dashboard contains a series of searches that attempt to reverse engineer and size your Splunk infrastructure. It classifies each host to its role, counts the number of CPUs, extracts the software version, measures CPU utilisation, assesses the search load for each component. The output can aid with vCPU pricing and allow the comparision with other instances of Splunk.<p/>
+
+<h2>Install the dashboard</h2>
+
+<ul>
+  <li>Install the dashboard with copy and paste on a suitable SH</li>
+  <li>Make sure your user has access to the _internal and _audit indexers</li>
+  <li>Review the “Billable roles to vCPU count with utilisation measure” and “Roles to versions” to make sure results are as expected.</li>
+  <li>Optionally check the “show discovery searches” to understand how extraction is working</li>
+  <li>Optionally obfuscate the data and export the bottom table – “The base report - please export this report for further processing”</li>
+  <li>Share the exported table as required (for instances send to rmorgan@splunk.com for further assessment)</li>
+</ul>
+
+<h2>Requirements</h2>
+
+The design principal behind the dashboard is to use basic search on the _internal and _audit index only. For this reason, the dashboard should be installed on a search head that connects to every indexer in very cluster. Installing it on a cluster master is this is unlikely to work as the cluster master may not search all indexers. Your user must have access to the internal and audit indexes. The roles of your infrastructure must be correctly applied, for instance classifying indexers as heavy forwarders will cause errors.
+
+<h3>Disclaimer</h3>
+
+All information is provided at your own risk. Please review the CSV file to determine whether any information is sensitive. This has not been tested on all versions of Splunk and one or more base searches may fail. 
   </html>
     </panel>
   </row>
@@ -79,13 +93,15 @@
           <done>
             <set token="tcpin_connections">$job.sid$</set>
           </done>
-          <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now TERM(fwdType=full)
+          <query>index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now 
 | stats 
-    values(connectionType) as connectionType
-    values(arch) as arch
-    values(version) as version
-    values(fwdType) as fwdType
-    values(os) as os
+    values(connectionType) as tcp_connectionType
+    values(arch) as tcp_arch
+    values(version) as tcp_version
+    values(fwdType) as tcp_fwdType
+    values(os) as tcp_os
+    sum(kb) as tcp_sum_kb
+    dc(host) as tcp_targets_touched
     by hostname guid
 | table *
 | rename hostname as host</query>
@@ -97,6 +113,7 @@
         <option name="dataOverlayMode">none</option>
         <option name="drilldown">none</option>
         <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">false</option>
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
@@ -113,7 +130,7 @@
           <done>
             <set token="metrics_instance">$job.sid$</set>
           </done>
-          <query>$_internal$ earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
+          <query>index=_internal earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
 | stats 
     count 
     values(instance_roles) as roles 
@@ -162,9 +179,9 @@
           <done>
             <set token="license_usage">$job.sid$</set>
           </done>
-          <query>$_internal$ sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial)
+          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial)
 | bin span=1d@d _time
-| eval key="usage_".licenseGroup."_".productType
+| eval key="license_".licenseGroup."_".productType
 | stats values(eval(b/1024/1024/1024)) as gb by key _time slave
 | stats p90(gb) as gb by key slave
 | eval gb=round(gb,0)
@@ -174,6 +191,62 @@
           <latest>now</latest>
         </search>
         <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>search_concurrency - $search_concurrency$</title>
+      <table>
+        <title>collects search concurrency information from all reporting components</title>
+        <search>
+          <progress>
+            <unset token="search_concurrency"></unset>
+          </progress>
+          <done>
+            <set token="search_concurrency">$job.sid$</set>
+          </done>
+          <query>index=_internal sourcetype=splunkd METRICS TERM(group=search_pool) 
+| stats p5(idle) as search_con_idle_p5
+    p95(idle) as search_con_idle_p95
+    max(active) as search_con_active_max
+    p95(active) as search_con_active_p95
+    p5(active) as search_con_active_p5
+    by host</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>search_usage - $search_usage$</title>
+      <table>
+        <title>collects search execution details</title>
+        <search>
+          <progress>
+            <unset token="search_usage"></unset>
+          </progress>
+          <done>
+            <set token="search_usage">$job.sid$</set>
+          </done>
+          <query>index=_audit TERM(info=completed) TERM(action=search) NOT(user=splunk-system-user) 
+| stats 
+    count as search_completed
+    dc(user) as search_unique_users 
+    avg(total_run_time) as search_avg_run_time 
+    p95(total_run_time) as search_p95_run_time 
+    stdev(total_run_time) as search_stdev_run_time 
+    avg(search_startup_time) as search_avg_startup_time 
+    p95(search_startup_time) as search_p95_startup_time 
+    stdev(search_startup_time) as search_stdev_startup_time 
+    by host</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </table>
@@ -206,13 +279,27 @@
       <title>Licences detected</title>
       <table>
         <search>
-          <query>$_internal$ sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial) earliest=-25hrs latest=now
+          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial) earliest=-25hrs latest=now
 | stats count by productType licenseGroup subgroupId
 | table productType licenseGroup subgroupId</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
         </search>
         <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Roles to versions</title>
+      <table>
+        <search base="classified_hosts">
+          <query>| chart limit=0 count as instances by primary_role version</query>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">heatmap</option>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </table>
@@ -229,9 +316,10 @@
     sum(vcpu_count) as total_vCPU
     sum(cpu_used) as vCPU_used
     median(avg_cpu_usage_pct) as avg_cpu_usage_pct
-    avg(usage_*) as lic_*
+    avg(license_*) as lic_*
+    avg(search_con_active_p95) as search_con_p95
     by primary_role idx_cluster_name
-| table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct vCPU_used lic_*
+| table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct search_con_p95 vCPU_used lic_*
 | foreach lic_* [| eval &lt;&lt;FIELD&gt;&gt;=round(&lt;&lt;FIELD&gt;&gt;,0) ]</query>
         </search>
         <option name="count">100</option>
@@ -270,38 +358,59 @@
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
+        <format type="number" field="search_con_p95">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="search_con_p95">
+          <colorPalette type="minMidMax" maxColor="#1E93C6" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
       </table>
     </panel>
   </row>
   <row>
     <panel>
-      <title>The summarised inventory list with vCPU please export and bring home</title>
+      <title>The base report - please export this report for further processing</title>
+      <input type="dropdown" token="obstification">
+        <label>Obstificate host names?</label>
+        <choice value="| eval obstification=&quot;true&quot;, guid=md5(guid), idx_cluster_name=md5(idx_cluster_name),host=md5(host)">Yes</choice>
+        <choice value="| noop">No</choice>
+        <default>| noop</default>
+      </input>
       <table>
         <search id="classified_hosts">
           <query>| union 
-    [| loadjob $metrics_instance$ ] 
-    [| loadjob $tcpin_connections$ ] 
-    [| loadjob $introspection_vcpu_count$ ] 
-    [| loadjob $license_usage$ ] 
-| stats values(*) as * by guid 
+    [| union 
+        [| loadjob $metrics_instance$ ] 
+        [| loadjob $tcpin_connections$ ] 
+        [| loadjob $introspection_vcpu_count$ ] 
+        [| loadjob $license_usage$ ] 
+    | stats values(*) as * by guid ] 
+    [| loadjob $search_concurrency$ ]
+    [| loadjob $search_usage$ ]
+| stats values(*) as * by host 
 | eval primary_role=case(role_indexer=1,"indexer",
     role_cluster_master=1,"cluster_master",
     role_cluster_search_head=1,"search_head_cluster",
     role_search_head=1,"search_head",
-    fwdType="full","heavy_forwarder",
     role_license_master=1,"license_master",
-    role_deployment_server_master=1,"deployment_server_master"
+    role_deployment_server_master=1,"deployment_server_master",
+    tcp_fwdType="full","heavy_forwarder",
+    tcp_fwdType="uf","universal_forwarder"
     ) 
 | eval billable=case(primary_role="indexer", 1,
     primary_role="cluster_master", 0,
     primary_role="search_head", 1,
     primary_role="search_head_cluster", 1,
     primary_role="heavy_forwarder", 1,
+    primary_role="universal_forwarder", 0,
     primary_role="license_master", 0,
     primary_role="deployment_server_master",0
     ) 
-| table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version usage*
-| rename introspection_splunk_version as splunk_version</query>
+| table host guid primary_role idx_cluster_name billable avg_cpu_usage_pct cpu_count vcpu_count introspection_splunk_version tcp_* search* license* 
+| eval date_of_generation=now(), date_of_generation_str=strftime(date_of_generation,"%c")
+| eval version=coalesce(tcp_version, introspection_splunk_version)
+$obstification$</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
@@ -326,6 +435,26 @@
           <scale type="threshold">0,30,70,100</scale>
         </format>
         <format type="color" field="usage_Enterprise_enterprise">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="search_con_active_max">
+          <colorPalette type="minMidMax" maxColor="#D6563C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="search_con_active_p5">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="search_con_active_p95">
+          <colorPalette type="minMidMax" maxColor="#D6563C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="search_con_idle_p5">
+          <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="search_con_idle_p95">
           <colorPalette type="minMidMax" maxColor="#31A35F" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
