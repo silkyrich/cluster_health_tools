@@ -5,7 +5,7 @@
     <set token="selected_ingest_pipe">*</set>
   </init>
   <search id="thruput">
-    <query>$_internal$ host=$selected_forwarder$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0)
+    <query>$_internal$ host=$selected_forwarder$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
 | fillnull ingest_pipe 0 
 | bin _time span=31sec
 | stats
@@ -206,6 +206,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart span=31sec limit=0 
@@ -214,7 +215,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
 | foreach * 
     [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
-        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -257,7 +257,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <search base="thruput">
           <query>| search name=thruput _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | fields _time load_average 
-| timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
+| timechart fixedrange=false span=31sec $selected_load_average_function$(load_average) as load_average</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -275,12 +275,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>current_size_kb</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
+        </search>
         <search base="queue">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec avg($queue_fill$) by name</query>
-        </search>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -303,6 +303,9 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | bin _time span=31sec 
@@ -314,9 +317,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(avg_avg_age) as avg_age
     by _time series host
 | timechart fixedrange=false span=31 limit=30 avg(kb) as kb by series</query>
-        </search>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -373,12 +373,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart fixedrange=false limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -391,33 +391,50 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     <panel>
       <title>Channel creation for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
       <input type="dropdown" token="channel_variable">
-        <label>Selection aggregation function</label>
-        <choice value="current_size">current_size</choice>
-        <choice value="inactive_channels">inactive_channels</choice>
-        <choice value="new_channels">new_channels</choice>
-        <choice value="removed_channels">removed_channels</choice>
-        <choice value="reclaimed_channel">reclaimed_channel</choice>
-        <choice value="timedout_channels">timedout_channels</choice>
-        <choice value="abandoned_channels">abandoned_channels</choice>
+        <label>Select channel metric</label>
+        <choice value="current_size*">current_size</choice>
+        <choice value="inactive_channels*">inactive_channels</choice>
+        <choice value="new_channels*">new_channels</choice>
+        <choice value="removed_channels*">removed_channels</choice>
+        <choice value="reclaimed_channels*">reclaimed_channels</choice>
+        <choice value="timedout_channels*">timedout_channels</choice>
+        <choice value="abandoned_channels*">abandoned_channels</choice>
         <choice value="*">*</choice>
         <default>*</default>
       </input>
+      <input type="dropdown" token="selected_channels_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="channels">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec limit=30
-    avg(current_size) as current_size
-    avg(inactive_channels) as inactive_channels
-    avg(new_channels) as new_channels
-    avg(removed_channels) as removed_channels
-    avg(reclaimed_channel) as reclaimed_channel
-    avg(timedout_channels) as timedout_channels
-    avg(abandoned_channels) as abandoned_channels
+    $selected_channels_function$(current_size) as current_size
+    $selected_channels_function$(inactive_channels) as inactive_channels
+    $selected_channels_function$(new_channels) as new_channels
+    $selected_channels_function$(removed_channels) as removed_channels
+    $selected_channels_function$(reclaimed_channel) as reclaimed_channel
+    $selected_channels_function$(timedout_channels) as timedout_channels
+    $selected_channels_function$(abandoned_channels) as abandoned_channels
     by ingest_pipe
-| fields $channel_variable$*     
+| fields $channel_variable$     
     </query>
         </search>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
