@@ -206,15 +206,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart span=31sec limit=0 
     avg($selected_thruput_variable$) by ingest_pipe 
 | eval *=0 
 | foreach * 
-    [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']</query>
+    [| eval *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -284,12 +284,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec avg($queue_fill$) by name</query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -312,9 +312,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | bin _time span=31sec 
@@ -326,6 +323,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(avg_avg_age) as avg_age
     by _time series host
 | timechart fixedrange=false span=31sec limit=30 avg(kb) as kb by series</query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -382,12 +382,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart fixedrange=false limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -429,7 +429,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="channels">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec limit=30
@@ -444,6 +443,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | fields $channel_variable$     
     </query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
