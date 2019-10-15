@@ -7,7 +7,6 @@
   </init>
   <search id="forwarders_base">
     <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_indexers$
-
 | stats 
     sum(kb) as sum_kb
     avg(chan_new_kBps) as avg_chan_new_kBps
@@ -215,7 +214,14 @@ Select ranges in the chart and the table below will be filtered. For instance if
   </html>
     </panel>
   </row>
-  <row>
+  <row rejects="$selected_indexers$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select an cluster, site or host</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Selected range covers from $selected_min$% to $selected_max$%</title>
       <chart>
@@ -336,7 +342,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
   </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_indexers$">
     <panel>
       <title>Showing $selected_forwarder_count$ of $total_forwarder_count$ forwarders</title>
       <input type="dropdown" token="selected_forwarder_version">
