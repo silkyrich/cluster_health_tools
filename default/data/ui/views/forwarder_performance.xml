@@ -39,27 +39,28 @@
     values(guid) as guid
     dc(guid) as guid_count
     dc(sourceIp) as count_sources
-    by hostname
+    by hostname ingest_pipe
 | eventstats 
     sum(max_tcp_KBps) as total_sum_avg_KBps
     stdev(tcp_KBps) as avg_stdev_KBps
     sum(sum_kb) as total_sum_kb 
     dc(guid) as all_forwarders 
     max(indexer_count) as all_indexers
+    by ingest_pipe
 | eval indexer_coverage=indexer_count."/".all_indexers,
 indexer_coverage_pct=indexer_count/all_indexers
 | sort 0 - sum_kb 
 | streamstats 
     sum(sum_kb) as accumlated_sum_kb 
     count as ranking_most_data_kb
-    by all_forwarders 
+    by all_forwarders ingest_pipe
 | eval coverage_kb=accumlated_sum_kb/total_sum_kb, 
     progress_through_forwarders_kb=(ranking_most_data_kb/all_forwarders) * 100 
 | sort 0 - max_tcp_KBps 
 | streamstats 
     sum(max_tcp_KBps) as accumlated_avg_kbps 
     count as ranking_most_data_kbps
-    by all_forwarders 
+    by all_forwarders ingest_pipe
 | eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
     progress_through_forwarders_kbps=(ranking_most_data_kbps/all_forwarders) * 100 
 | rename ranking_most_data_kbps as "speed ranking" 
@@ -104,6 +105,32 @@ indexer_coverage_pct=indexer_count/all_indexers
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="annotation_blocking_filtered" base="annotation_blocking">
+    <query>
+      | search ingest_pipe=$selected_ingest_pipe$
+    </query>
+  </search>
+  <search id="channels">
+    <query>
+$_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputchannel)
+| fillnull ingest_pipe 0 
+| table _time host ingest_pipe current_size inactive_channels new_channels removed_channels reclaimed_channel timedout_channels abandoned_channels 
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="queue">
+    <query>$_internal$ Metrics sourcetype=splunkd host=$selected_forwarder$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
+| fillnull ingest_pipe 0 
+| bin _time span=62sec 
+| stats 
+    avg(current_size_kb) as current_size_kb
+    by _time ingest_pipe host name max_size_kb
+| eval normalized_pct=(current_size_kb/max_size_kb) * 100
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -125,7 +152,7 @@ indexer_coverage_pct=indexer_count/all_indexers
   </row>
   <row depends="$selected_forwarder$">
     <panel>
-      <title>The net throughput per pipeline for $selected_forwarder$ per pipeline</title>
+      <title>The net throughput per pipeline for $selected_forwarder$ for all pipelines - select a pipeline for more detail</title>
       <input type="dropdown" token="selected_thruput_variable">
         <label>Select field to show</label>
         <choice value="instantaneous_kbps">instantaneous_kbps</choice>
@@ -155,6 +182,7 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput_thruput">
           <query>| xyseries _time ingest_pipe $selected_thruput_variable$
 | eval *=0
@@ -162,23 +190,53 @@ indexer_coverage_pct=indexer_count/all_indexers
           
           </query>
         </search>
-        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">top</option>
         <option name="height">461</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
           <set token="selected_ingest_pipe">$click.name2$</set>
         </drilldown>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
+  <row>
     <panel>
-      <title>Drill down to pipeline $selected_ingest_pipe$</title>
+      <title>Queue filling for $selected_ingest_pipe$ on $selected_forwarder$</title>
+      <input type="dropdown" token="queue_fill">
+        <label>Queue fill measure</label>
+        <choice value="normalized_pct">Normalized %</choice>
+        <choice value="current_size_kb">Absolute</choice>
+        <default>current_size_kb</default>
+      </input>
+      <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
+        </search>
+        <search base="queue">
+          <query>| search ingest_pipe=$selected_ingest_pipe$
+| timechart span=31sec avg($queue_fill$) by name</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">353</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_forwarder$">
+    <panel>
+      <title>Throughput for $selected_group$ on $selected_ingest_pipe$ on $selected_forwarder$</title>
       <input type="dropdown" token="selected_group">
         <label>Select series</label>
         <choice value="per_index_thruput">per_index_thruput</choice>
@@ -188,6 +246,9 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
 | bin _time span=31sec 
@@ -200,18 +261,16 @@ indexer_coverage_pct=indexer_count/all_indexers
     by _time series host
 | timechart span=31 limit=30 avg(kb) as kb by series</query>
         </search>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
-        <option name="height">352</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">419</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
+  <row depends="$selected_forwarder$">
     <panel>
       <title>Pipeline processor cpu and execution for ingestion pipeline $selected_ingest_pipe$</title>
       <input type="dropdown" token="selected_processor_function">
@@ -257,22 +316,47 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
-| eval key=processor." &amp; ".name 
+| eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
-        <option name="height">371</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">484</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
+  <row>
+    <panel>
+      <title>Channel creation for ingest_pipe=$selected_ingest_pipe$</title>
+      <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
+        <search base="channels">
+          <query>
+| search ingest_pipe=$selected_ingest_pipe$
+| timechart span=31sec limit=30
+    avg(current_size) as current_size
+    avg(inactive_channels) as inactive_channels
+    avg(new_channels) as new_channels
+    avg(removed_channels) as removed_channels
+    avg(reclaimed_channel) as reclaimed_channel
+    avg(timedout_channels) as timedout_channels
+    avg(abandoned_channels) as abandoned_channels</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">467</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_forwarder$">
     <panel>
       <title>Forwarders connecting to $selected_forwarder$ showing $selected_forwarder_count$ forwarders</title>
       <input type="dropdown" token="selected_forwarder_version">
@@ -319,12 +403,15 @@ indexer_coverage_pct=indexer_count/all_indexers
           <done>
             <set token="selected_forwarder_count">$job.resultCount$</set>
           </done>
-          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ 
+          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ ingest_pipe=$selected_ingest_pipe$
 | rename guid_count as "# guids"
-| table hostname guid guid_count "volume ranking" "speed ranking" "indexer coverage"  "%" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch</query>
+| table hostname guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch
+| sort 0 "volume ranking"
+| rename ingest_pipe as "ingest pipe"</query>
         </search>
         <option name="count">20</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="number" field="indexer coverage">
           <option name="precision">0</option>
           <option name="unit">%</option>
@@ -373,7 +460,7 @@ indexer_coverage_pct=indexer_count/all_indexers
       </table>
     </panel>
   </row>
-  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
+  <row depends="$selected_forwarder$">
     <panel>
       <title>annotations for restarts</title>
       <table>
