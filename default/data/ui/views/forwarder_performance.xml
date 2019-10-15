@@ -4,8 +4,8 @@
     <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
     <set token="selected_ingest_pipe">*</set>
   </init>
-  <search id="thruput_thruput">
-    <query>$_internal$ host=$selected_forwarder$ METRICS TERM(group=thruput) TERM(name=thruput) 
+  <search id="thruput">
+    <query>$_internal$ host=$selected_forwarder$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0)
 | fillnull ingest_pipe 0 
 | bin _time span=31sec
 | stats
@@ -16,7 +16,7 @@
     $selected_thruput_function$(kb) as kb
     $selected_thruput_function$(ev) as ev
     $selected_thruput_function$(load_average) as load_average
-    by _time ingest_pipe
+    by _time ingest_pipe name
     
 </query>
     <earliest>$time.earliest$</earliest>
@@ -167,6 +167,17 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
   <row depends="$selected_forwarder$">
     <panel>
       <title>The net throughput per pipeline for $selected_forwarder$ for all pipelines - select a pipeline for more detail</title>
+      <input type="dropdown" token="selected_thruput">
+        <label>Select thruput metric</label>
+        <choice value="thruput">thruput</choice>
+        <fieldForLabel>name</fieldForLabel>
+        <fieldForValue>name</fieldForValue>
+        <search base="thruput">
+          <query>| stats count by name
+| where name != "thruput"</query>
+        </search>
+        <default>thruput</default>
+      </input>
       <input type="dropdown" token="selected_thruput_variable">
         <label>Select field to show</label>
         <choice value="instantaneous_kbps">instantaneous_kbps</choice>
@@ -175,7 +186,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <choice value="total_k_processed">total_k_processed</choice>
         <choice value="kb">kb</choice>
         <choice value="ev">ev</choice>
-        <choice value="load_average">load_average</choice>
         <default>instantaneous_kbps</default>
       </input>
       <input type="dropdown" token="selected_thruput_function">
@@ -196,14 +206,13 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
-        <search base="thruput_thruput">
-          <query>| xyseries _time ingest_pipe $selected_thruput_variable$
+        <search base="thruput">
+          <query>| search name=$selected_thruput$
+| timechart limit=32 span=31sec avg($selected_thruput_variable$) by ingest_pipe
 | eval *=0
-| foreach * [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']
-          
-          </query>
+| foreach * [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
+        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -232,12 +241,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec avg($queue_fill$) by name</query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -260,9 +269,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | bin _time span=31sec 
@@ -274,6 +280,9 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(avg_avg_age) as avg_age
     by _time series host
 | timechart fixedrange=false span=31 limit=30 avg(kb) as kb by series</query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -330,12 +339,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart fixedrange=false limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -347,7 +356,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
   <row depends="$selected_forwarder$">
     <panel>
       <title>Channel creation for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
-      
       <input type="dropdown" token="channel_variable">
         <label>Selection aggregation function</label>
         <choice value="current_size">current_size</choice>
@@ -359,10 +367,8 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <choice value="abandoned_channels">abandoned_channels</choice>
         <choice value="*">*</choice>
         <default>*</default>
-      </input>      
-      
+      </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="channels">
           <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | timechart fixedrange=false span=31sec limit=30
@@ -377,6 +383,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
 | fields $channel_variable$*     
     </query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -386,8 +393,8 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
       </chart>
     </panel>
   </row>
-   <row depends="$selected_forwarder$">
-   <panel>
+  <row depends="$selected_forwarder$">
+    <panel>
       <title>TCP output metrics for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
       <input type="dropdown" token="tcp_out_variable">
         <label>Select variable</label>
