@@ -169,6 +169,13 @@ indexer_coverage_pct=indexer_count/all_indexers
       <default>hide</default>
     </input>
   </fieldset>
+  <row rejects="$selected_indexers$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select an cluster, site or host</h1>
+      </html>
+    </panel>
+  </row>
   <row depends="$show_doc$">
     <panel>
       <html>
@@ -212,13 +219,6 @@ The top chart visualises the entire population of forwarders on the x-axis, from
 Select ranges in the chart and the table below will be filtered. For instance if you select the first 5% in the chart you will get the top 5% forwarders by received data volume or by peak speed. This interaction quickly allows you to filter to the most important forwarders and whether they are configured to work well. <p/>
 
   </html>
-    </panel>
-  </row>
-  <row rejects="$selected_indexers$">
-    <panel>
-      <html>
-        <h1 style="text-align:center">Please select an cluster, site or host</h1>
-      </html>
     </panel>
   </row>
   <row depends="$selected_indexers$">
