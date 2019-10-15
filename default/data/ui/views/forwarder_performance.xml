@@ -166,7 +166,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
   </row>
   <row depends="$selected_forwarder$">
     <panel>
-      <title>The net throughput per pipeline for $selected_forwarder$ for all pipelines - select a pipeline for more detail</title>
+      <title>The throughput per pipeline for $selected_forwarder$ for all pipelines - select a pipeline for more detail</title>
       <input type="dropdown" token="selected_thruput">
         <label>Select thruput metric</label>
         <choice value="thruput">thruput</choice>
@@ -207,10 +207,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
       </input>
       <chart>
         <search base="thruput">
-          <query>| search name=$selected_thruput$
-| timechart limit=32 span=31sec avg($selected_thruput_variable$) by ingest_pipe
-| eval *=0
-| foreach * [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']</query>
+          <query>| search name=$selected_thruput$ 
+| timechart span=31sec limit=0 
+    avg($selected_thruput_variable$) by ingest_pipe 
+| eval *=0 
+| foreach * 
+    [| eval *='*'+'&lt;&lt;FIELD&gt;&gt;']</query>
         </search>
         <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
@@ -228,6 +230,38 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
           <set token="selection_earliest">$start$</set>
           <set token="selection_latest">$end$</set>
         </selection>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Load average for $selected_forwarder$</title>
+      <input type="dropdown" token="selected_load_average_function">
+        <label>Selection aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="thruput">
+          <query>| search name=thruput _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+| fields _time load_average 
+| timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
@@ -525,42 +559,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <drilldown>
           <link target="_blank">/app/search/forwarder_performance?form.selected_forwarder=$row.hostname$&amp;form.time.earliest=$selection_earliest$&amp;form.time.latest=$selection_latest$</link>
         </drilldown>
-      </table>
-    </panel>
-  </row>
-  <row depends="$selected_forwarder$">
-    <panel>
-      <title>annotations for restarts</title>
-      <table>
-        <search id="annotation_restarts">
-          <query>| multisearch 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
-    | eval column="started" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
-    | eval column="new" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
-    | eval column="shutdown" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
-    | eval column="crash" ] 
-| fields + _time host column 
-| appendpipe 
-    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
-    | eval column=mvjoin(column,"-&gt;"), 
-        _time=_time+duration] 
-| where column!="started" 
-| eval annotation_label=host, annotation_category=column</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
-          <sampleRatio>1</sampleRatio>
-        </search>
-        <option name="count">20</option>
-        <option name="dataOverlayMode">none</option>
-        <option name="drilldown">none</option>
-        <option name="percentagesRow">false</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="rowNumbers">false</option>
-        <option name="totalsRow">false</option>
-        <option name="wrap">true</option>
       </table>
     </panel>
   </row>
