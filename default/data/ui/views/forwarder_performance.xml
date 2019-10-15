@@ -1,5 +1,5 @@
 <form>
-  <label>Intermediate forwarder performance</label>
+  <label>Forwarder performance</label>
   <init>
     <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
     <set token="selected_ingest_pipe">*</set>
@@ -114,10 +114,16 @@ indexer_coverage_pct=indexer_count/all_indexers
     </input>
     <input type="text" token="selected_forwarder">
       <label>Enter forwarder name</label>
-      <default></default>
     </input>
   </fieldset>
-  <row>
+  <row rejects="$selected_forwarder$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please enter an exact hostname</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_forwarder$">
     <panel>
       <title>The net throughput per pipeline for $selected_forwarder$ per pipeline</title>
       <input type="dropdown" token="selected_thruput_variable">
@@ -149,7 +155,6 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput_thruput">
           <query>| xyseries _time ingest_pipe $selected_thruput_variable$
 | eval *=0
@@ -157,6 +162,7 @@ indexer_coverage_pct=indexer_count/all_indexers
           
           </query>
         </search>
+        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -170,7 +176,7 @@ indexer_coverage_pct=indexer_count/all_indexers
       </chart>
     </panel>
   </row>
-  <row depends="selected_ingest_pipe">
+  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
     <panel>
       <title>Drill down to pipeline $selected_ingest_pipe$</title>
       <input type="dropdown" token="selected_group">
@@ -182,9 +188,6 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="per_series_thruput">
           <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
 | bin _time span=31sec 
@@ -197,6 +200,9 @@ indexer_coverage_pct=indexer_count/all_indexers
     by _time series host
 | timechart span=31 limit=30 avg(kb) as kb by series</query>
         </search>
+        <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -205,7 +211,7 @@ indexer_coverage_pct=indexer_count/all_indexers
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
     <panel>
       <title>Pipeline processor cpu and execution for ingestion pipeline $selected_ingest_pipe$</title>
       <input type="dropdown" token="selected_processor_function">
@@ -251,13 +257,13 @@ indexer_coverage_pct=indexer_count/all_indexers
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
+        </search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
 | eval key=processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
-        </search>
-        <search base="annotation_blocking" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -266,7 +272,7 @@ indexer_coverage_pct=indexer_count/all_indexers
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
     <panel>
       <title>Forwarders connecting to $selected_forwarder$ showing $selected_forwarder_count$ forwarders</title>
       <input type="dropdown" token="selected_forwarder_version">
@@ -367,7 +373,7 @@ indexer_coverage_pct=indexer_count/all_indexers
       </table>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_ingest_pipe$,$selected_forwarder$">
     <panel>
       <title>annotations for restarts</title>
       <table>
