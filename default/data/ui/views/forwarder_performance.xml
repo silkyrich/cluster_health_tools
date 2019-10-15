@@ -189,7 +189,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>instantaneous_kbps</default>
       </input>
       <input type="dropdown" token="selected_thruput_function">
-        <label>Selection aggregation function</label>
+        <label>Select aggregation function</label>
         <choice value="avg">average</choice>
         <choice value="median">median</choice>
         <choice value="mean">mean</choice>
@@ -233,11 +233,20 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_forwarder$,$selection_earliest$,$selection_latest$">
+    <panel>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="forwarder_performance?form.time.earliest=$selection_earliest$&amp;form.time.latest=$selection_latest$&amp;form.selected_forwarder=$selected_forwarder$">Open this dashboard in a new window with absolute for selected range time</a>
+        </h2>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_forwarder$">
     <panel>
       <title>Load average for $selected_forwarder$</title>
       <input type="dropdown" token="selected_load_average_function">
-        <label>Selection aggregation function</label>
+        <label>Select aggregation function</label>
         <choice value="avg">average</choice>
         <choice value="median">median</choice>
         <choice value="mean">mean</choice>
@@ -316,7 +325,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(max_age) as max_age
     avg(avg_avg_age) as avg_age
     by _time series host
-| timechart fixedrange=false span=31 limit=30 avg(kb) as kb by series</query>
+| timechart fixedrange=false span=31sec limit=30 avg(kb) as kb by series</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -331,7 +340,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     <panel>
       <title>Pipeline processor cpu and execution for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
       <input type="dropdown" token="selected_processor_function">
-        <label>Selection aggregation function</label>
+        <label>Select aggregation function</label>
         <choice value="avg">average</choice>
         <choice value="median">median</choice>
         <choice value="mean">mean</choice>
@@ -403,7 +412,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>*</default>
       </input>
       <input type="dropdown" token="selected_channels_function">
-        <label>Selection aggregation function</label>
+        <label>Select aggregation function</label>
         <choice value="avg">average</choice>
         <choice value="median">median</choice>
         <choice value="mean">mean</choice>
