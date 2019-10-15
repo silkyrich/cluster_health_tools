@@ -23,8 +23,8 @@
     <latest>$time.latest$</latest>
   </search>
   <search id="connecting_forwarders">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_forwarder$
-
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_forwarder$ 
+| fillnull ingest_pipe 0
 | stats 
     sum(kb) as sum_kb
     avg(chan_new_kBps) as avg_chan_new_kBps
@@ -70,8 +70,8 @@ indexer_coverage_pct=indexer_count/all_indexers
     "speed variability" = (stdev_tcp_KBps/'max speed')*100,
     "data"=sum_kb/1024/1024,
     "data %"= (sum_kb/total_sum_kb) * 100</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
   </search>
   <search id="per_series_thruput">
     <query>$_internal$ host=$selected_forwarder$ METRICS sourcetype=splunkd TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
@@ -82,9 +82,9 @@ indexer_coverage_pct=indexer_count/all_indexers
   </search>
   <search id="pipeline_processor">
     <query>$_internal$ host=$selected_forwarder$ METRICS METRICS TERM(group=pipeline) TERM(processor=*)
+| fillnull ingest_pipe 0
 | table _time host ingest_pipe processor name executes cpu_seconds cumulative_hits
 | bin _time span=31sec 
-
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -127,6 +127,20 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(current_size_kb) as current_size_kb
     by _time ingest_pipe host name max_size_kb
 | eval normalized_pct=(current_size_kb/max_size_kb) * 100
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="tcp_out">
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpout_connections) host=$selected_forwarder$ 
+| fillnull ingest_pipe 0 
+| bin _time span=31sec 
+| stats
+    sum(tcp_Kprocessed) as tcp_Kprocessed
+    median(tcp_avg_thruput) as tcp_avg_thruput
+    avg(tcp_eps) as tcp_eps
+    by _time ingest_pipe name sourcePort destIp destPort
+| table _time ingest_pipe name sourcePort destIp destPort tcp_Kprocessed tcp_avg_thruput tcp_eps
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -182,7 +196,6 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput_thruput">
           <query>| xyseries _time ingest_pipe $selected_thruput_variable$
 | eval *=0
@@ -190,6 +203,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
           
           </query>
         </search>
+        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -218,12 +232,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>current_size_kb</default>
       </input>
       <chart>
+        <search base="queue">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+| timechart fixedrange=false span=31sec avg($queue_fill$) by name</query>
+        </search>
         <search base="annotation_blocking_filtered" type="annotation">
           <query/>
-        </search>
-        <search base="queue">
-          <query>| search ingest_pipe=$selected_ingest_pipe$
-| timechart span=31sec avg($queue_fill$) by name</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -246,11 +260,8 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>per_sourcetype_thruput</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
-        </search>
         <search base="per_series_thruput">
-          <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$
+          <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
 | bin _time span=31sec 
 | stats avg(eps) as eps
     avg(kb) as kb
@@ -259,7 +270,10 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(max_age) as max_age
     avg(avg_avg_age) as avg_age
     by _time series host
-| timechart span=31 limit=30 avg(kb) as kb by series</query>
+| timechart fixedrange=false span=31 limit=30 avg(kb) as kb by series</query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query>| search ingest_pipe=$selected_ingest_pipe$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -272,7 +286,7 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
   </row>
   <row depends="$selected_forwarder$">
     <panel>
-      <title>Pipeline processor cpu and execution for ingestion pipeline $selected_ingest_pipe$</title>
+      <title>Pipeline processor cpu and execution for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
       <input type="dropdown" token="selected_processor_function">
         <label>Selection aggregation function</label>
         <choice value="avg">average</choice>
@@ -316,12 +330,12 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="pipeline_processor_aggregated">
-          <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ 
-| eval key="#".ingest_pipe." ".processor." &amp; ".name 
-| timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
-        </search>
         <search base="annotation_blocking_filtered" type="annotation"></search>
+        <search base="pipeline_processor_aggregated">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+| eval key="#".ingest_pipe." ".processor." &amp; ".name 
+| timechart fixedrange=false limit=50 span=31sec avg($selected_processor_variable$) by key</query>
+        </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -332,13 +346,11 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
   </row>
   <row>
     <panel>
-      <title>Channel creation for ingest_pipe=$selected_ingest_pipe$</title>
+      <title>Channel creation for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="channels">
-          <query>
-| search ingest_pipe=$selected_ingest_pipe$
-| timechart span=31sec limit=30
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+| timechart fixedrange=false span=31sec limit=30
     avg(current_size) as current_size
     avg(inactive_channels) as inactive_channels
     avg(new_channels) as new_channels
@@ -347,11 +359,43 @@ $_internal$ host=$selected_forwarder$ TERM(group=map) TERM(name=pipelineinputcha
     avg(timedout_channels) as timedout_channels
     avg(abandoned_channels) as abandoned_channels</query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">467</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>TCP output metrics for pipeline $selected_ingest_pipe$ on $selected_forwarder$</title>
+      <input type="dropdown" token="tcp_out_variable">
+        <label>Select variable</label>
+        <choice value="tcp_Kprocessed">tcp_Kprocessed</choice>
+        <choice value="tcp_avg_thruput">tcp_avg_thruput</choice>
+        <choice value="tcp_eps">tcp_eps</choice>
+        <default>tcp_avg_thruput</default>
+      </input>
+      <input type="dropdown" token="tcp_out_splitby">
+        <label>Select variable</label>
+        <choice value="destIp">destIp</choice>
+        <choice value="name">name</choice>
+        <choice value="sourcePort">sourcePort</choice>
+        <default>destIp</default>
+      </input>
+      <chart>
+        <search base="tcp_out">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+| timechart limit=80 fixedrange=false avg($tcp_out_variable$) by $tcp_out_splitby$</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">412</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
