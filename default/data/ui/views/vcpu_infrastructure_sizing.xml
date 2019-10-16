@@ -8,6 +8,9 @@
       <delimiter> </delimiter>
     </input>
   </fieldset>
+  <init>
+    <set token="_internal">(index=_internal)</set>
+  </init>
   <row>
     <panel>
       <html>
@@ -93,7 +96,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="tcpin_connections">$job.sid$</set>
           </done>
-          <query>index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now 
+          <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now 
 | stats 
     values(connectionType) as tcp_connectionType
     values(arch) as tcp_arch
@@ -130,7 +133,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="metrics_instance">$job.sid$</set>
           </done>
-          <query>index=_internal earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
+          <query>$_internal$ earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
 | stats 
     count 
     values(instance_roles) as roles 
@@ -179,7 +182,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="license_usage">$job.sid$</set>
           </done>
-          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial)
+          <query>$_internal$ sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial)
 | bin span=1d@d _time
 | eval key="license_".licenseGroup."_".productType
 | stats values(eval(b/1024/1024/1024)) as gb by key _time slave
@@ -206,7 +209,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="search_concurrency">$job.sid$</set>
           </done>
-          <query>index=_internal sourcetype=splunkd METRICS TERM(group=search_pool) 
+          <query>$_internal$ sourcetype=splunkd METRICS TERM(group=search_pool) 
 | stats p5(idle) as search_con_idle_p5
     p95(idle) as search_con_idle_p95
     max(active) as search_con_active_max
@@ -279,7 +282,7 @@ All information is provided at your own risk. All data collected is classfied se
       <title>Licences detected</title>
       <table>
         <search>
-          <query>index=_internal sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial) earliest=-25hrs latest=now
+          <query>$_internal$ sourcetype=splunkd source=*license_usage.log TERM(type=RolloverSummary) NOT (licenseGroup=Trial) earliest=-25hrs latest=now
 | stats count by productType licenseGroup subgroupId
 | table productType licenseGroup subgroupId</query>
           <earliest>-7d@h</earliest>
