@@ -45,6 +45,7 @@
   <search id="connecting_forwarders">
     <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
 | fillnull ingest_pipe 0
+| eventstats dc(_time) as readings 
 | stats 
     sum(kb) as sum_kb
     avg(chan_new_kBps) as avg_chan_new_kBps
@@ -59,7 +60,8 @@
     values(guid) as guid
     dc(guid) as guid_count
     dc(sourceIp) as count_sources
-    by hostname ingest_pipe
+    dc(_time) as mentions
+    by hostname ingest_pipe readings
 | eventstats 
     sum(max_tcp_KBps) as total_sum_avg_KBps
     stdev(tcp_KBps) as avg_stdev_KBps
@@ -198,6 +200,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <unset token="finished_per_series_thruput"></unset>
       </change>
     </input>
+    <input type="text" token="selected_host">
+      <label>Enter forwarder name</label>
+    </input>
     <input type="dropdown" token="filter_pipelines">
       <label>Filter to pipeline</label>
       <choice value="*">*</choice>
@@ -209,9 +214,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           | stats count by ingest_pipe
         </query>
       </search>
-    </input>
-    <input type="text" token="selected_host">
-      <label>Enter forwarder name</label>
     </input>
   </fieldset>
   <row rejects="$selected_host$">
@@ -450,7 +452,8 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           </done>
           <query>| search type=$selected_host_type$ os=$selected_host_os$ version=$selected_host_version$ ingest_pipe=$filter_pipelines$
 | rename guid_count as "# guids"
-| table hostname guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch
+| eval "connected for"=mentions."/".readings, "connected %"=(mentions/readings)* 100
+| table hostname guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "connected for" "connected %" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch 
 | sort 0 "volume ranking"
 | rename ingest_pipe as "ingest pipe"</query>
         </search>
@@ -497,6 +500,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </format>
         <format type="number" field="%">
           <option name="precision">0</option>
+        </format>
+        <format type="number" field="connected %">
+          <option name="precision">0</option>
+          <option name="unit">%</option>
+        </format>
+        <format type="color" field="connected %">
+          <colorPalette type="list">[#FFFFFF,#D93F3C]</colorPalette>
+          <scale type="threshold">80</scale>
         </format>
         <drilldown>
           <link target="_blank">/app/search/forwarder_performance?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
@@ -608,8 +619,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     $selected_channels_function$(timedout_channels) as timedout_channels
     $selected_channels_function$(abandoned_channels) as abandoned_channels
     by ingest_pipe
-| fields $channel_variable$     
-    </query>
+| fields _time $channel_variable$</query>
         </search>
         <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
@@ -643,6 +653,13 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <search base="tcp_out">
           <query>| search ingest_pipe=$filter_pipelines$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
 | timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
+        </search>
+        <search id="annotation_timeout" type="annotation">
+          <query>$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+| eval annotation_label="connect fail",
+    annotation_category=destHost</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
