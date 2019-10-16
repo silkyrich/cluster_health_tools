@@ -23,7 +23,7 @@
     <latest>$time.latest$</latest>
   </search>
   <search id="connecting_forwarders">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_host$ 
+    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
 | fillnull ingest_pipe 0
 | stats 
     sum(kb) as sum_kb
@@ -69,9 +69,11 @@ indexer_coverage_pct=indexer_count/all_indexers
 | eval "%"='%'*100,
     "speed variability" = (stdev_tcp_KBps/'max speed')*100,
     "data"=sum_kb/1024/1024,
-    "data %"= (sum_kb/total_sum_kb) * 100</query>
-    <earliest>$selection_earliest$</earliest>
-    <latest>$selection_latest$</latest>
+    "data %"= (sum_kb/total_sum_kb) * 100
+$finished_per_series_thruput$   
+    </query>
+    <earliest>$selection_thruput_earliest$</earliest>
+    <latest>$selection_thruput_latest$</latest>
   </search>
   <search id="per_series_thruput">
     <query>$_internal$ host=$selected_host$ METRICS sourcetype=splunkd TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
@@ -152,6 +154,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <earliest>-60m@m</earliest>
         <latest>now</latest>
       </default>
+      <change>
+        <unset token="finished_per_series_thruput"></unset>
+      </change>
     </input>
     <input type="text" token="selected_host">
       <label>Enter forwarder name</label>
@@ -227,17 +232,17 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <set token="selected_ingest_pipe">$click.name2$</set>
         </drilldown>
         <selection>
-          <set token="selection_earliest">$start$</set>
-          <set token="selection_latest">$end$</set>
+          <set token="selection_thruput_earliest">$start$</set>
+          <set token="selection_thruput_latest">$end$</set>
         </selection>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_host$,$selection_earliest$,$selection_latest$">
+  <row depends="$selected_host$,$time.earliest$,$time.latest$">
     <panel>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="forwarder_performance?form.time.earliest=$selection_earliest$&amp;form.time.latest=$selection_latest$&amp;form.selected_host=$selected_host$">Open this dashboard in a new window with absolute for selected range time</a>
+        <a target="_blank" rel="noopener noreferrer" href="forwarder_performance?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Open this dashboard in a new window with absolute for selected range time</a>
         </h2>
       </html>
     </panel>
@@ -264,9 +269,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <search base="thruput">
-          <query>| search name=thruput _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+          <query>| search name=thruput _time&gt;=$time.earliest$ _time&lt;=$time.latest$
 | fields _time load_average 
-| timechart fixedrange=false span=31sec $selected_load_average_function$(load_average) as load_average</query>
+| timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -285,8 +290,8 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <search base="queue">
-          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
-| timechart fixedrange=false span=31sec avg($queue_fill$) by name</query>
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+| timechart span=31sec avg($queue_fill$) by name</query>
         </search>
         <search base="annotation_blocking_filtered" type="annotation">
           <query/>
@@ -313,7 +318,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <search base="per_series_thruput">
-          <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
+          <query>| search group=$selected_group$ ingest_pipe=$selected_ingest_pipe$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
 | bin _time span=31sec 
 | stats avg(eps) as eps
     avg(kb) as kb
@@ -322,7 +327,10 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(max_age) as max_age
     avg(avg_avg_age) as avg_age
     by _time series host
-| timechart fixedrange=false span=31sec limit=30 avg(kb) as kb by series</query>
+| timechart span=31sec limit=30 avg(kb) as kb by series</query>
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
         </search>
         <search base="annotation_blocking_filtered" type="annotation">
           <query>| search ingest_pipe=$selected_ingest_pipe$</query>
@@ -333,159 +341,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <option name="charting.legend.placement">top</option>
         <option name="height">419</option>
         <option name="refresh.display">progressbar</option>
+        <selection>
+          <eval token="selection_per_series_earliest">if(isnotnull($finished_per_series_thruput$), $start$, NULL)</eval>
+          <eval token="selection_per_series_latest">if(isnotnull($finished_per_series_thruput$), $end$, NULL)</eval>
+        </selection>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_host$">
-    <panel>
-      <title>Pipeline processor cpu and execution for pipeline $selected_ingest_pipe$ on $selected_host$</title>
-      <input type="dropdown" token="selected_processor_function">
-        <label>Select aggregation function</label>
-        <choice value="avg">average</choice>
-        <choice value="median">median</choice>
-        <choice value="mean">mean</choice>
-        <choice value="stdev">standard dev</choice>
-        <choice value="per_second">per_second</choice>
-        <choice value="p90">p90</choice>
-        <choice value="p95">p95</choice>
-        <choice value="p99">p99</choice>
-        <choice value="max">max</choice>
-        <choice value="min">min</choice>
-        <choice value="sum">sum</choice>
-        <choice value="range">range</choice>
-        <choice value="var">variance</choice>
-        <default>avg</default>
-      </input>
-      <input type="dropdown" token="selected_processor">
-        <label>Select process and name</label>
-        <choice value="processor=* name=*">processor=* name=*</choice>
-        <default>processor=* name=*</default>
-        <fieldForLabel>search</fieldForLabel>
-        <fieldForValue>search</fieldForValue>
-        <search base="pipeline_processor_aggregated">
-          <query>| stats count by processor name 
-| eval search="processor=".processor." name=".name 
-| appendpipe 
-    [| stats count by name 
-    | eval search="name=".name." processor=*"]
-
-| appendpipe 
-    [| stats count by processor 
-    | eval search="name=* processor=".processor]</query>
-        </search>
-      </input>
-      <input type="dropdown" token="selected_processor_variable">
-        <label>Select variable to plot</label>
-        <choice value="cpu_seconds">cpu_seconds</choice>
-        <choice value="executes">executes</choice>
-        <choice value="cumulative_hits">cumulative_hits</choice>
-        <default>cpu_seconds</default>
-      </input>
-      <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
-        <search base="pipeline_processor_aggregated">
-          <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
-| eval key="#".ingest_pipe." ".processor." &amp; ".name 
-| timechart fixedrange=false limit=50 span=31sec avg($selected_processor_variable$) by key</query>
-        </search>
-        <option name="charting.chart">line</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">484</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row depends="$selected_host$">
-    <panel>
-      <title>Channel creation for pipeline $selected_ingest_pipe$ on $selected_host$</title>
-      <input type="dropdown" token="channel_variable">
-        <label>Select channel metric</label>
-        <choice value="current_size*">current_size</choice>
-        <choice value="inactive_channels*">inactive_channels</choice>
-        <choice value="new_channels*">new_channels</choice>
-        <choice value="removed_channels*">removed_channels</choice>
-        <choice value="reclaimed_channels*">reclaimed_channels</choice>
-        <choice value="timedout_channels*">timedout_channels</choice>
-        <choice value="abandoned_channels*">abandoned_channels</choice>
-        <choice value="*">*</choice>
-        <default>*</default>
-      </input>
-      <input type="dropdown" token="selected_channels_function">
-        <label>Select aggregation function</label>
-        <choice value="avg">average</choice>
-        <choice value="median">median</choice>
-        <choice value="mean">mean</choice>
-        <choice value="stdev">standard dev</choice>
-        <choice value="per_second">per_second</choice>
-        <choice value="p90">p90</choice>
-        <choice value="p95">p95</choice>
-        <choice value="p99">p99</choice>
-        <choice value="max">max</choice>
-        <choice value="min">min</choice>
-        <choice value="sum">sum</choice>
-        <choice value="range">range</choice>
-        <choice value="var">variance</choice>
-        <default>avg</default>
-      </input>
-      <chart>
-        <search base="channels">
-          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
-| timechart fixedrange=false span=31sec limit=30
-    $selected_channels_function$(current_size) as current_size
-    $selected_channels_function$(inactive_channels) as inactive_channels
-    $selected_channels_function$(new_channels) as new_channels
-    $selected_channels_function$(removed_channels) as removed_channels
-    $selected_channels_function$(reclaimed_channel) as reclaimed_channel
-    $selected_channels_function$(timedout_channels) as timedout_channels
-    $selected_channels_function$(abandoned_channels) as abandoned_channels
-    by ingest_pipe
-| fields $channel_variable$     
-    </query>
-        </search>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">467</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row depends="$selected_host$">
-    <panel>
-      <title>TCP output metrics for pipeline $selected_ingest_pipe$ on $selected_host$</title>
-      <input type="dropdown" token="tcp_out_variable">
-        <label>Select variable</label>
-        <choice value="tcp_Kprocessed">tcp_Kprocessed</choice>
-        <choice value="tcp_avg_thruput">tcp_avg_thruput</choice>
-        <choice value="tcp_eps">tcp_eps</choice>
-        <choice value="kb">kb</choice>
-        <default>tcp_avg_thruput</default>
-      </input>
-      <input type="dropdown" token="tcp_out_splitby">
-        <label>Select variable</label>
-        <choice value="destIp">destIp</choice>
-        <choice value="name">name</choice>
-        <choice value="sourcePort">sourcePort</choice>
-        <default>destIp</default>
-      </input>
-      <chart>
-        <search base="tcp_out">
-          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$selection_earliest$ _time&lt;=$selection_latest$
-| timechart limit=80 fixedrange=false avg($tcp_out_variable$) by $tcp_out_splitby$</query>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">412</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-  <row depends="$selected_host$">
+  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$">
     <panel>
       <title>Forwarders connecting to $selected_host$ showing $selected_host_count$ forwarders</title>
       <input type="dropdown" token="selected_host_version">
@@ -583,9 +446,158 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <option name="precision">0</option>
         </format>
         <drilldown>
-          <link target="_blank">/app/search/forwarder_performance?form.selected_host=$row.hostname$&amp;form.time.earliest=$selection_earliest$&amp;form.time.latest=$selection_latest$</link>
+          <link target="_blank">/app/search/forwarder_performance?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Pipeline processor cpu and execution for pipeline $selected_ingest_pipe$ on $selected_host$</title>
+      <input type="dropdown" token="selected_processor_function">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="selected_processor">
+        <label>Select process and name</label>
+        <choice value="processor=* name=*">processor=* name=*</choice>
+        <default>processor=* name=*</default>
+        <fieldForLabel>search</fieldForLabel>
+        <fieldForValue>search</fieldForValue>
+        <search base="pipeline_processor_aggregated">
+          <query>| stats count by processor name 
+| eval search="processor=".processor." name=".name 
+| appendpipe 
+    [| stats count by name 
+    | eval search="name=".name." processor=*"]
+
+| appendpipe 
+    [| stats count by processor 
+    | eval search="name=* processor=".processor]</query>
+        </search>
+      </input>
+      <input type="dropdown" token="selected_processor_variable">
+        <label>Select variable to plot</label>
+        <choice value="cpu_seconds">cpu_seconds</choice>
+        <choice value="executes">executes</choice>
+        <choice value="cumulative_hits">cumulative_hits</choice>
+        <default>cpu_seconds</default>
+      </input>
+      <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
+        <search base="pipeline_processor_aggregated">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ $selected_processor$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+| eval key="#".ingest_pipe." ".processor." &amp; ".name 
+| timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">484</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Channel creation for pipeline $selected_ingest_pipe$ on $selected_host$</title>
+      <input type="dropdown" token="channel_variable">
+        <label>Select channel metric</label>
+        <choice value="current_size*">current_size</choice>
+        <choice value="inactive_channels*">inactive_channels</choice>
+        <choice value="new_channels*">new_channels</choice>
+        <choice value="removed_channels*">removed_channels</choice>
+        <choice value="reclaimed_channels*">reclaimed_channels</choice>
+        <choice value="timedout_channels*">timedout_channels</choice>
+        <choice value="abandoned_channels*">abandoned_channels</choice>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_channels_function">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="channels">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+| timechart span=31sec limit=30
+    $selected_channels_function$(current_size) as current_size
+    $selected_channels_function$(inactive_channels) as inactive_channels
+    $selected_channels_function$(new_channels) as new_channels
+    $selected_channels_function$(removed_channels) as removed_channels
+    $selected_channels_function$(reclaimed_channel) as reclaimed_channel
+    $selected_channels_function$(timedout_channels) as timedout_channels
+    $selected_channels_function$(abandoned_channels) as abandoned_channels
+    by ingest_pipe
+| fields $channel_variable$     
+    </query>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">467</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>TCP output metrics for pipeline $selected_ingest_pipe$ on $selected_host$</title>
+      <input type="dropdown" token="tcp_out_variable">
+        <label>Select variable</label>
+        <choice value="tcp_Kprocessed">tcp_Kprocessed</choice>
+        <choice value="tcp_avg_thruput">tcp_avg_thruput</choice>
+        <choice value="tcp_eps">tcp_eps</choice>
+        <choice value="kb">kb</choice>
+        <default>tcp_avg_thruput</default>
+      </input>
+      <input type="dropdown" token="tcp_out_splitby">
+        <label>Select variable</label>
+        <choice value="destIp">destIp</choice>
+        <choice value="name">name</choice>
+        <choice value="sourcePort">sourcePort</choice>
+        <default>destIp</default>
+      </input>
+      <chart>
+        <search base="tcp_out">
+          <query>| search ingest_pipe=$selected_ingest_pipe$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">412</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
 </form>
