@@ -1,1079 +1,163 @@
 <form>
-  <label>Bucket roll analysis</label>
-  <init>
-    <eval token="form.time.earliest">-24h@h</eval>
-    <set token="form.time.latest">now</set>
-  </init>
-  <search id="hot_roll_base_time_narrowed">
-    <query>
-      | loadjob $hot_roll_base$
-      | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-    </query>
-    <progress>
-      <unset token="hot_roll_base_time_narrowed"></unset>
-      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="hot_roll_base_time_narrowed">$job.sid$</set>
-      <eval token="hot_roll_base_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="merged_finished">
-    <query>
-| loadjob $merge_hot_frozen_report$ 
-| timechart span=$seconds_for_bin$ count by column 
-| eval frozen=-frozen, _inflation=0
-| foreach * 
-    [| eval _inflation='&lt;&lt;FIELD&gt;&gt;'+_inflation ] 
-| streamstats sum(_inflation) as inflation</query>
-    <progress>
-      <unset token="merged_finished"></unset>
-    </progress>
-    <done>
-      <set token="merged_finished">$job.sid$</set>
-      <eval token="merged_finished_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="hot_roll_base_time_narrowed_index_filtered">
-    <query>
-      | loadjob $hot_roll_base_time_narrowed$
-      | search $selected_indexes$
-    </query>
-    <progress>
-      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="hot_roll_base_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="hot_roll_base_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="freeze_base_time_narrowed">
-    <query>
-      | loadjob $freeze_base$
-      | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-    </query>
-    <progress>
-      <unset token="freeze_base_time_narrowed"></unset>
-      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="freeze_base_time_narrowed">$job.sid$</set>
-      <eval token="freeze_base_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="freeze_base_time_narrowed_index_filtered">
-    <query>
-      | loadjob $freeze_base_time_narrowed$
-      | search $selected_indexes$
-    </query>
-    <progress>
-      <unset token="freeze_base_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="freeze_base_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="freeze_base_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="merge_hot_frozen_report_time_narrowed">
-    <query>
-      | loadjob $merge_hot_frozen_report$
-      | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-    </query>
-    <progress>
-      <unset token="merge_hot_frozen_report_time_narrowed"></unset>
-      <unset token="merge_hot_frozen_report_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="merge_hot_frozen_report_time_narrowed">$job.sid$</set>
-      <eval token="merge_hot_frozen_report_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="merge_hot_frozen_report_time_narrowed_index_filtered">
-    <query>
-      | loadjob $merge_hot_frozen_report_time_narrowed$
-      | search $selected_indexes$
-    </query>
-    <progress>
-      <unset token="merge_hot_frozen_report_time_narrowed_index_filtered"></unset>
-    </progress>
-    <done>
-      <set token="merge_hot_frozen_report_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="merge_hot_frozen_report_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="freeze_base">
-    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
-| rex field=bid "(?&lt;idx&gt;[^~]+)"
-| stats min(_time) as _time values(idx) as idx values(host) as hosts by bid
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <progress>
-      <unset token="freeze_base"></unset>
-    </progress>
-    <done>
-      <set token="freeze_base">$job.sid$</set>
-      <eval token="freeze_base_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="dummy_search_to_make_span_calculated">
-    <query>| makeresults</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <progress>
-      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
-    </progress>
-    <done>
-      <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
-    </done>
-  </search>
-  <search id="hot_roll_base">
-    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
-| rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
-| eval size_mb=size/(1024*1024) 
-| eval duration=to_time-from_time
-| table _time host idx bid duration from to size_mb caller to_time from_time</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <sampleRatio>1</sampleRatio>
-    <progress>
-      <unset token="hot_roll_base"></unset>
-    </progress>
-    <done>
-      <eval token="hot_roll_base_url">urlencode("| loadjob ".$job.sid$)</eval>
-      <set token="hot_roll_base">$job.sid$</set>
-    </done>
-  </search>
-  <search id="merge_hot_frozen_report">
-    <query>| union 
-    [| loadjob $freeze_base$ 
-    | eval column="frozen" 
-        ] 
-    [| loadjob $hot_roll_base$ 
-    | eval column=if(isnull(caller),"null",caller) 
-        ] 
-    | table *
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <progress>
-      <unset token="merge_hot_frozen_report"></unset>
-    </progress>
-    <done>
-      <eval token="merge_hot_frozen_report_url">urlencode("| loadjob ".$job.sid$)</eval>
-      <set token="merge_hot_frozen_report">$job.sid$</set>
-    </done>
-  </search>
-  <search id="annotations_base">
-    <query>| union 
-    [ search index=_internal component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
-    | eval annotation_label= case(searchmatch("finished"),"Finished RR", searchmatch("rebalance"), "Trigger Rebalance", searchmatch("Starting"),"Starting RR"), annotation_category= case(searchmatch("finished"),"Finished", searchmatch("rebalance"), "Rebalance", searchmatch("Starting"),"Starting") 
-    | table _time anno* _raw
-        ] 
-    [| tstats count prestats=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s 
-    | eval type="startup" 
-    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s 
-    | eval type=if(isNull(type),"guid change",type) 
-    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s 
-    | eval type=if(isNull(type),"shutdown",type) 
-    | rex field=host "^(?&lt;host_short&gt;[^.]+)" 
-    | stats count by host_short type _time 
-    | rex field=queue "^(?&lt;queue_short&gt;[^q]+)queue" 
-    | eval annotation_label=type." on ".host_short, annotation_category=type 
-    | sort - _time 
-    | fields _time host_short anno* ] 
-    [ search index=_internal host=c0m1* log_level=info TERM(from=*) TERM(to=*) TERM(reason=*) transitioning (up OR down OR restarting) 
-    | eval host=peer_name
-    | search $selected_indexers$
-    | rex field=peer_name "^(?&lt;short_name&gt;[^\.]+)" 
-    | eval annotation_label=from."-&gt;".to." ".short_name,
-        annotation_category="CMPeer - ".reason 
-    | table _time annotation_label annotation_category] 
-| table *</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <progress>
-      <unset token="annotations_base"></unset>
-    </progress>
-    <done>
-      <set token="annotations_base">$job.sid$</set>
-      <eval token="annotations_base_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search id="annotations">
-    <query>
-| loadjob $annotations_base$
-| search $selected_annotations$
-          </query>
-    <progress>
-      <unset token="annotations"></unset>
-    </progress>
-    <done>
-      <set token="annotations">$job.sid$</set>
-      <eval token="annotations_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
-  <search>
-    <progress>
-      <unset token="selected_indexes"></unset>
-      <unset token="included"></unset>
-      <unset token="excluded_by_limit"></unset>
-      <unset token="excluded_by_name"></unset>
-    </progress>
-    <done>
-      <set token="selected_indexes">$result.search$</set>
-      <set token="included">$result.included$</set>
-      <set token="excluded_by_limit">$result.excluded_by_limit$</set>
-      <set token="excluded_by_name">$result.excluded_by_name$</set>
-    </done>
-    <query>
-| loadjob $hot_roll_base_time_narrowed$
-| stats count as size by idx 
-| sort - size 
-| eval filter_name=if(searchmatch("$filter_index_names$"), 0, 1) 
-| streamstats count by filter_name 
-| eval filter_limit=if(count&lt;=$filter_head_indexes$ AND filter_name=0,0,1) 
-| stats 
-    values(eval(if(filter_name=0 AND filter_limit=1,idx,NULL))) as excluded_by_limit
-    values(eval(if(filter_name=0 AND filter_limit=0,idx,NULL))) as included
-    values(eval(if(filter_name=1,idx,""))) as excluded_by_name 
-| eval search="(idx=".mvjoin(included, " OR idx=").")",
-    included=mvjoin(included," "),
-    excluded_by_name=mvjoin(excluded_by_name," "),
-    excluded_by_limit=mvjoin(excluded_by_limit," ")</query>
-  </search>
+  <label>Discovery searches</label>
   <fieldset submitButton="false">
-    <input type="time" token="time">
-      <label></label>
-      <default>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
-      </default>
-      <change>
-        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
-        <eval token="time_duration">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</eval>
-        <set token="time_duration_str">tostring(round(relative_time(now(), if($time.latest$="now","-0@m",$time.latest$)))-round(relative_time(now(), $time.earliest$)), "duration")</set>
-      </change>
-    </input>
-    <input type="multiselect" token="selected_indexers">
-      <label>Select CM, site or hosts</label>
-      <delimiter> OR </delimiter>
-      <fieldForLabel>label</fieldForLabel>
-      <fieldForValue>search</fieldForValue>
-      <search>
-        <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
-| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
-| eval cluster_master=host 
-| fields + site_pair cluster_master 
-| fields - _* 
-| dedup site_pair 
-| mvexpand site_pair 
-| dedup site_pair 
-| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
-| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
-| eval search="host=".indexer, host_count=1
-| appendpipe 
-    [| stats values(indexer) as indexers by site_id short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
-    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
-        ] 
-| appendpipe 
-    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
-    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
-| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
-| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
-| stats max(host_count) as count by label search
-| sort - count</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
-      </search>
-    </input>
-    <input type="multiselect" token="selected_annotations">
-      <label>Select annotation overlay</label>
-      <fieldForLabel>annotation_category</fieldForLabel>
-      <fieldForValue>annotation_category</fieldForValue>
-      <search>
-        <query>
-          | loadjob $annotations_base$
-          | stats count by annotation_category </query>
-      </search>
-      <default>CMPeer - streaming failure,startup</default>
-      <prefix>(</prefix>
-      <suffix>)</suffix>
-      <valuePrefix>annotation_category="</valuePrefix>
-      <valueSuffix>"</valueSuffix>
-      <delimiter> OR </delimiter>
-      <choice value="*">*</choice>
+    <input type="text" token="selected_internal">
+      <label>Override _internal index selection</label>
+      <default>index=_internal</default>
     </input>
   </fieldset>
-  <row depends="$selected_indexers$">
+  <row>
     <panel>
-      <html>
-        <h1 style="text-align:center">High level summary $time_duration$</h1>
-      </html>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Indexes rolling hot buckets</title>
-      <single>
-        <search>
-          <query>
-            | loadjob $hot_roll_base$
-            | stats dc(idx) as indexes
-</query>
-        </search>
-        <option name="drilldown">all</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <set token="show_index_table">| noop</set>
-        </drilldown>
-      </single>
-    </panel>
-    <panel>
-      <title>Indexes freezing buckets</title>
-      <single>
-        <search>
-          <query>
-            | loadjob $freeze_base$
-            | stats dc(idx) as count</query>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </single>
-    </panel>
-    <panel>
-      <title>Hot buckets rolled</title>
-      <single>
-        <search>
-          <done>
-            <set token="hot_rolled_count">$result.count$</set>
-          </done>
-          <query>
-| loadjob $hot_roll_base$
-| stats count</query>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="underLabel">total</option>
-      </single>
-    </panel>
-    <panel>
-      <title>Buckets freezing</title>
-      <single>
-        <search>
-          <done>
-            <set token="frozen_rolled_count">$result.count$</set>
-          </done>
-          <query>| loadjob $freeze_base$
-| stats count</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="underLabel">total</option>
-      </single>
-    </panel>
-    <panel>
-      <title>Net increase in buckets</title>
-      <single>
-        <search>
-          <done>
-            <set token="frozen_rolled_count">$result.count$</set>
-          </done>
-          <query>| loadjob $merged_finished$
-| reverse
-| head 1
-| fields + inflation
-| fields - _*</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="underLabel">total</option>
-      </single>
-    </panel>
-  </row>
-  <row depends="$selected_indexers$">
-    <panel>
-      <title>Reasons for rolling buckets by count</title>
-      <chart>
-        <search>
-          <query>
-| loadjob $hot_roll_base$
-| chart limit=50 count by caller</query>
-        </search>
-        <option name="charting.chart">pie</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="height">373</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Reasons for rolling buckets by size</title>
-      <chart>
-        <search>
-          <query>| loadjob $hot_roll_base$
-| chart limit=50 sum(size_mb) as size_mb by caller
-| fields - size</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">pie</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="height">373</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <html>
-        <h1 style="text-align:center">Buckets creation and freezing over time</h1>
-      </html>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Master panel - select a time range to update dashboard</title>
-      <chart>
-        <search>
-          <query>
-            | loadjob $merged_finished$
-          </query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <selection>
-          <set token="merged_earliest">$start$</set>
-          <set token="merged_latest">$end$</set>
-          <eval token="drilldown_seconds_for_bin">if((round(relative_time(now(), $end$)-relative_time(now(), $start$))/500)&lt;1,1,round((relative_time(now(), $end$)-relative_time(now(), $start$))/500))</eval>
-          <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
-          <eval token="merged_annotations">urlencode($form.annotations$)</eval>
-        </selection>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">513</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <html>
-        <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="bucket_roll_analysis?form.time.earliest=$merged_earliest$&amp;form.time.latest=$merged_latest$&amp;form.annotations=$merged_annotations$&amp;form.selected_indexers=$merged_selected_indexers$&amp;form.seconds_for_bin=$drilldown_seconds_for_bin$">Open this dashboard in a new window with the time selection above</a>
-        </h2>
-      </html>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Size of bucket creation</title>
-      <chart>
-        <search>
-          <query>| loadjob $hot_roll_base_time_narrowed$            
-| bin size_mb span=log2 
-| timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">count</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">415</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Rolling of buckets over time by caller</title>
-      <chart>
-        <search>
-          <query>| loadjob $hot_roll_base_time_narrowed$
-| bin _time span=$drilldown_seconds_for_bin$ 
-| stats count by caller _time
-| xyseries _time caller count</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">415</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <html>
-        <h1 style="text-align:center">Per indexer analysis </h1>
-      </html>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Indexers creating buckets count</title>
-      <chart>
-        <search>
-          <query>
-| loadjob $hot_roll_base_time_narrowed$
-| timechart 
-    fixedrange=false
-    span=$drilldown_seconds_for_bin$
-    limit=0
-    count
-    by host</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">544</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Indexers rolling buckets by count</title>
-      <chart>
-        <search>
-          <query>
-| loadjob $hot_roll_base_time_narrowed$
-| bin _time span=$drilldown_seconds_for_bin$ 
-| chart 
-    count
-    by host caller
-| sort - host</query>
-        </search>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">inflation</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">406</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <input type="text" token="filter_head_indexes">
-        <label>Show top indexes</label>
-        <default>20</default>
-      </input>
-      <input type="text" token="filter_index_names">
-        <label>Filter indexes by name</label>
-        <default>*</default>
-        <prefix>idx=</prefix>
-      </input>
-      <html>
-        <h1 style="text-align:center">Per index analysis</h1>
-            <h2>Index filter string</h2>
-            <p>$included$</p>
-            <h2>Indexes exluded due to limits</h2>
-            <p>$excluded_by_limit$</p>
-            <h2>Indexes excluded name filter</h2>
-            <p>$excluded_by_name$</p>
-      </html>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Creation of buckets by index over time</title>
-      <chart>
-        <search>
-          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$
-| timechart 
-    fixedrange=false 
-    span=$drilldown_seconds_for_bin$ 
-    limit=$filter_head_indexes$
-    count by idx</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">494</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title>Freezing of buckets by index</title>
-      <chart>
-        <search>
-          <query>| loadjob $freeze_base_time_narrowed_index_filtered$
-| timechart 
-    fixedrange=false 
-    span=$drilldown_seconds_for_bin$ 
-    limit=$filter_head_indexes$
-    count by idx
-| foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">430</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <chart>
-        <title>Rate of inflation in bucket for index</title>
-        <search>
-          <query>
-| loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
-| bin _time span=$drilldown_seconds_for_bin$sec
-| stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
-| streamstats sum(inflation) as inflation by idx
-| xyseries _time idx inflation</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
-        </search>
-        <option name="charting.axisTitleX.visibility">visible</option>
-        <option name="charting.axisTitleY.visibility">visible</option>
-        <option name="charting.axisTitleY2.visibility">visible</option>
-        <option name="charting.chart">line</option>
-        <option name="charting.chart.nullValueMode">connect</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">right</option>
-        <option name="height">455</option>
-        <option name="refresh.display">progressbar</option>
-        <option name="trellis.enabled">0</option>
-      </chart>
-    </panel>
-  </row>
-    <row depends="$selected_indexers$">
-
-    <panel>
-      <title></title>
-      <chart>
-        <title>Buckets created by the caller and the index</title>
-        <search>
-          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$ 
-| bin _time span=$drilldown_seconds_for_bin$ 
-| chart 
-    limit=$filter_head_indexes$
-    sum(size_mb) by caller idx</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="height">420</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <eval token="selected_index">if(like($click.name2$, "VALUE%"), substr($click.name2$,6,len($click.name2$)), $click.name2$)</eval>
-          <eval token="selected_caller">if(isnull($click.value$),"*",$click.value$)</eval>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_size"></unset>
-          <unset token="selected_duration"></unset>
-          <unset token="selected_size_lower"></unset>
-          <unset token="selected_size_upper"></unset>
-          <unset token="selected_size_filter"></unset>
-          <unset token="selected_duration_lower"></unset>
-          <unset token="selected_duration_upper"></unset>
-          <unset token="selected_duration_filter"></unset>
-        </drilldown>
-      </chart>
-    </panel>
-    <panel>
-      <chart>
-        <title>Buckets created by index and the caller</title>
-        <search>
-          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$
-| bin _time span=$drilldown_seconds_for_bin$ 
-| chart limit=$filter_head_indexes$ count by idx caller 
-| eval total=0
-| fillnull value=0
-| foreach * 
-    [| eval total=total+if("&lt;&lt;FIELD&gt;&gt;"!="idx",&lt;&lt;FIELD&gt;&gt;,0)]
-| sort idx
-| fields - total
-| head $filter_head_indexes$</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">bar</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="charting.legend.placement">top</option>
-        <option name="height">447</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <set token="selected_caller">$click.name2$</set>
-          <eval token="selected_index">if(isnull($click.value$),"*",$click.value$)</eval>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_size"></unset>
-          <unset token="selected_duration"></unset>
-          <unset token="selected_size_lower"></unset>
-          <unset token="selected_size_upper"></unset>
-          <unset token="selected_size_filter"></unset>
-          <unset token="selected_duration_lower"></unset>
-          <unset token="selected_duration_upper"></unset>
-          <unset token="selected_duration_filter"></unset>
-        </drilldown>
-      </chart>
-    </panel>
-  </row>
-  <row depends="$selected_index$,$selected_caller$">
-    <panel>
-      <chart>
-        <title>Count of buckets by size and duration for caller=$selected_caller$ idx=$selected_index$</title>
-        <search>
-          <query>| loadjob $hot_roll_base$
-| search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-| bin size_mb span=log2 
-| bin duration span=log2 
-| chart limit=0 count by size_mb duration</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="height">368</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <eval token="selected_size">if(isnull($click.value$),NULL,$click.value$)</eval>
-          <eval token="selected_duration">if(isnull($click.name2$),NULL,if($click.name2$="0","0-0", $click.name2$))</eval>
-          <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
-          <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_mb AND size_mb&lt;=".$selected_size_upper$)</eval>
-          <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
-          <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
-          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_size"></unset>
-          <unset token="selected_duration"></unset>
-        </drilldown>
-      </chart>
-    </panel>
-    <panel>
-      <chart>
-        <title>Count of buckets by duration and size for caller=$selected_caller$ idx=$selected_index$</title>
-        <search>
-          <query>| loadjob $hot_roll_base$
-| search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-| bin size_mb span=log2 
-| bin duration span=log2 
-| chart limit=0 count by  duration size_mb</query>
-          <earliest>$earliest$</earliest>
-          <latest>$latest$</latest>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="height">357</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <eval token="selected_size">if(isnull($click.name2$),NULL,$click.name2$)</eval>
-          <eval token="selected_duration">if(isnull($click.value$),NULL,if($click.value$="0","0-0", $click.value$))</eval>
-          <eval token="selected_size_lower">substr($selected_size$,1,len(rtrim($selected_size$,"0123456789."))-1)</eval>
-          <eval token="selected_size_upper">substr($selected_size$,-(len($selected_size$)-len(rtrim($selected_size$,"0123456789."))))</eval>
-          <eval token="selected_size_filter">if(isnull($selected_size$),"TRUE()",$selected_size_lower$."&lt;=size_mb AND size_mb&lt;=".$selected_size_upper$)</eval>
-          <eval token="selected_duration_lower">substr($selected_duration$,1,len(rtrim($selected_duration$,"0123456789."))-1)</eval>
-          <eval token="selected_duration_upper">substr($selected_duration$,-(len($selected_duration$)-len(rtrim($selected_duration$,"0123456789."))))</eval>
-          <eval token="selected_duration_filter">if(isnull($selected_duration$),"TRUE()",$selected_duration_lower$."&lt;=duration AND duration&lt;=".$selected_duration_upper$)</eval>
-          <unset token="selected_bucket"></unset>
-          <unset token="selected_to_time"></unset>
-          <unset token="selected_from_time"></unset>
-          <unset token="selected_host"></unset>
-          <unset token="selected_from_bucket"></unset>
-          <unset token="selected_to_bucket"></unset>
-          <unset token="selected_size"></unset>
-          <unset token="selected_duration"></unset>
-        </drilldown>
-      </chart>
-    </panel>
-  </row>
-  <row depends="$selected_index$,$selected_caller$,$selected_size_filter$">
-    <panel>
-      <title></title>
+      <title>Indexer discovery via REST</title>
       <table>
-        <title>List of rolled buckets where selected_caller=$selected_caller$ AND selected_index=$selected_index$ AND size_mb&gt;=$selected_size$ AND duration&gt;=$selected_duration$</title>
-        <search id="buckets">
-          <progress>
-            <unset token="buckets"></unset>
-            <unset token="buckets"></unset>
-          </progress>
-          <done>
-            <set token="buckets">$job.sid$</set>
-          </done>
-          <query>| loadjob $hot_roll_base$
-| search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
-| where $selected_size_filter$ AND $selected_duration_filter$ 
-| eval duration_str=tostring(duration,"duration")
-| table  idx caller _time duration* size_mb host from to *
-| eval _from_time=from_time-1, _to_time=to_time+1</query>
+        <title>This method is flawed in that the REST API doesn't normally query all the SHs or the CM</title>
+        <search>
+          <query>| rest /services/server/info 
+| eval search_head=if(like(server_roles,"%search_head%"),1,0),
+    cluster_master=if(like(server_roles,"%cluster_master%"),1,0),
+    indexer=if(like(server_roles,"%indexer%"),1,0) 
+| stats values(eval(if(search_head=1,host,""))) as search_heads 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer 
+    by cluster_label 
+| eval search_heads="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
+    cluster_master="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
+    indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-2min</earliest>
+          <latest>-1min</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Component discovery via roles found in Metrics</title>
+      <table>
+        <title>This requires over a 60 min scan to get all the events</title>
+        <search>
+          <query>$selected_internal$ INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
+| fields host instance_roles index_cluster_label
+| eval search_head=if(like(instance_roles,"%search_head%"),1,0),
+    cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
+    indexer=if(like(instance_roles,"%indexer%"),1,0) 
+| stats values(eval(if(search_head=1,host,""))) as search_heads 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer by index_cluster_label
+| eval search_heads="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
+    cluster_master="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
+    indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Cluster master from Metrics using "cmmaster_service"</title>
+      <table>
+        <title>This is efficient in that is requires scanning over 30 seconds</title>
+        <search>
+          <query>$selected_internal$ Metrics Info TERM(name=cmmaster_service) sourcetype=splunkd TERM(group=subtask_counts)
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search</query>
+          <earliest>-2min</earliest>
+          <latest>-1min</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search head cluster members via Metrics</title>
+      <table>
+        <search>
+          <query>$selected_internal$ host=sh* sourcetype=splunkd sched_dispatch
+| stats values(host) as search
+| eval search="host IN (".mvjoin(search, ", ").")"  
+| fields + search</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
         </search>
-        <option name="drilldown">cell</option>
-        <option name="refresh.display">progressbar</option>
-        <format type="number" field="size_mb">
-          <option name="unit">GB</option>
-        </format>
-        <format type="number" field="duration">
-          <option name="precision">0</option>
-          <option name="unit">s</option>
-        </format>
-        <drilldown>
-          <set token="selected_bucket">$row.bid$</set>
-          <set token="selected_to_time">$row._to_time$</set>
-          <set token="selected_from_time">$row._from_time$</set>
-          <set token="selected_host">$row.host$</set>
-          <set token="selected_from_bucket">$row.from$</set>
-          <set token="selected_to_bucket">$row.to$</set>
-          <set token="bucket_history_search">Search history for $selected_bucket$ and $selected_from_bucket$ and $selected_to_bucket$</set>
-          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.") OR ".$selected_to_bucket$."")</eval>
-        </drilldown>
-      </table>
-    </panel>
-  </row>
-  <row depends="$selected_bucket$">
-    <panel>
-      <table>
-        <title>Reasons for rolling bucket $selected_bucket$ - missed nearest bucket by earliest=$display_miss_earliest$ latest=$display_miss_latest$</title>
-        <search>
-          <progress>
-            <set token="display_miss_latest">$result._miss_latest_str$</set>
-            <set token="display_miss_earliest">$result._miss_earliest_str$</set>
-          </progress>
-          <done>
-            <set token="display_miss_latest">$result._miss_latest_str$</set>
-            <set token="display_miss_earliest">$result._miss_earliest_str$</set>
-          </done>
-          <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
-| eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
-| table _time host message _miss*
-| eventstats values(_m*) as _m*</query>
-          <earliest>0</earliest>
-          <latest></latest>
-        </search>
+        <option name="count">10</option>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
-  <row depends="$selected_bucket$">
+  <row>
     <panel>
+      <title>REST API</title>
       <table>
-        <title>DBinspect results for $selected_bucket$ - click to drill down to see the contents of the bucket</title>
+        <title>Site discovery</title>
         <search>
-          <query>| dbinspect index=$selected_index$ | search bucketId=$selected_bucket$
-| eventstats values(splunk_server) as _indexers
-| eval _indexer_list="(splunk_server=".mvjoin(_indexers, " OR splunk_server=").")"</query>
-          <earliest>0</earliest>
-          <latest></latest>
+          <query>| rest /services/cluster/config
+| rex field=master_uri "https://(?&lt;cluster_master&gt;[^:]+)"
+| stats dc(splunk_server) as host_count values(splunk_server) as indexer by site cluster_master cluster_label
+| eval indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
         </search>
-        <option name="drilldown">cell</option>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <link target="_blank">search?q=index=$selected_index$ $row._indexer_list$  | search _bkt=$selected_bucket$&amp;earliest=$selected_from_time$&amp;latest=$selected_to_time$</link>
-        </drilldown>
       </table>
     </panel>
   </row>
-  <row depends="$selected_bucket$">
+  <row>
     <panel>
-      <html>
-<h2 style="text-align:center">        <a target="_blank" rel="noopener noreferrer" href="search?earliest=0&amp;latest=&amp;q=$bucket_history_search_url$">
-         Search history of $selected_to_bucket$
-        </a>
-        </h2>
-
-  </html>
+      <title>Sites by CMMaster bucket creation messages</title>
+      <input type="time" token="time_site_cmmaster">
+        <label></label>
+        <default>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+      <table>
+        <title>The time range may vary based on the number of bucket rolls</title>
+        <search>
+          <query>$selected_internal$ sourcetype=splunkd CMMaster status=success site*
+| rex field=message max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
+| eval cluster_master=host
+| fields + site_pair cluster_master
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;indexer&gt;.*)"
+| stats values(indexer) as indexer by site_id cluster_master
+| eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>$time_site_cmmaster.earliest$</earliest>
+          <latest>$time_site_cmmaster.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
     </panel>
   </row>
-    <row depends="$selected_indexers$">
-
+  <row>
     <panel>
-      <title>Hyperlinks into the base reports</title>
-      <html>
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_url$">freeze_base=$freeze_base$</a>
-</p>
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_time_narrowed_url$">freeze_base_time_narrowed=$freeze_base_time_narrowed$</a>
-</p>
-
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_time_narrowed_index_filtered_url$">freeze_base_time_narrowed_index_filtered=$freeze_base_time_narrowed_index_filtered$</a>
-</p>
-
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_url$">hot_roll_base=$hot_roll_base$</a>
-</p>
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_time_narrowed_urll$">hot_roll_base_time_narrowed=$hot_roll_base_time_narrowed$</a>
-</p>
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_time_narrowed_index_filtered_urll$">hot_roll_base_time_narrowed_index_filtered=$hot_roll_base_time_narrowed_index_filtered$</a>
-</p>
-<p/>
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merge_hot_frozen_report_url$">merge_hot_frozen_report=$merge_hot_frozen_report$</a>
-</p>
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merged_finished_url_url$">merged_finished=$merged_finished$</a>
-</p>
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merge_hot_frozen_report_time_narrowed_index_filtered_url$">merge_hot_frozen_report_time_narrowed_index_filtered=$merge_hot_frozen_report_time_narrowed_index_filtered$</a>
-</p>
-
-<p/>
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$annotations_base_url$">annotations_base=$annotations_base$</a>
-</p>
-<p/>
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$annotations_base_url$">annotations=$annotations$</a>
-</p>
-
-<p style="text-align:center">  
-</p>
-  </html>
+      <title>The host as reported by dbinspect, great if you don't have access to internal logs or the REST API</title>
+      <table>
+        <search>
+          <query>| dbinspect index=* 
+| stats values(splunk_server) as indexer 
+| eval host_count=mvcount(indexer), indexer="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
+          <earliest>-1hr</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+      </table>
     </panel>
   </row>
-  <row depends="$HIDE_ME$">
-    <panel>
-      <html>
-    <h1>Bindings for page</h1>
-<p>form.time.earliest=$form.time.earliest$</p>
-<p>form.time.latest=$form.time.latest$</p>
-<p>form.filter_head_indexes=$form.filter_head_indexes$</p>
-<p>form.filter_index_names=$form.filter_index_names$</p>
-<p>time.earliest=$time.earliest$</p>
-<p>time.latest=$time.latest$</p>
-<p>seconds_for_bin=$seconds_for_bin$</p>
-<p>drilldown_seconds_for_bin=$drilldown_seconds_for_bin$</p>
-<p>selected_indexes=$selected_indexes$</p>
-<p>selected_indexers=$selected_indexers$</p>
-<p>selected_annotations=$selected_annotations$</p>
-<p>selected_index=$selected_index$</p>
-<p>selected_caller=$selected_caller$</p>
-<p>selected_bucket=$selected_bucket$</p>
-<p>selected_to_time=$selected_to_time$</p>
-<p>selected_from_time=$selected_from_time$</p>
-<p>selected_host=$selected_host$</p>
-<p>selected_from_bucket=$selected_from_bucket$</p>
-<p>selected_to_bucket=$selected_to_bucket$</p>
-<p>selected_size=$selected_size$</p>
-<p>selected_duration=$selected_duration$</p>
-<p>selected_size_lower=$selected_size_lower$</p>
-<p>selected_size_upper=$selected_size_upper$</p>
-<p>selected_size_filter=$selected_size_filter$</p>
-<p>selected_duration_lower=$selected_duration_lower$</p>
-<p>selected_duration_upper=$selected_duration_upper$</p>
-<p>selected_duration_filter=$selected_duration_filter$</p>
-  </html>
-    </panel>
-  </row>
-  <row rejects="$selected_indexers$"><panel><html><h1 style="text-align:center">Please select an cluster master and site</h1></html></panel></row>
 </form>
