@@ -4,6 +4,28 @@
     <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
     <set token="selected_ingest_pipe">*</set>
   </init>
+        <search id="annotation_restarts">
+          <query>| multisearch 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    | eval column="started" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    | eval column="new" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    | eval column="shutdown" ] 
+    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    | eval column="crash" ] 
+| fields + _time host column 
+| appendpipe 
+    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
+    | eval column=mvjoin(column,"-&gt;"), 
+        _time=_time+duration] 
+| where column!="started" 
+| eval annotation_label=host, annotation_category=column</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>  
+  
   <search id="thruput">
     <query>$_internal$ host=$selected_host$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
 | fillnull ingest_pipe 0 
@@ -249,7 +271,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
   </row>
   <row depends="$selected_host$">
     <panel>
-      <title>Load average for $selected_host$</title>
+      <title>Load average for $selected_host$ with annotated restarts</title>
       <input type="dropdown" token="selected_load_average_function">
         <label>Select aggregation function</label>
         <choice value="avg">average</choice>
@@ -268,6 +290,8 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_restarts" type="annotation"/>
+        
         <search base="thruput">
           <query>| search name=thruput _time&gt;=$time.earliest$ _time&lt;=$time.latest$
 | fields _time load_average 
