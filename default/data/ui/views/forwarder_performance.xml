@@ -63,7 +63,7 @@
     dc(guid) as guid_count
     dc(sourceIp) as count_sources
     dc(_time) as mentions
-    by hostname ingest_pipe readings
+    by hostname sourceHost sourcePort ingest_pipe readings
 | eventstats 
     sum(max_tcp_KBps) as total_sum_avg_KBps
     stdev(tcp_KBps) as avg_stdev_KBps
@@ -484,7 +484,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <query>| search type=$selected_host_type$ os=$selected_host_os$ version=$selected_host_version$ ingest_pipe=$filter_pipelines$
 | rename guid_count as "# guids"
 | eval "connected for"=mentions."/".readings, "connected %"=(mentions/readings)* 100
-| table hostname guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "connected for" "connected %" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch 
+| table hostname sourceHost sourcePort guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "connected for" "connected %" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch 
 | sort 0 "volume ranking"
 | rename ingest_pipe as "ingest pipe"</query>
         </search>
@@ -592,7 +592,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
+        <search base="annotation_parsing_problems" type="annotation"></search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
