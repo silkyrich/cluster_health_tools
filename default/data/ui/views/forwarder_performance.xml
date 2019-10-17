@@ -215,6 +215,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     </input>
     <input type="text" token="selected_host">
       <label>Enter forwarder name</label>
+      <change>
+        <unset token="filter_pipelines"></unset>
+      </change>
     </input>
     <input type="dropdown" token="filter_pipelines">
       <label>Filter to pipeline</label>
@@ -658,7 +661,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </chart>
     </panel>
   </row>
-  <row depends="$selected_host$">
+  <row depends="$selected_host$" rejects="$show_tcp_out_panel$">
+    <panel>
+      <title>TCP output metrics for pipeline $filter_pipelines$ on $selected_host$</title>
+      <html>
+        <h1 style="text-align:center">No TCP out on $selected_host$, host is most likely to be an indexer</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$show_tcp_out_panel$">
     <panel>
       <title>TCP output metrics for pipeline $filter_pipelines$ on $selected_host$</title>
       <input type="dropdown" token="tcp_out_variable">
@@ -684,9 +695,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <search id="annotation_timeout" type="annotation">
           <query>$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
 | eval annotation_label="connect fail",
-    annotation_category=destHost</query>
+    annotation_category=destHost
+$show_tcp_out_panel$    
+    </query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
+          <done>
+            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
