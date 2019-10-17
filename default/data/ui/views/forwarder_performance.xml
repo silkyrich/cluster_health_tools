@@ -217,6 +217,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <label>Enter forwarder name</label>
       <change>
         <unset token="filter_pipelines"></unset>
+        <unset token="show_tcp_out_panel"></unset>
       </change>
     </input>
     <input type="dropdown" token="filter_pipelines">
@@ -691,18 +692,19 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <search base="tcp_out">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
+          <done>
+            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
         </search>
         <search id="annotation_timeout" type="annotation">
-          <query>$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+          <query>
+$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
 | eval annotation_label="connect fail",
     annotation_category=destHost
 $show_tcp_out_panel$    
     </query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
-          <done>
-            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </done>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
