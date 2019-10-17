@@ -52,7 +52,7 @@
   </search>
   <search id="per_host">
     <query>
-| tstats max(_indextime) AS indexed_time count where host=$selected_host$ (index=* OR index=_*) latest=now earliest=$time.earliest$ _index_latest=$time.latest$ _index_earliest=$time.earliest$  by index host sourcetype splunk_server _time source span=$seconds_for_bin$
+| tstats max(_indextime) AS indexed_time count where host=$selected_host$ (index=* OR index=_*) latest=now earliest=$time.earliest$ _index_latest=$time.latest$ _index_earliest=$time.earliest$  by index host sourcetype splunk_server _time span=$seconds_for_bin$
 | eval _time=round(_time), bin_delay=indexed_time-_time
 | bin span=2log5 bin_delay 
 </query>
