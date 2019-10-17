@@ -2,6 +2,8 @@
   <label>Forwarder performance</label>
   <init>
     <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="series_thruput_max">0</set>
+    <eval token="series_thruput_min">now()</eval>
   </init>
   <search id="annotation_restarts">
     <query>| multisearch 
@@ -198,6 +200,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </default>
       <change>
         <unset token="finished_per_series_thruput"></unset>
+        <unset token="finished_per_series_thruput"></unset>
+        <set token="series_thruput_max">0</set>
+        <eval token="series_thruput_min">now()</eval>
       </change>
     </input>
     <input type="text" token="selected_host">
@@ -265,6 +270,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart span=31sec limit=0 
@@ -273,7 +279,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | foreach * 
     [| eval *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
-        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -322,21 +327,29 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
-          <query>| search name=thruput _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+          <query>| search name=thruput 
 | fields _time load_average 
 | timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
   </row>
-  <row depends="$selected_host$">
+  <row depends="$selected_host$" rejects="$show_queue_panel$">
     <panel>
-      <title>Queue filling for $filter_pipelines$ on $selected_host$</title>
+      <title>Queue filling for pipeline $filter_pipelines$ on $selected_host$</title>
+      <html>
+        <h1 style="text-align:center">No blocking detected</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$show_queue_panel$">
+    <panel>
+      <title>Queue filling for pipeline $filter_pipelines$ on $selected_host$</title>
       <input type="dropdown" token="queue_fill">
         <label>Queue fill measure</label>
         <choice value="normalized_pct">Normalized %</choice>
@@ -344,12 +357,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="queue">
-          <query>| search ingest_pipe=$filter_pipelines$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
-| timechart span=31sec avg($queue_fill$) by name</query>
-        </search>
         <search base="annotation_blocking_filtered" type="annotation">
           <query/>
+        </search>
+        <search base="queue">
+          <query>| search ingest_pipe=$filter_pipelines$ 
+| timechart span=31sec avg($queue_fill$) by name</query>
+          <done>
+            <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -372,11 +388,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>sourcetype</default>
       </input>
       <chart>
+        <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
+        <search base="annotation_parsing_problems" type="annotation">
+          <query/>
+        </search>
         <search base="per_series_thruput">
           <done>
             <set token="finished_per_series_thruput">| noop</set>
           </done>
-          <query>| search group=per_$selected_group$_thruput ingest_pipe=$filter_pipelines$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+          <query>| search group=per_$selected_group$_thruput ingest_pipe=$filter_pipelines$ 
 | bin _time span=31sec 
 | stats avg(eps) as eps
     avg(kb) as kb
@@ -387,19 +407,18 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     by _time series host
 | timechart span=31sec limit=30 avg(kb) as kb by series</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation">
-          <query/>
-        </search>
+        <selection>
+          <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
+          <eval token="series_thruput_min">if($start$&lt;$series_thruput_min$,$start$,$series_thruput_min$)</eval>
+          <eval token="selection_per_series_earliest">if(isnotnull($finished_per_series_thruput$) AND $start$!=$series_thruput_min$, $start$, NULL)</eval>
+          <eval token="selection_per_series_latest">if(isnotnull($finished_per_series_thruput$) AND $end$ != $series_thruput_max$, $end$, NULL)</eval>
+        </selection>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">419</option>
         <option name="refresh.display">progressbar</option>
-        <selection>
-          <eval token="selection_per_series_earliest">if(isnotnull($finished_per_series_thruput$), $start$, NULL)</eval>
-          <eval token="selection_per_series_latest">if(isnotnull($finished_per_series_thruput$), $end$, NULL)</eval>
-        </selection>
       </chart>
     </panel>
   </row>
@@ -561,12 +580,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="pipeline_processor_aggregated">
-          <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+          <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -608,8 +627,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation"></search>
         <search base="channels">
-          <query>| search ingest_pipe=$filter_pipelines$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
+          <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart span=31sec limit=30
     $selected_channels_function$(current_size) as current_size
     $selected_channels_function$(inactive_channels) as inactive_channels
@@ -621,7 +641,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     by ingest_pipe
 | fields _time $channel_variable$</query>
         </search>
-        <search base="annotation_blocking_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -650,16 +669,16 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>destIp</default>
       </input>
       <chart>
-        <search base="tcp_out">
-          <query>| search ingest_pipe=$filter_pipelines$ _time&gt;=$time.earliest$ _time&lt;=$time.latest$
-| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
-        </search>
         <search id="annotation_timeout" type="annotation">
           <query>$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
 | eval annotation_label="connect fail",
     annotation_category=destHost</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
+        </search>
+        <search base="tcp_out">
+          <query>| search ingest_pipe=$filter_pipelines$ 
+| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
