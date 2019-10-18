@@ -541,7 +541,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <scale type="threshold">80</scale>
         </format>
         <drilldown>
-          <link target="_blank">/app/search/forwarder_performance?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </table>
     </panel>
