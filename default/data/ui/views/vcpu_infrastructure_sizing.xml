@@ -1,6 +1,9 @@
 <form>
   <label>Infrastructure assessment</label>
   <description>Bought to you by Richard Morgan productions - a Principal Architect at Splunk</description>
+  <init>
+    <set token="_internal">(index=_internal)</set>
+  </init>
   <fieldset submitButton="false">
     <input type="checkbox" token="show_base_searches">
       <label></label>
@@ -8,15 +11,13 @@
       <delimiter> </delimiter>
     </input>
   </fieldset>
-  <init>
-    <set token="_internal">(index=_internal)</set>
-  </init>
   <row>
     <panel>
       <html>
 <h1>Introduction</h1>
 
-This dashboard contains a series of searches that attempt to reverse engineer and size your Splunk infrastructure. It classifies each host to its role, counts the number of CPUs, extracts the software version, measures CPU utilisation, assesses the search load for each component. The output can aid with vCPU pricing and allow the comparision with other instances of Splunk. The latest version can be found <a href="https://github.com/silkyrich/cluster_health_tools/blob/master/default/data/ui/views/vcpu_infrastructure_sizing.xml">here</a><p/>
+This dashboard contains a series of searches that attempt to reverse engineer and size your Splunk infrastructure. It classifies each host to its role, counts the number of CPUs, extracts the software version, measures CPU utilisation, assesses the search load for each component. The output can aid with vCPU pricing and allow the comparision with other instances of Splunk. The latest version can be found <a href="https://github.com/silkyrich/cluster_health_tools/blob/master/default/data/ui/views/vcpu_infrastructure_sizing.xml">here</a>
+        <p/>
 
 <h2>Install the dashboard</h2>
 
@@ -96,7 +97,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="tcpin_connections">$job.sid$</set>
           </done>
-          <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now 
+          <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) earliest=-15min latest=now  TERM(fwdType=full)
 | stats 
     values(connectionType) as tcp_connectionType
     values(arch) as tcp_arch
@@ -319,7 +320,7 @@ All information is provided at your own risk. All data collected is classfied se
     sum(vcpu_count) as total_vCPU
     sum(cpu_used) as vCPU_used
     median(avg_cpu_usage_pct) as avg_cpu_usage_pct
-    avg(license_*) as lic_*
+    sum(license_*) as lic_*
     avg(search_con_active_p95) as search_con_p95
     by primary_role idx_cluster_name
 | table primary_role idx_cluster_name instances total_vCPU avg_cpu_usage_pct search_con_p95 vCPU_used lic_*
