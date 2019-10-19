@@ -485,11 +485,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | rename guid_count as "# guids"
 | eval "connected for"=mentions."/".readings, "connected %"=(mentions/readings)* 100
 | table hostname sourceHost sourcePort guid guid_count ingest_pipe "volume ranking" "speed ranking" "indexer coverage"  "%" "connected for" "connected %" "max speed" "speed variability" "data" "data %" "os" "type" "version" arch 
-| sort 0 "volume ranking"
+| sort 0 - "data"
 | rename ingest_pipe as "ingest pipe"</query>
         </search>
         <option name="count">20</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="number" field="indexer coverage">
           <option name="precision">0</option>
           <option name="unit">%</option>
@@ -541,7 +542,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <scale type="threshold">80</scale>
         </format>
         <drilldown>
-          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">/app/search/forwarder_performance?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </table>
     </panel>
@@ -685,16 +686,18 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <label>Select variable</label>
         <choice value="destIp">destIp</choice>
         <choice value="name">name</choice>
-        <choice value="sourcePort">sourcePort</choice>
+        <choice value="channel">channel</choice>
+        <choice value="group">group</choice>
         <default>destIp</default>
       </input>
       <chart>
         <search base="tcp_out">
-          <query>| search ingest_pipe=$filter_pipelines$ 
-| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
           <done>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
+          <query>| search ingest_pipe=$filter_pipelines$ 
+| rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)"
+| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
         </search>
         <search id="annotation_timeout" type="annotation">
           <query>
