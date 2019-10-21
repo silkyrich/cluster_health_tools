@@ -1,0 +1,36 @@
+<dashboard>
+  <label>Splunk Diagnostics Launch Pad</label>
+  <row><panel><html>
+    <h1>Introduction</h1>
+<p>Welcome to Richard Morgan's collection of diagnostic dashboards. As a Principal SE Architect at Splunk working in the EMEA region for many years I have developed my own dashboards to debug and assess the correct and efficient working of Splunk. I use these dashboards in my day to day job and I am proud to share them with the wider community.</p>
+
+<p>All these dashboards have been built with the following principles:</p>
+<ul>
+<li>Install by copy and paste - Customers struggle to install apps, very dashboard is self-contained and can be installed in isolation. This means no datamodels, no macros, no saved searches.</li>
+<li>Any search head will do - Not all users have access to the cluster master or MC, these frequently don't connect all clusters. Pick a search head that connects to the most instances.</li>
+<li>Reserve engineer infrastructure - Rather than rely on the correct configuration of Splunk, try and reverse engineer what is an indexer, search head etc by the messages that they generate.</li>
+<li>Reserve engineer infrastructure - Rather than rely on the correct configuration of Splunk, try and reverse engineer what is an indexer, search head etc by the messages that they generate.</li>
+<li>Use minimum permissions - In my experience the REST API isn't available to all users and cannot be relied on. Instead only use the lower common demonator - search. Your user only needs permission to the _internal and _introspection indexes for this suite to work.</li>
+<li>Be fast as possible - I hate waiting for results, every dashboard has been aggressively optimized to use the least amount of computation. Typically, these dashboards will run a single search on load, after this any manipulation of the data on screen reuses the existing data sitting on the search head.</li>
+<li>Show case the power of Splunk - Use the cool features like annotation and selections, auto hiding and do computation via tokens</li>
+<li>Inline documentation - help should be where you need it, i.e. on the dashboard you are using.</li>
+<li>Be information dense - Fit as much useful data as possible into a dashboard so that judgements can be made from a single pane of glass.</li>
+<li>Support workflow and transitions - Each dashboard allows you to transition to others while keeping your time range and selected concept, be it an index, a host, a search or a user.</li>
+</ul>
+<h2>Catalogue</h2>
+You can access the dashboards and the sources from the links below. When installing the dashbaords please make sure you get the names exactly right for the transistions to work. 
+<h3><a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders">Forwarder weight analysis </a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/debug_incomming_forwarders.xml">download xml</a></h3>
+<p>This tool reads from the metrics about the forwarders connecting to your indexers. You can select an entire cluster or a single site and the tool will rank forwarders by their contribution of data. This is important as very common to have a single forwarder send a significant about of data to the cluster. In the extreme cases it is not uncommon for 90% of the data to come from just 5% of the forwarders. It is therefore very important to tune how this 5% to work efficiently and correctly. The remaining 95% of forwarders then become little more than rounding errors. This tool will allow you to browse the forwarder population and at a high level understand its contribution, its burstiness, maximum data rates how long it takes to sweep the entire cluster, the software build and OS.</p>
+<h3><a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders">Debug Ingestion</a> - <a target="_blank" rel="noopener noreferrer" href="https://github.com/silkyrich/cluster_health_tools/blob/master/default/data/ui/views/debug_ingestion.xml">download xml</a></h3>
+<p>This tool instruments all logging around the ingestion pipelines, including: pipeline utilization, load, parsing errors, blocking, connecting forwarders, channel creation, output performance. You can select a single pipeline and see metrics about the sources passing through it, identify problematic sources and drill backwards through the forwarding chain to the source.</p>
+<h3><a target="_blank" rel="noopener noreferrer" href="event_delay">Event delay per index</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay.xml">download xml</a></h3>
+<p>This tool measures event delay at scale simply by comparing the indexed field "_indexTime" and _time using tstats. By default, the search targets very event received over the last second. Use this tool to find indexes which are receiving from the past or the future, and then drill in to find which specific hosts are responsible for the ill-timed events.</p>
+<h3><a target="_blank" rel="noopener noreferrer" href="event_delay_for_host">Event delay for host</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay_for_host.xml">download xml</a></h3>
+<p>This tool is similar to "Event delay per index", but instead of measuring one second for all hosts, it measures one host for 24 hours (by default). Use this tool to understand if a host is sending data to the cluster in a timely manor.</p>
+<h3><a target="_blank" rel="noopener noreferrer" href="event_delay_for_host">Bucket roll analysis</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay_for_host.xml">download xml</a></h3>
+<p>This tool allows you to understand and measure the efficiency of the bucket rolling across all indexes, and drills down into the behaviour of specific indexes. Select a bucket and it constructs a search to find what is in that bucket. Use this tool to understand and reduce the frequency of bucket rolls.</p>
+<h3><a target="_blank" rel="noopener noreferrer" href="event_distribution_measurement">Bucket roll analysis</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_distribution_measurement.xml">download xml</a></h3>
+<p>Event distribution is critical to search workload distribution and the scale out of your environment. This tool measures how well event distribution is working in your environment. You can select multiple indexes and see how quickly randomisation is working.</p>
+    
+  </html></panel></row>
+</dashboard>
