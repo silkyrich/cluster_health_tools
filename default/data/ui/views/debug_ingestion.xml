@@ -648,7 +648,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation"></search>
+        <search base="annotation_parsing_problems" type="annotation">
+          
+| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*
+          
+          
+        </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
