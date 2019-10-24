@@ -597,6 +597,23 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </table>
     </panel>
   </row>
+  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$">
+    <panel>
+      <title>Parsing problems $selected_host$ for all pipelines</title>
+      <table>
+        <search base="annotation_parsing_problems">
+          <query>| search _time&gt;$selection_per_series_earliest$ _time&lt;$selection_per_series_latest$
+| stats count values(reason) as reason by naughty_host naughty_sourcetype naughty_source
+| sort - count</query>
+        </search>
+        <option name="count">10</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_self">/app/search/forwarder_performance?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
   <row depends="$selected_host$">
     <panel>
       <title>Pipeline processor cpu and execution for pipeline $filter_pipelines$ on $selected_host$</title>
@@ -648,35 +665,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation">
-          
-| eval annotation_label=naughty_$selected_group$,
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
     annotation_category=reason
-| table _time anno*
-          
-          
-        </search>
+| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">484</option>
         <option name="refresh.display">progressbar</option>
       </chart>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Parsing problems $selected_host$ for all pipelines</title>
-      <table>
-        <search base="annotation_parsing_problems">
-          <query>| stats count values(reason) as reason by naughty_host naughty_sourcetype naughty_source
-| sort - count</query>
-        </search>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <link target="_self">/app/search/forwarder_performance?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
-        </drilldown>
-      </table>
     </panel>
   </row>
   <row depends="$selected_host$">
