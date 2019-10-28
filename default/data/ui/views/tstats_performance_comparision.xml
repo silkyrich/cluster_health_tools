@@ -8,14 +8,33 @@
         <latest>now</latest>
       </default>
     </input>
+    <input type="dropdown" token="splitby">
+      <label>split by</label>
+      <choice value="data.search_props.sid">data.search_props.sid</choice>
+      <choice value="host">host</choice>
+      <default>data.search_props.sid</default>
+    </input>
   </fieldset>
   <row>
     <panel>
-      <title>Standard search = $hostname_search$ seconds</title>
+      <html>
+        <h1>Test 1</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$hostname_search$ seconds - $hostname_search_sid$</title>
       <chart>
-        <search>
-          <done>
+        <title>$hostname_search_query$</title>
+        <search id="hostname_search">
+          <progress>
             <set token="hostname_search">$job.runDuration$</set>
+            <set token="hostname_search_query">$job.search$</set>
+            <unset token="hostname_search_sid">$job.sid$</unset>
+          </progress>
+          <done>
+            <set token="hostname_search_sid">$job.sid$</set>
           </done>
           <query>index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) 
 | stats count
@@ -59,11 +78,17 @@
       </chart>
     </panel>
     <panel>
-      <title>tstats new method = $hostname_tstats$ seconds</title>
+      <title>$hostname_tstats$ seconds - $hostname_tstats_sid$</title>
       <chart>
-        <search>
-          <done>
+        <title>$hostname_tstats_query$</title>
+        <search id="hostname_tstats">
+          <progress>
+            <unset token="hostname_tstats_sid">$job.sid$</unset>
             <set token="hostname_tstats">$job.runDuration$</set>
+            <set token="hostname_tstats_query">$job.search$</set>
+          </progress>
+          <done>
+            <set token="hostname_tstats_sid">$job.sid$</set>
           </done>
           <query>| tstats 
     count
@@ -110,15 +135,64 @@
   </row>
   <row>
     <panel>
+      <title>Search performance results</title>
       <chart>
-        <title>introspection standard search = $job.runDuration$</title>
+        <title>$hostname_search_query$</title>
         <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_search_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Search performance results</title>
+      <chart>
+        <title>$hostname_tstats_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Test 2</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$introspection_search$ seconds - $introspection_search_sid$</title>
+      <chart>
+        <title>$introspection_search_query$</title>
+        <search id="introspection_search">
           <query>index=_introspection data.cpu_user_pct=* host=idx* 
 | timechart limit=0 p95(data.cpu_user_pct) as data.cpu_user_pct by host</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
-          <done>
+          <progress>
             <set token="introspection_search">$job.runDuration$</set>
+            <set token="introspection_search_sid">$job.sid$</set>
+            <set token="introspection_search_query">$job.search$</set>
+          </progress>
+          <done>
+            <set token="introspection_search_sid">$job.sid$</set>
           </done>
         </search>
         <option name="charting.chart">line</option>
@@ -127,16 +201,22 @@
       </chart>
     </panel>
     <panel>
-      <title>_introspection with tstats - $introspection_tstats$</title>
+      <title>$introspection_tstats$ seconds - $introspection_tstats_sid$</title>
       <chart>
+        <title>$introspection_tstats_query$</title>
         <search>
           <query>| tstats p95(data.cpu_user_pct) as cpu_user_pct where component=hostwide index=_introspection host=idx* by host _time span=3hr
 | timechart span=3hr limit=0 p95(cpu_user_pct) as cpu_user_pct by host</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
           <sampleRatio>1</sampleRatio>
-          <done>
+          <progress>
+            <unset token="introspection_tstats_sid">$job.sid$</unset>
             <set token="introspection_tstats">$job.runDuration$</set>
+            <set token="introspection_tstats_query">$job.search$</set>
+          </progress>
+          <done>
+            <set token="introspection_tstats_sid">$job.sid$</set>
           </done>
         </search>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
@@ -176,11 +256,56 @@
   </row>
   <row>
     <panel>
-      <title>group=queue - search = $queue_search$</title>
+      <title>Search performance results</title>
       <chart>
+        <title>$introspection_search_query$</title>
         <search>
-          <done>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$introspection_search_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Search performance results</title>
+      <chart>
+        <title>$introspection_tstats_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Test 3</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$queue_search$ seconds - $queue_search_sid$</title>
+      <chart>
+        <title>$queue_search_query$</title>
+        <search>
+          <progress>
             <set token="queue_search">$job.runDuration$</set>
+            <set token="queue_search_query">$job.search$</set>
+            <unset token="queue_search_sid"></unset>
+          </progress>
+          <done>
+            <set token="queue_search_sid">$job.sid$</set>
           </done>
           <query>index=_internal sourcetype=splunkd host=idx* TERM(group=queue) TERM(name=*) 
 | timechart limit=0 span=3hr p99(current_size) by name</query>
@@ -223,11 +348,17 @@
       </chart>
     </panel>
     <panel>
-      <title>group=queue - $queue_tstats$</title>
+      <title>$queue_tstats$ seconds - $queue_tstats_sid$</title>
       <chart>
+        <title>$queue_tstats_query$</title>
         <search>
-          <done>
+          <progress>
+            <unset token="queue_tstats_sid">$job.sid$</unset>
             <set token="queue_tstats">$job.runDuration$</set>
+            <set token="queue_tstats_query">$job.search$</set>
+          </progress>
+          <done>
+            <set token="queue_tstats_sid">$job.sid$</set>
           </done>
           <query>| tstats p99(PREFIX(current_size=)) as current_size where index=_internal sourcetype=splunkd host=idx* TERM(group=queue) TERM(name=*) by PREFIX(name=) _time span=3hr
 | rename name= as name
@@ -243,15 +374,61 @@
   </row>
   <row>
     <panel>
+      <title>Search performance results</title>
       <chart>
-        <title>connect_type search = $connect_type_search$</title>
+        <title>$queue_search_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$queue_search_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Search performance results</title>
+      <chart>
+        <title>$queue_tstats_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$queue_tstats_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Test 4</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$connect_type_search$ secounds - $connect_type_search_sid$</title>
+      <chart>
+        <title>$connect_type_query$</title>
         <search>
           <query>index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) 
 | timechart span=3hrs count by eventType</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
+          <progress>
+            <unset token="connect_type_search_sid">$job.sid$</unset>
+          </progress>
           <done>
             <set token="connect_type_search">$job.runDuration$</set>
+            <set token="connect_type_search_sid">$job.sid$</set>
           </done>
         </search>
         <option name="charting.chart">line</option>
@@ -260,19 +437,61 @@
       </chart>
     </panel>
     <panel>
+      <title>$connect_type_tstats$ seconds - $connect_type_tstats_sid$</title>
       <chart>
-        <title>connect_type tstats = $connect_type_tstats$</title>
+        <title>$connect_type_tstats_query$</title>
         <search>
           <query>| tstats count where index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) by _time PREFIX(eventtype=) span=3hrs
 | timechart span=3hrs sum(count) by "eventtype="</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
-          <done>
+          <progress>
+            <unset token="connect_type_tstats_sid">$job.sid$</unset>
             <set token="connect_type_tstats">$job.runDuration$</set>
-          </done>          
+            <set token="connect_type_tstats_query">$job.search$</set>
+          </progress>
+          <done>
+            <set token="connect_type_tstats_sid">$job.sid$</set>
+          </done>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Searchg Performance</title>
+      <chart>
+        <title>$introspection_search_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$connect_type_search_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Search performance</title>
+      <chart>
+        <title>$connect_type_tstats_query$</title>
+        <search>
+          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$connect_type_tstats_sid$ by _time data.search_props.sid host span=1sec
+| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
