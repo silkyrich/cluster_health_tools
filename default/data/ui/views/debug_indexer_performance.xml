@@ -9,7 +9,7 @@
     $iostats_aggregation_function$(data.reads_ps) as reads_ps
     $iostats_aggregation_function$(data.writes_kb_ps) as writes_kb_ps
     $iostats_aggregation_function$(data.writes_ps) as writes_ps
-    where component::iostats index=_introspection $selected_indexers$
+    where component::iostats index=_introspection $selected_targets$
     by host
     data.device
     data.mount_point
@@ -35,7 +35,7 @@
     $hostwide_aggregation_function$(data.runnable_process_count) as runnable_process_count 
     $hostwide_aggregation_function$(data.swap) as swap 
     $hostwide_aggregation_function$(data.swap_used) as swap_used 
-    where index=_introspection $selected_indexers$ by data.splunk_version data.os_version host _time span=$seconds_for_bin$sec 
+    where index=_introspection $selected_targets$ by data.splunk_version data.os_version host _time span=$seconds_for_bin$sec 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval label=short_name." (".instance_type."+".os_version.")"
 | eval label=short_name
@@ -60,17 +60,22 @@ $overlay_option$</query>
     <latest></latest>
   </search>
   <search id="event_delay">
-    <query>| tstats max(_indextime) AS indexed_time count where $_internal$ $selected_indexers$ latest=now earliest=$time.earliest$ _index_latest=$selection_latest$ _index_earliest=$selection_earliest$  by source host _time span=1sec 
-| eval _time=round(_time), indexing_delay=indexed_time-_time 
+    <query>
+      
+      
+      
+      $_internal$ NOT source=remote_searches.log $selected_targets$ (latest=$time.latest$ earliest=$time.earliest$) OR (_index_latest=$selection_latest$ _index_earliest=$selection_earliest$)
+| eval _time=floor(_time), indexing_delay=_indextime-_time 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| eval _time=indexed_time     
+| eval _time=_indextime     
           | table *
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
   </search>
   <search id="blocking">
-    <query>$_internal$ $selected_indexers$ TERM(blocked=true) sourcetype=splunkd 
+    <query>$_internal$ $selected_targets$ TERM(blocked=true) sourcetype=splunkd 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | table _time short_name name
 </query>
@@ -79,12 +84,12 @@ $overlay_option$</query>
     <sampleRatio>1</sampleRatio>
   </search>
   <fieldset submitButton="false">
-    <input type="multiselect" token="selected_indexers">
+    <input type="multiselect" token="form.selected_targets">
       <label>1. Select CM, site or hosts</label>
       <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
-      <search>
+      <search id="cluster_membership">
         <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
 | eval cluster_master=host 
@@ -115,6 +120,9 @@ $overlay_option$</query>
         <latest>now</latest>
       </search>
     </input>
+    <input type="text" token="selected_targets">
+      <label>Selected targets</label>
+    </input>
     <input type="time" token="time">
       <label></label>
       <default>
@@ -134,17 +142,12 @@ $overlay_option$</query>
       <choice value="500">Medium</choice>
       <choice value="750">High</choice>
       <choice value="999">Ultra</choice>
-      <default>500</default>
+      <default>250</default>
       <change>
         <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
         <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
       </change>
-    </input>
-    <input type="checkbox" token="show_override_panel">
-      <label>Show override panel</label>
-      <choice value="*">Show panels</choice>
-      <delimiter> </delimiter>
     </input>
   </fieldset>
   <row>
@@ -161,7 +164,7 @@ $overlay_option$</query>
           <query>| rest /services/server/introspection/indexer 
 | sort - splunk_server 
 | rename splunk_server as host
-| search $selected_indexers$
+| search $selected_targets$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | table short_name average_KBps 
 | eventstats stdev(average_KBps) avg(average_KBps)</query>
@@ -183,7 +186,7 @@ $overlay_option$</query>
       <title>Aggregate performance of the cluster + the stdev. We want the stdev to be very low</title>
       <chart>
         <search>
-          <query>$_internal$ $selected_indexers$ TERM(group=thruput) TERM(name=thruput) 
+          <query>$_internal$ $selected_targets$ TERM(group=thruput) TERM(name=thruput) 
 | bin span=$seconds_for_bin$sec _time 
 | stats sum(instantaneous_kbps) as instantaneous_kbps by host _time 
 | timechart stdev(instantaneous_kbps) avg(instantaneous_kbps) span=$seconds_for_bin$sec</query>
@@ -287,21 +290,21 @@ $overlay_option$</query>
       <input type="dropdown" token="selected_log_file">
         <label>Select internal log file</label>
         <choice value="*metrics.log">metrics.log</choice>
-        <choice value="*remote_searches.log">remote_searches.log</choice>
         <choice value="*scheduler.log">scheduler.log</choice>
         <choice value="*splunkd.log">splunkd.log</choice>
         <choice value="*splunkd_access.log">splunkd_access.log</choice>
-        <default>*splunkd.log</default>
+        <choice value="*">*</choice>
+        <default></default>
       </input>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
+        <search base="annotation" type="annotation"></search>
         <search base="event_delay">
           <query>
 | search source=$selected_log_file$ 
 | timechart fixedrange=false limit=0 span=$seconds_for_bin_1$
     max(indexing_delay) by short_name</query>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.legend.placement">top</option>
@@ -314,8 +317,9 @@ $overlay_option$</query>
     <panel>
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
+        <search base="annotation" type="annotation"></search>
         <search>
-          <query>| tstats count where $_internal$ $selected_indexers$ TERM(eventtype=connect_done) by host _time span=$seconds_for_bin$
+          <query>| tstats count where $_internal$ $selected_targets$ TERM(eventtype=connect_done) by host _time span=$seconds_for_bin$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | xyseries _time short_name count
 | eval sum=0 
@@ -324,7 +328,6 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
@@ -347,8 +350,9 @@ $overlay_option$</query>
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
+        <search base="annotation" type="annotation"></search>
         <search>
-          <query>| tstats sum($selected_hec_metric$) as events where $selected_indexers$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
+          <query>| tstats sum($selected_hec_metric$) as events where $selected_targets$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | eval label=short_name." (".instance_type."+".os_version.")"
 | eval label=short_name
@@ -356,7 +360,6 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -369,8 +372,9 @@ $overlay_option$</query>
     <panel>
       <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
+        <search base="annotation" type="annotation"></search>
         <search>
-          <query>| tstats count where $_internal$ $selected_indexers$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
+          <query>| tstats count where $_internal$ $selected_targets$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin_62$sec 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
 | timechart limit=0 sum(count) as readings span=$seconds_for_bin_62$sec by short_name 
@@ -380,7 +384,6 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -436,12 +439,12 @@ $overlay_option$</query>
       </input>
       <chart>
         <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
+        <search base="annotation" type="annotation"></search>
         <search base="hostwide">
           <query>
 | xyseries _time short_name $hostwide_parameter$
 $overlay_option$</query>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -462,13 +465,13 @@ $overlay_option$</query>
       <table>
         <search id="annotation">
           <query>| multisearch 
-    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    [ search $_internal$ $selected_targets$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
     | eval column="started" ] 
-    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    [ search $_internal$ $selected_targets$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
     | eval column="new" ] 
-    [ search $_internal$ $selected_indexers$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    [ search $_internal$ $selected_targets$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
     | eval column="shutdown" ] 
-    [ search $_internal$ $selected_indexers$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    [ search $_internal$ $selected_targets$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
     | eval column="crash" ] 
 | fields + _time host column 
 | appendpipe 
@@ -536,14 +539,18 @@ $overlay_option$</query>
         <default>p95</default>
       </input>
       <chart>
+        <title>You clicked on $selected_iostats_indexer$</title>
         <search base="iostats">
           <query>| search data.device="$selected_device$"
 | xyseries _time short_name $iostats_parameter$</query>
         </search>
         <option name="charting.chart">line</option>
-        <option name="charting.drilldown">none</option>
+        <option name="charting.drilldown">all</option>
         <option name="height">428</option>
         <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_iostats_indexer">$click.name2$</set>
+        </drilldown>
       </chart>
     </panel>
   </row>
