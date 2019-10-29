@@ -337,7 +337,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <panel>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="forwarder_performance?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Open this dashboard in a new window with absolute for selected range time</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_ingestion?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Open this dashboard in a new window with absolute for selected range time</a>
         </h2>
       </html>
     </panel>
@@ -609,7 +609,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <option name="count">10</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_self">/app/search/forwarder_performance?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
+          <link target="_self">debug_ingestion?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
         </drilldown>
       </table>
     </panel>
@@ -811,7 +811,7 @@ $show_tcp_out_panel$
         <option name="height">423</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">/app/search/forwarder_performance?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
         </drilldown>
       </chart>
     </panel>
