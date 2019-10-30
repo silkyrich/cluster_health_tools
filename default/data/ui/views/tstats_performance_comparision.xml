@@ -159,8 +159,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$hostname_search_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -177,8 +177,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -282,8 +282,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$introspection_search_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -299,8 +299,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$introspection_tstats_sid$  by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -404,8 +404,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$queue_search_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -421,8 +421,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$queue_tstats_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -494,8 +494,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$connect_type_search_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -512,8 +512,8 @@
           <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$connect_type_tstats_sid$ by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
