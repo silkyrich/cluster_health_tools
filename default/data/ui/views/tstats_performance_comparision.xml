@@ -22,7 +22,6 @@
       <choice value="pct_cpu">pct_cpu</choice>
       <choice value="pct_memory">pct_memory</choice>
       <choice value="read_mb">read_mb</choice>
-      <choice value="write_mb">write_mb</choice>
       <choice value="fd_used">fd_used</choice>
       <choice value="page_faults">page_faults</choice>
       <choice value="elapsed">elapsed</choice>
@@ -54,7 +53,7 @@
           <done>
             <set token="hostname_search_sid">$job.sid$</set>
           </done>
-          <query>index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_hosts$
+          <query>index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) 
 | stats count
     by hostname</query>
           <earliest>$time.earliest$</earliest>
@@ -110,7 +109,7 @@
           </done>
           <query>| tstats 
     count
-    where index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_hosts$
+    where index=_internal Metrics sourcetype=splunkd TERM(group=tcpin_connections) 
     by PREFIX(hostname=)</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -287,6 +286,7 @@
           <latest>$time.latest$</latest>
         </search>
         <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">all</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -444,7 +444,7 @@
       <chart>
         <title>$connect_type_query$</title>
         <search>
-          <query>index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) $selected_hosts$
+          <query>index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) 
 | timechart span=3hrs count by eventType</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -466,7 +466,7 @@
       <chart>
         <title>$connect_type_tstats_query$</title>
         <search>
-          <query>| tstats count where index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) $selected_hosts$ by _time PREFIX(eventtype=) span=3hrs
+          <query>| tstats count where index=_internal sourcetype=splunkd TERM(eventType=connect_*) TERM(group=tcpin_connections) by _time PREFIX(eventtype=) span=3hrs
 | timechart span=3hrs sum(count) by "eventtype="</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
