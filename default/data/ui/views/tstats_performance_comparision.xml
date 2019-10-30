@@ -296,7 +296,7 @@
       <chart>
         <title>$introspection_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$introspection_tstats_sid$  by _time data.search_props.sid host span=1sec
 | eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
 | timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
           <earliest>$time.earliest$</earliest>
