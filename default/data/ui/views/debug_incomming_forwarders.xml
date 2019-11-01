@@ -23,14 +23,18 @@
     dc(sourceIp) as count_sources
     dc(host) as indexer_count
     by hostname
-| table *</query>
+| addinfo
+| table *
+</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <progress>
       <set token="total_forwarder_count">$job.resultCount$</set>
+      <eval token="duration">$result.info_max_time$-$result.info_min_time$</eval>
     </progress>
     <done>
       <set token="total_forwarder_count">$job.resultCount$</set>
+      <eval token="duration">$result.info_max_time$-$result.info_min_time$</eval>
     </done>
   </search>
   <search base="forwarders_base" id="forwarders_ranked">
@@ -41,8 +45,8 @@
     sum(sum_kb) as total_sum_kb 
     dc(guid) as all_forwarders 
     max(indexer_count) as all_indexers
-| eval indexer_coverage=indexer_count."/".all_indexers,
-indexer_coverage_pct=indexer_count/all_indexers
+| eval target_coverage=indexer_count."/".all_indexers,
+target_coverage_pct=indexer_count/all_indexers
 | sort 0 - sum_kb 
 | streamstats 
     sum(sum_kb) as accumlated_sum_kb 
@@ -57,12 +61,16 @@ indexer_coverage_pct=indexer_count/all_indexers
     by all_forwarders 
 | eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
     progress_through_forwarders_kbps=(ranking_most_data_kbps/all_forwarders) * 100 
-| table hostname guid guid_count *</query>
+| table hostname guid guid_count *
+</query>
     <progress>
       <unset token="total_indexer_count"></unset>
+      <eval token="total_sum_gb">round($result.total_sum_kb$/(1024*1024),2)</eval>
     </progress>
     <done>
       <set token="total_indexer_count">$result.all_indexers$</set>
+      <eval token="total_sum_gb">round($result.total_sum_kb$/(1024*1024),2)</eval>
+      <eval token="average_data_rate_ps">round(($total_sum_gb$*1024)/$duration$,4)</eval>
     </done>
   </search>
   <search id="single_forwarder_base">
@@ -74,8 +82,8 @@ indexer_coverage_pct=indexer_count/all_indexers
   </search>
   <search base="forwarders_ranked" id="forwarders_filtered">
     <query>| search (progress_through_forwarders_kbps&gt;=$selected_min$, progress_through_forwarders_kbps&lt;=$selected_max$) OR ( progress_through_forwarders_kb&gt;=$selected_min$, progress_through_forwarders_kb&lt;=$selected_max$) 
-| rename indexer_coverage_pct as "%" 
-| rename indexer_coverage as "indexer coverage"
+| rename target_coverage_pct as "%" 
+| rename target_coverage as "indexer coverage"
 | rename ranking_most_data_kbps as "speed ranking" 
 | rename ranking_most_data_kb as "volume ranking" 
 | rename max_tcp_KBps as "max speed" 
@@ -219,8 +227,9 @@ Select ranges in the chart and the table below will be filtered. For instance if
   </row>
   <row depends="$selected_targets$">
     <panel>
-      <title>Selected range covers from $selected_min$% to $selected_max$%</title>
+      <title>Targets recieved $total_sum_gb$ GB of data from connecting over $duration$ seconds = $average_data_rate_ps$ MB/s</title>
       <chart>
+        <title>Selected range covers from $selected_min$% to $selected_max$% of all forwarders</title>
         <search base="forwarders_ranked">
           <query>| bin progress_through_forwarders_kb bins=1000 
 | bin progress_through_forwarders_kbps bins=1000 
@@ -459,11 +468,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <table>
         <search base="single_forwarder_base">
           <query>| stats count by hostname
-| eval debug_ingestion=hostname, event_delay_for_host=hostname
+| eval debug_forwarders=hostname, event_delay_for_host=hostname
 | fields - count hostname</query>
         </search>
         <option name="drilldown">cell</option>
-        <option name="refresh.display">progressbar</option>
         <drilldown>
           <link target="_blank">/app/search/$click.name2$?form.selected_host=$click.value$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
