@@ -44,9 +44,10 @@ $overlay_option$</query>
     <latest>$selection_latest$</latest>
   </search>
   <init>
-    <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
-    <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
-    <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
+    <eval token="seconds_for_bin_1">58</eval>
+    <eval token="seconds_for_bin">62</eval>
+    <eval token="seconds_for_bin_62">62</eval>
+    <eval token="sample_ratio">10</eval>
     <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
   </init>
   <search id="indexer_list_search">
@@ -72,7 +73,7 @@ $overlay_option$</query>
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
-    <sampleRatio>1</sampleRatio>
+    <sampleRatio>$sample_ratio$</sampleRatio>
   </search>
   <search id="blocking">
     <query>$_internal$ $selected_targets$ TERM(blocked=true) sourcetype=splunkd 
@@ -133,6 +134,7 @@ $overlay_option$</query>
         <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
         <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
+        <eval token="sample_ratio">round($seconds_for_bin_62$/5,0)</eval>
       </change>
     </input>
     <input type="dropdown" token="time_resolution">
@@ -147,6 +149,7 @@ $overlay_option$</query>
         <eval token="seconds_for_bin_1">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;1,1,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/1)*1)</eval>
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/31)*31)</eval>
         <eval token="seconds_for_bin_62">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;62,62,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)/62)*62)</eval>
+        <eval token="sample_ratio">round($seconds_for_bin_62$/5,0)</eval>
       </change>
     </input>
   </fieldset>
@@ -294,17 +297,17 @@ $overlay_option$</query>
         <choice value="*splunkd.log">splunkd.log</choice>
         <choice value="*splunkd_access.log">splunkd_access.log</choice>
         <choice value="*">*</choice>
-        <default></default>
+        <default>*</default>
       </input>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
-        <search base="annotation" type="annotation"></search>
         <search base="event_delay">
           <query>
 | search source=$selected_log_file$ 
 | timechart fixedrange=false limit=0 span=$seconds_for_bin_1$
     max(indexing_delay) by short_name</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.legend.placement">top</option>
@@ -317,7 +320,6 @@ $overlay_option$</query>
     <panel>
       <title>Number of connections coming into the indexers, this needs to be high for good statistical randomness</title>
       <chart>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_targets$ TERM(eventtype=connect_done) by host _time span=$seconds_for_bin$
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -328,6 +330,7 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">sum</option>
@@ -350,7 +353,6 @@ $overlay_option$</query>
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats sum($selected_hec_metric$) as events where $selected_targets$ index=_introspection data.series::http_event_collector by host _time span=$seconds_for_bin$sec
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -360,6 +362,7 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -372,7 +375,6 @@ $overlay_option$</query>
     <panel>
       <title>Metrics reading frequency, should be generated every 30 seconds when heathy</title>
       <chart>
-        <search base="annotation" type="annotation"></search>
         <search>
           <query>| tstats count where $_internal$ $selected_targets$ sourcetype=splunkd TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR (TERM(ingest_pipe=0))) 
     by _time host span=$seconds_for_bin_62$sec 
@@ -384,6 +386,7 @@ $overlay_option$</query>
           <earliest>$selection_earliest$</earliest>
           <latest>$selection_latest$</latest>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -439,12 +442,12 @@ $overlay_option$</query>
       </input>
       <chart>
         <title>Introspection for hostwide $hostwide_parameter$ $hostwide_aggregation_function$ (sampling very $seconds_for_bin$ seconds)</title>
-        <search base="annotation" type="annotation"></search>
         <search base="hostwide">
           <query>
 | xyseries _time short_name $hostwide_parameter$
 $overlay_option$</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -510,6 +513,7 @@ $overlay_option$</query>
 | eval label='data.device'." ".'data.fs_type'." ".'data.mount_point',
     value='data.device'</query>
         </search>
+        <choice value="*">*</choice>
       </input>
       <input type="dropdown" token="iostats_parameter">
         <label>Select iostats variable</label>
