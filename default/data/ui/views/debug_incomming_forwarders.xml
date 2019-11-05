@@ -1,5 +1,5 @@
 <form>
-  <label>Debug incomming forwarders</label>
+  <label>Forwarder weight analysis</label>
   <description>This dashboard performs analytics on all the forwarder connections coming into a customer stack</description>
   <init>
     <set token="seconds_for_bin">62</set>
@@ -468,7 +468,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <table>
         <search base="single_forwarder_base">
           <query>| stats count by hostname
-| eval debug_forwarders=hostname, event_delay_for_host=hostname
+| eval debug_ingestion=hostname, event_delay_for_host=hostname
 | fields - count hostname</query>
         </search>
         <option name="drilldown">cell</option>
@@ -493,7 +493,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
         <option name="height">286</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">forwarder_performance?form.selected_host=$click.name2$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.name2$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </chart>
     </panel>
