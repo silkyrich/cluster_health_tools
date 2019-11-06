@@ -6,22 +6,27 @@
     <set token="series_thruput_max">0</set>
     <eval token="series_thruput_min">now()</eval>a</init>
   <search id="annotation_restarts">
-    <query>| multisearch 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
-    | eval column="started" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
-    | eval column="new" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
-    | eval column="shutdown" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
-    | eval column="crash" ] 
-| fields + _time host column 
-| appendpipe 
-    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
-    | eval column=mvjoin(column,"-&gt;"), 
-        _time=_time+duration] 
+    <query>
+| multisearch 
+    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    | eval column="started" 
+    | fields + _time host column] 
+    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    | eval column="new" 
+    | fields + _time host column ] 
+    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    | eval column="shutdown" 
+    | fields + _time host column ] 
+    [ search $_internal$ host=$selected_host$  sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    | eval column="crash" 
+    | fields + _time host column ] 
+| transaction startswith=(column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
+| eval column=mvjoin(column," -&gt; "), 
+    _time=_time+duration 
 | where column!="started" 
-| eval annotation_label=host, annotation_category=column</query>
+| eval annotation_label=host, annotation_category=column
+| table _time ann*      
+      </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
@@ -235,7 +240,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(data.total_bytes_indexed) as total_bytes_indexed
     avg(data.total_bytes_received) as total_bytes_received
     where index=_introspection data.series::http_event_collector_token host=$selected_host$ 
-    by _time data.token_name data.format data.transport span=31sec
+    by _time data.token_name data.format data.transport span=61sec
 
           </query>
     <earliest>$time.earliest$</earliest>
@@ -409,7 +414,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
-| timechart $selected_hec_fields$ $hec_split_by$</query>
+| timechart limit=50 span=61sec $selected_hec_fields$ $hec_split_by$</query>
         </search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
@@ -562,7 +567,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </chart>
     </panel>
   </row>
-  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$">
+  <row depends="$selected_host$,$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$" rejects="$show_forwarders_panel$">
+    <panel>
+      <title>Forwarders connecting to ...</title>
+      <html>
+        <h1 style="text-align:center">No incomming forwarders detected</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$,$show_forwarders_panel$">
     <panel>
       <title>Forwarders connecting to $selected_host$ showing $selected_host_count$ forwarders</title>
       <input type="dropdown" token="selected_host_version">
@@ -608,6 +621,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           </progress>
           <done>
             <set token="selected_host_count">$job.resultCount$</set>
+            <eval token="show_forwarders_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
           <query>| search type=$selected_host_type$ os=$selected_host_os$ version=$selected_host_version$ ingest_pipe=$filter_pipelines$
 | rename guid_count as "# guids"
@@ -687,7 +701,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <option name="count">10</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_self">/app/search/debug_ingestion?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
+          <link target="_self">debug_ingestion?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
         </drilldown>
       </table>
     </panel>
@@ -889,7 +903,7 @@ $show_tcp_out_panel$
         <option name="height">423</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">/app/search/debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
         </drilldown>
       </chart>
     </panel>
