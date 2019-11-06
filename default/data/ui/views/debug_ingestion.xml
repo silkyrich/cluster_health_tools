@@ -862,14 +862,21 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>destIp</default>
       </input>
       <chart>
-        <title>$selected_earliest$ $selected_latest$   $selected_name2$</title>
+        <title>Select time range to see what targets recieved data from this host</title>
         <search base="tcp_out">
           <done>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
-          <query>| search ingest_pipe=$filter_pipelines$ 
-| rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)"
-| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
+          <query>| eval data="drop" 
+| search ingest_pipe=$filter_pipelines$ 
+| rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)" 
+| appendpipe 
+    [| timechart span=31sec limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$] 
+| appendpipe 
+    [| sort 0 + _time 
+    | streamstats dc(destIp) count ] 
+| where isnull(data) 
+| stats values(*) as * by _time</query>
         </search>
         <search id="annotation_timeout" type="annotation">
           <query>
@@ -881,16 +888,18 @@ $show_tcp_out_panel$
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <selection>
+          <eval token="selection_earliest_tcp_out">$start$</eval>
+          <eval token="selection_latest_tcp_out">$end$</eval>
+        </selection>
+        <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">count,dc(destIp)</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">412</option>
         <option name="refresh.display">progressbar</option>
-        <selection>
-          <eval token="selection_earliest_tcp_out">$start$</eval>
-          <eval token="selection_latest_tcp_out">$end$</eval>
-        </selection>
       </chart>
     </panel>
   </row>
