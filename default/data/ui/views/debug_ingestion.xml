@@ -246,6 +246,66 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="tcp_in_hostname_base">
+    <query>$_internal$ TERM(group=tcpin_connections) sourcetype=splunkd TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
+| fillnull ingest_pipe value=0 
+| table _time host ingest_pipe kb tcp_Bps tcp_KBps tcp_avg_thruput tcp_Kprocessed tcp_eps process_time_ms chan_new_kBps evt_misc_kBps evt_raw_kBps evt_fields_kBps evt_fn_kBps evt_fv_kBps evt_fn_str_kBps evt_fn_meta_dyn_kBps evt_fn_meta_predef_kBps evt_fn_meta_str_kBps evt_fv_num_kBps evt_fv_str_kBps evt_fv_predef_kBps evt_fv_offlen_kBps evt_fv_fp_kBps build version os arch hostname guid fwdType ssl lastIndexer ack 
+</query>
+    <earliest>$selection_earliest_tcp_out$</earliest>
+    <latest>$selection_latest_tcp_out$</latest>
+  </search>
+  <search base="tcp_in_hostname_base" id="tcp_in_hostname">
+    <query>
+| stats 
+    $tcp_in_hostname_aggregator$(kb) as kb
+    $tcp_in_hostname_aggregator$(tcp_Bps) as tcp_Bps
+    $tcp_in_hostname_aggregator$(tcp_KBps) as tcp_KBps
+    $tcp_in_hostname_aggregator$(tcp_avg_thruput) as tcp_avg_thruput
+    $tcp_in_hostname_aggregator$(tcp_Kprocessed) as tcp_Kprocessed
+    $tcp_in_hostname_aggregator$(tcp_eps) as tcp_eps
+    $tcp_in_hostname_aggregator$(process_time_ms) as process_time_ms
+    $tcp_in_hostname_aggregator$(chan_new_kBps) as chan_new_kBps
+    $tcp_in_hostname_aggregator$(evt_misc_kBps) as evt_misc_kBps
+    $tcp_in_hostname_aggregator$(evt_raw_kBps) as evt_raw_kBps
+    $tcp_in_hostname_aggregator$(evt_fields_kBps) as evt_fields_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_kBps) as evt_fn_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_kBps) as evt_fv_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_str_kBps) as evt_fn_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_dyn_kBps) as evt_fn_meta_dyn_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_predef_kBps) as evt_fn_meta_predef_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_str_kBps) as evt_fn_meta_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_num_kBps) as evt_fv_num_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_str_kBps) as evt_fv_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_predef_kBps) as evt_fv_predef_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_offlen_kBps) as evt_fv_offlen_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_fp_kBps) as evt_fv_fp_kBps
+    values(build) as _build 
+    values(version) as _version
+    values(os) as _os 
+    values(arch) as _arch 
+    values(guid) as _guid 
+    values(fwdType) as _fwdType 
+    values(ssl) as _ssl 
+    values(ack) as _ack 
+    values(connectionType) as _connectionType 
+    values(sourcePort) as _sourcePort 
+    values(sourceHost) as _sourceHost
+    values(sourceIp) as _sourceIp
+    values(destPort) as _destPort by host ingest_pipe
+| table *
+</query>
+    <progress>
+      <set token="tcp_incomming_build">$result._build$</set>
+      <set token="tcp_incomming_version">$result._version$</set>
+      <set token="tcp_incomming_os">$result._os$</set>
+      <set token="tcp_incomming_arch">$result._arch$</set>
+      <set token="tcp_incomming_hostname">$result._hostname$</set>
+      <set token="tcp_incomming_guid">$result._guid$</set>
+      <set token="tcp_incomming_fwdType">$result._fwdType$</set>
+      <set token="tcp_incomming_ssl">$result._ssl$</set>
+      <set token="tcp_incomming_ack">$result._ack$</set>
+    </progress>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -329,7 +389,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart span=31sec limit=0 
@@ -338,6 +397,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | foreach * 
     [| eval *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -411,11 +471,11 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
-        <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
 | timechart limit=50 span=61sec $selected_hec_fields$ $hec_split_by$</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -446,12 +506,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
           <query>| search name=thruput 
 | fields _time load_average 
 | timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -476,15 +536,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart span=31sec avg($queue_fill$) by name</query>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -535,6 +595,13 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>
+| timechart span=31sec limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series</query>
+        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -544,13 +611,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 
 
           </query>
-        </search>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>
-| timechart span=31sec limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -764,14 +824,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*</search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
-    annotation_category=reason
-| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -813,6 +873,10 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="channels_filtered">
+          <query>
+| fields _time $channel_variable$</query>
+        </search>
         <search base="annotation_broken_pipes" type="annotation">
           <query>
             $_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
@@ -820,10 +884,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     annotation_category="Dropped forwarder" 
 | table _time ann*
           </query>
-        </search>
-        <search base="channels_filtered">
-          <query>
-| fields _time $channel_variable$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -870,16 +930,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select time range to see what targets recieved data from this host</title>
-        <search id="annotation_timeout" type="annotation">
-          <query>
-$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
-| eval annotation_label="connect fail",
-    annotation_category=destHost
-$show_tcp_out_panel$    
-    </query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
-        </search>
         <search base="tcp_out">
           <done>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -894,6 +944,16 @@ $show_tcp_out_panel$
     | streamstats $tcp_out_overlay$ ] 
 | where isnull(data) 
 | stats values(*) as * by _time</query>
+        </search>
+        <search id="annotation_timeout" type="annotation">
+          <query>
+$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+| eval annotation_label="connect fail",
+    annotation_category=destHost
+$show_tcp_out_panel$    
+    </query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
@@ -912,17 +972,56 @@ $show_tcp_out_panel$
   </row>
   <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$">
     <panel>
-      <title>Targets recieving data from $selected_host$ for selected duration</title>
+      <title>Targets recieving data from $selected_host$ for selected duration - drill up to recieving target</title>
+      <input type="dropdown" token="tcp_in_hostname_attribute">
+        <label>Select attribute</label>
+        <choice value="kb">kb</choice>
+        <choice value="tcp_Bps">tcp_Bps</choice>
+        <choice value="tcp_KBps">tcp_KBps</choice>
+        <choice value="tcp_avg_thruput">tcp_avg_thruput</choice>
+        <choice value="tcp_Kprocessed">tcp_Kprocessed</choice>
+        <choice value="tcp_eps">tcp_eps</choice>
+        <choice value="process_time_ms">process_time_ms</choice>
+        <choice value="chan_new_kBps">chan_new_kBps</choice>
+        <choice value="evt_misc_kBps">evt_misc_kBps</choice>
+        <choice value="evt_raw_kBps">evt_raw_kBps</choice>
+        <choice value="evt_fields_kBps">evt_fields_kBps</choice>
+        <choice value="evt_fn_kBps">evt_fn_kBps</choice>
+        <choice value="evt_fv_kBps">evt_fv_kBps</choice>
+        <choice value="evt_fn_str_kBps">evt_fn_str_kBps</choice>
+        <choice value="evt_fn_meta_dyn_kBps">evt_fn_meta_dyn_kBps</choice>
+        <choice value="evt_fn_meta_predef_kBps">evt_fn_meta_predef_kBps</choice>
+        <choice value="evt_fn_meta_str_kBps">evt_fn_meta_str_kBps</choice>
+        <choice value="evt_fv_num_kBps">evt_fv_num_kBps</choice>
+        <choice value="evt_fv_str_kBps">evt_fv_str_kBps</choice>
+        <choice value="evt_fv_predef_kBps">evt_fv_predef_kBps</choice>
+        <choice value="evt_fv_offlen_kBps">evt_fv_offlen_kBps</choice>
+        <choice value="evt_fv_fp_kBps">evt_fv_fp_kBps</choice>
+        <default>kb</default>
+      </input>
+      <input type="dropdown" token="tcp_in_hostname_aggregator">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
       <chart>
-        <title>Drill down to select upstream target</title>
-        <search>
-          <query>$_internal$ TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
-| fillnull ingest_pipe 0
-| sort host
-| chart sum(kb) as kb 
-    by host ingest_pipe</query>
-          <earliest>$selection_earliest_tcp_out$</earliest>
-          <latest>$selection_latest_tcp_out$</latest>
+        <title>Upstream targets report: build=$tcp_incomming_build$ version=$tcp_incomming_version$ os=$tcp_incomming_os$ arch=$tcp_incomming_arch$ guid=$tcp_incomming_guid$ fwdType=$tcp_incomming_fwdType$ ssl=$tcp_incomming_ssl$ ack=$tcp_incomming_ack$</title>
+        <search base="tcp_in_hostname">
+          <query>
+| xyseries host ingest_pipe $tcp_in_hostname_attribute$
+</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
