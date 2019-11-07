@@ -1,5 +1,5 @@
 <form>
-  <label>Forwarder weight analysis</label>
+  <label>Debug Incomming Forwarders</label>
   <init>
     <set token="seconds_for_bin">62</set>
     <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
