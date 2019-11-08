@@ -103,6 +103,16 @@ target_coverage_pct=indexer_count/all_indexers
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search base="selected_forwarders">
+    <query>| stats values(hostname) as hosts
+| eval hosts="host IN (".mvjoin(hosts,", ").")"</query>
+    <done>
+      <set token="hosts_drilldown">$result.hosts$</set>
+    </done>
+    <progress>
+      <set token="hosts_drilldown">$result.hosts$</set>
+    </progress>
+  </search>
   <fieldset submitButton="false">
     <input type="multiselect" token="form.selected_targets">
       <label>1. Select CM, site or hosts</label>
@@ -400,6 +410,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
         <fieldForValue>coverage</fieldForValue>
         <default>*</default>
       </input>
+      <input type="text" token="filter_hostname">
+        <label>hostname filter</label>
+        <default>*</default>
+      </input>
       <table>
         <title>For more detail click on some forwarders and more charts will open allowing you to compare performance and behaviours of those you selected</title>
         <search base="forwarders_filtered" id="selected_forwarders">
@@ -409,11 +423,12 @@ Select ranges in the chart and the table below will be filtered. For instance if
           <done>
             <set token="selected_forwarder_count">$job.resultCount$</set>
           </done>
-          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ "indexer coverage"="$selected_forwarder_coverage$"
+          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ "indexer coverage"="$selected_forwarder_coverage$" hostname=$filter_hostname$
 | rename guid_count as "# guids"</query>
         </search>
         <option name="count">20</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="number" field="indexer coverage">
           <option name="precision">0</option>
           <option name="unit">%</option>
@@ -462,6 +477,16 @@ Select ranges in the chart and the table below will be filtered. For instance if
           <eval token="selected_forwarders">"hostname=".mvjoin($selected_forwarder$," OR hostname=")</eval>
         </drilldown>
       </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Drill down to intermediate forwarders</title>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
+        </h2>
+      </html>
     </panel>
   </row>
   <row depends="$selected_forwarders$">
