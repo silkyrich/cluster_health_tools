@@ -306,6 +306,16 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="tcp_incomming_ack">$result._ack$</set>
     </progress>
   </search>
+  <search base="tcp_in_hostname">
+    <query>| stats values(host) as hosts
+| eval hosts="host IN (".mvjoin(hosts,", ").")"</query>
+    <done>
+      <set token="targets_drill_up">$result.hosts$</set>
+    </done>
+    <progress>
+      <set token="targets_drill_up">$result.hosts$</set>
+    </progress>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -389,6 +399,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart span=31sec limit=0 
@@ -397,7 +408,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | foreach * 
     [| eval *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
-        <search base="annotation_blocking" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -471,11 +481,11 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
+        <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
 | timechart limit=50 span=61sec $selected_hec_fields$ $hec_split_by$</query>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -506,12 +516,12 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
           <query>| search name=thruput 
 | fields _time load_average 
 | timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -536,15 +546,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>current_size_kb</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
+        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart span=31sec avg($queue_fill$) by name</query>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
-        </search>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -595,13 +605,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>
-| timechart span=31sec limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series</query>
-        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -611,6 +614,13 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 
 
           </query>
+        </search>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>
+| timechart span=31sec limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -824,14 +834,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
-    annotation_category=reason
-| table _time anno*</search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
         </search>
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -873,10 +883,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="channels_filtered">
-          <query>
-| fields _time $channel_variable$</query>
-        </search>
         <search base="annotation_broken_pipes" type="annotation">
           <query>
             $_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
@@ -884,6 +890,10 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     annotation_category="Dropped forwarder" 
 | table _time ann*
           </query>
+        </search>
+        <search base="channels_filtered">
+          <query>
+| fields _time $channel_variable$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -930,6 +940,16 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select time range to see what targets recieved data from this host</title>
+        <search id="annotation_timeout" type="annotation">
+          <query>
+$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+| eval annotation_label="connect fail",
+    annotation_category=destHost
+$show_tcp_out_panel$    
+    </query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
         <search base="tcp_out">
           <done>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -944,16 +964,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     | streamstats $tcp_out_overlay$ ] 
 | where isnull(data) 
 | stats values(*) as * by _time</query>
-        </search>
-        <search id="annotation_timeout" type="annotation">
-          <query>
-$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
-| eval annotation_label="connect fail",
-    annotation_category=destHost
-$show_tcp_out_panel$    
-    </query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
@@ -1033,6 +1043,16 @@ $show_tcp_out_panel$
           <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
         </drilldown>
       </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$,$targets_drill_up$">
+    <panel>
+      <title>Drill up to view the ingestion for the targets recieving data from this host</title>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$targets_drill_up$">Debug ingestion for  upstream targets</a>
+        </h2>
+      </html>
     </panel>
   </row>
 </form>
