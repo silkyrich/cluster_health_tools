@@ -1,5 +1,5 @@
 <form>
-  <label>Debug Incomming Forwarders</label>
+  <label>Debug Incomming forwarders</label>
   <init>
     <set token="seconds_for_bin">62</set>
     <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
@@ -114,9 +114,8 @@ target_coverage_pct=indexer_count/all_indexers
     </progress>
   </search>
   <fieldset submitButton="false">
-    <input type="multiselect" token="form.selected_targets">
+    <input type="dropdown" token="selected_indexers">
       <label>1. Select CM, site or hosts</label>
-      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
@@ -149,6 +148,14 @@ target_coverage_pct=indexer_count/all_indexers
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
     </input>
     <input type="text" token="selected_targets">
       <label>Selected targets</label>
