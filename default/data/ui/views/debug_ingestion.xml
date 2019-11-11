@@ -217,7 +217,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     by _time series host</query>
   </search>
   <search id="channels_filtered" base="channels">
-    <query>| search ingest_pipe=$filter_pipelines$ 
+    <query>
 | timechart span=31sec limit=30
     $selected_channels_function$(current_size) as current_size
     $selected_channels_function$(inactive_channels) as inactive_channels
@@ -893,6 +893,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </search>
         <search base="channels_filtered">
           <query>
+| search ingest_pipe=$filter_pipelines$             
 | fields _time $channel_variable$</query>
         </search>
         <option name="charting.chart">column</option>
