@@ -19,10 +19,18 @@
 </ul>
 <h2>Catalogue</h2>
 You can access the dashboards and the sources from the links below. When installing the dashbaords please make sure you get the names exactly right for the transistions to work. 
-<h3><a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders">Forwarder weight analysis </a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/debug_incomming_forwarders.xml">download xml</a></h3>
+<h3><a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders">Debug incomming forwarders</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/debug_incomming_forwarders.xml">download xml</a></h3>
 <p>This tool reads from the metrics about the forwarders connecting to your indexers. You can select an entire cluster or a single site and the tool will rank forwarders by their contribution of data. This is important as very common to have a single forwarder send a significant about of data to the cluster. In the extreme cases it is not uncommon for 90% of the data to come from just 5% of the forwarders. It is therefore very important to tune how this 5% to work efficiently and correctly. The remaining 95% of forwarders then become little more than rounding errors. This tool will allow you to browse the forwarder population and at a high level understand its contribution, its burstiness, maximum data rates how long it takes to sweep the entire cluster, the software build and OS.</p>
 <h3><a target="_blank" rel="noopener noreferrer" href="debug_ingestion">Debug Ingestion</a> - <a target="_blank" rel="noopener noreferrer" href="https://github.com/silkyrich/cluster_health_tools/blob/master/default/data/ui/views/debug_ingestion.xml">download xml</a></h3>
 <p>This tool instruments all logging around the ingestion pipelines, including: pipeline utilization, load, parsing errors, blocking, connecting forwarders, channel creation, output performance. You can select a single pipeline and see metrics about the sources passing through it, identify problematic sources and drill backwards through the forwarding chain to the source.</p>
+
+
+<h3><a target="_blank" rel="noopener noreferrer" href="event_distribution_measurement">Event distribution measurement</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_distribution_measurement.xml">download xml</a></h3>
+<p> This tool measures event distribution in your splunk enivorments, select a site or a cluster to perform the analysis on, then you select a subset of the indexes within that site or cluster to measure. The dashboard then measure at regular intervals how events are distributed across the search peers. The distribution is then visualized in a series of charts.   
+</p>
+
+
+
 <h3><a target="_blank" rel="noopener noreferrer" href="event_delay">Event delay per index</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay.xml">download xml</a></h3>
 <p>This tool measures event delay at scale simply by comparing the indexed field "_indexTime" and _time using tstats. By default, the search targets very event received over the last second. Use this tool to find indexes which are receiving from the past or the future, and then drill in to find which specific hosts are responsible for the ill-timed events.</p>
 <h3><a target="_blank" rel="noopener noreferrer" href="event_delay_for_host">Event delay for host</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay_for_host.xml">download xml</a></h3>
