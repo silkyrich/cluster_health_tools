@@ -2,22 +2,23 @@
   <label>Debug Ingestion</label>
   <description>Another groovy debug dashboard from Richard Morgan</description>
   <init>
-    <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
     <set token="series_thruput_max">0</set>
     <eval token="series_thruput_min">now()</eval>a</init>
   <search id="annotation_restarts">
     <query>
 | multisearch 
-    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
     | eval column="started" 
     | fields + _time host column] 
-    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
     | eval column="new" 
     | fields + _time host column ] 
-    [ search $_internal$ host=$selected_host$  sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
     | eval column="shutdown" 
     | fields + _time host column ] 
-    [ search $_internal$ host=$selected_host$  sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
     | eval column="crash" 
     | fields + _time host column ] 
 | transaction startswith=(column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
@@ -32,7 +33,7 @@
     <sampleRatio>1</sampleRatio>
   </search>
   <search id="thruput">
-    <query>$_internal$ host=$selected_host$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
+    <query>$metrics$ host=$selected_host$ TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
 | fillnull ingest_pipe 0 
 | bin _time span=31sec
 | stats
@@ -50,7 +51,7 @@
     <latest>$time.latest$</latest>
   </search>
   <search id="connecting_forwarders">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
+    <query>$metrics$ TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
 | fillnull ingest_pipe 0
 | eventstats dc(_time) as readings 
 | stats 
@@ -105,14 +106,14 @@ $finished_per_series_thruput$
     <latest>$selection_thruput_latest$</latest>
   </search>
   <search id="per_series_thruput">
-    <query>$_internal$ host=$selected_host$ METRICS sourcetype=splunkd TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
+    <query>$metrics$ host=$selected_host$ TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
 | fillnull ingest_pipe 0
 | table _time host group ingest_pipe series eps ev kbps kb max_age avg_age</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
   <search id="pipeline_processor">
-    <query>$_internal$ host=$selected_host$ METRICS METRICS TERM(group=pipeline) TERM(processor=*)
+    <query>$metrics$ host=$selected_host$ TERM(group=pipeline) TERM(processor=*)
 | fillnull ingest_pipe 0
 | table _time host ingest_pipe processor name executes cpu_seconds cumulative_hits
 | bin _time span=31sec 
@@ -127,7 +128,7 @@ $finished_per_series_thruput$
     by _time processor ingest_pipe name</query>
   </search>
   <search id="annotation_blocking">
-    <query>$_internal$ host=$selected_host$ source=*metrics* TERM(blocked=true) 
+    <query>$metrics$ host=$selected_host$ TERM(group=thruput) TERM(name=*) TERM(blocked=true) 
 | stats values(name) as name by host _time ingest_pipe 
 | eval 
     annotation_label= "pipeline #".ingest_pipe." blocked", 
@@ -143,7 +144,7 @@ $finished_per_series_thruput$
   </search>
   <search id="channels">
     <query>
-$_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
+$metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | fillnull ingest_pipe 0 
 | table _time host ingest_pipe current_size inactive_channels new_channels removed_channels reclaimed_channel timedout_channels abandoned_channels 
 </query>
@@ -151,7 +152,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="queue">
-    <query>$_internal$ Metrics sourcetype=splunkd host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
+    <query>$metrics$ host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
 | fillnull ingest_pipe 0 
 | bin _time span=62sec 
 | stats 
@@ -163,7 +164,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="tcp_out">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpout_connections) host=$selected_host$ 
+    <query>$metrics$ TERM(group=tcpout_connections) host=$selected_host$ 
 | fillnull ingest_pipe 0 
 | bin _time span=31sec 
 | stats
@@ -178,7 +179,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="annotation_broken_pipes">
-    <query>$_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
+    <query>$splunkd$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
 | eval annotation_label=src,
     annotation_category="Dropped forwarder" 
 | table _time ann*</query>
@@ -186,7 +187,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="annotation_parsing_problems">
-    <query>$_internal$ sourcetype=splunkd WARN component=DateParserVerbose host=$selected_host$
+    <query>$splunkd$ WARN component=DateParserVerbose host=$selected_host$
 | eval reason = case(searchmatch("Accepted time format has changed possibly indicating a problem in extracting timestamps"),"Accepted time format has changed possibly indicating a problem in extracting timestamps",
     searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),"The TIME_FORMAT specified is matching timestamps outside of the acceptable time window",
     searchmatch("A possible timestamp match is outside of the acceptable time window"),"A possible timestamp match is outside of the acceptable time window",
@@ -218,6 +219,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
   </search>
   <search id="channels_filtered" base="channels">
     <query>
+| search ingest_pipe=$filter_pipelines$         
 | timechart span=31sec limit=30
     $selected_channels_function$(current_size) as current_size
     $selected_channels_function$(inactive_channels) as inactive_channels
@@ -247,7 +249,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="tcp_in_hostname_base">
-    <query>$_internal$ TERM(group=tcpin_connections) sourcetype=splunkd TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
+    <query>$metrics$ TERM(group=tcpin_connections) TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
 | fillnull ingest_pipe value=0 
 | table _time host ingest_pipe kb tcp_Bps tcp_KBps tcp_avg_thruput tcp_Kprocessed tcp_eps process_time_ms chan_new_kBps evt_misc_kBps evt_raw_kBps evt_fields_kBps evt_fn_kBps evt_fv_kBps evt_fn_str_kBps evt_fn_meta_dyn_kBps evt_fn_meta_predef_kBps evt_fn_meta_str_kBps evt_fv_num_kBps evt_fv_str_kBps evt_fv_predef_kBps evt_fv_offlen_kBps evt_fv_fp_kBps build version os arch hostname guid fwdType ssl lastIndexer ack 
 </query>
@@ -333,7 +335,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <input type="text" token="selected_host">
       <label>Enter forwarder name</label>
       <change>
-        <unset token="filter_pipelines"></unset>
+        <set token="filter_pipelines">*</set>
         <unset token="show_tcp_out_panel"></unset>
       </change>
     </input>
@@ -893,7 +895,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </search>
         <search base="channels_filtered">
           <query>
-| search ingest_pipe=$filter_pipelines$             
+          
 | fields _time $channel_variable$</query>
         </search>
         <option name="charting.chart">column</option>
@@ -943,7 +945,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <title>Select time range to see what targets recieved data from this host</title>
         <search id="annotation_timeout" type="annotation">
           <query>
-$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+$splunkd$ host=$selected_host$ TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
 | eval annotation_label="connect fail",
     annotation_category=destHost
 $show_tcp_out_panel$    
