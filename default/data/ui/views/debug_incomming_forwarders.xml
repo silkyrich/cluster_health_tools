@@ -508,7 +508,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
         </search>
         <option name="drilldown">cell</option>
         <drilldown>
-          <link target="_blank">/app/search/$click.name2$?form.selected_host=$click.value$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">$click.name2$?form.selected_host=$click.value$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </table>
     </panel>
