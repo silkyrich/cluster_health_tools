@@ -210,7 +210,7 @@
         <option name="totalsRow">false</option>
         <option name="wrap">true</option>
         <drilldown>
-          <link target="_blank">/app/search/event_delay_for_host?form.time.earliest=$drilldown.earliest$&amp;form.time.latest=$drilldown.latest$&amp;form.selected_host=$row.host$</link>
+          <link target="_blank">event_delay_for_host?form.time.earliest=$drilldown.earliest$&amp;form.time.latest=$drilldown.latest$&amp;form.selected_host=$row.host$</link>
         </drilldown>
       </table>
     </panel>
