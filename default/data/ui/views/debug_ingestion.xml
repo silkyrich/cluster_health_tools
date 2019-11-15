@@ -520,7 +520,30 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <title>os_name=$os_name$ swap=$swap$ cpu_count=$cpu_count$ cpu_arch= $cpu_arch$ virtual_cpu_count=$virtual_cpu_count$ splunk_version=$splunk_version$ build=$os_build$ instance_guid=$result.instance_guid$</title>
         <search>
+          <progress>
+            <set token="os_name">$result.os_name$</set>
+            <set token="swap">$result.swap$</set>
+            <set token="cpu_count">$result.cpu_count$</set>
+            <set token="cpu_arch">$result.cpu_arch$</set>
+            <set token="virtual_cpu_count">$result.virtual_cpu_count$</set>
+            <set token="splunk_version">$result.splunk_version$</set>
+            <set token="build">$result.os_build$</set>
+            <set token="instance_guid">$result.instance_guid$</set>
+            <set token="hostwide_introspection_sid"></set>
+          </progress>
+          <done>
+            <set token="os_name">$result.os_name$</set>
+            <set token="swap">$result.swap$</set>
+            <set token="cpu_count">$result.cpu_count$</set>
+            <set token="cpu_arch">$result.cpu_arch$</set>
+            <set token="virtual_cpu_count">$result.virtual_cpu_count$</set>
+            <set token="splunk_version">$result.splunk_version$</set>
+            <set token="build">$result.os_build$</set>
+            <set token="instance_guid">$result.instance_guid$</set>
+            <set token="hostwide_introspection_sid"></set>
+          </done>
           <query>| union 
     [| tstats
         $selected_introspection_function$(data.cpu_system_pct) as host_cpu_system_pct
@@ -546,7 +569,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         where index=_introspection component::perprocess host=$selected_host$
         by host _time span=1s ]
 | stats values(*) as * by _time host
-| rename splunkd_pct_cpu as splunkd 
+| rename splunkd_normalized_pct_cpu as splunkd 
 | rename host_cpu_user_pct as user
 | rename host_cpu_system_pct as system
 | eval user=user-splunkd
@@ -558,8 +581,8 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
-        <option name="charting.legend.placement">none</option>
-        <option name="height">356</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">394</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
