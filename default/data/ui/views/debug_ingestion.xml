@@ -5,7 +5,11 @@
     <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
     <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
     <set token="series_thruput_max">0</set>
-    <eval token="series_thruput_min">now()</eval>a</init>
+    <eval token="series_thruput_min">now()</eval>
+    <eval token="selected_bin">500</eval>
+    <eval token="selected_metrics_span">span=31sec</eval>
+    <eval token="selected_introspection_span">span=10sec</eval>
+  </init>
   <search id="annotation_restarts">
     <query>
 | multisearch 
@@ -35,7 +39,7 @@
   <search id="thruput">
     <query>$metrics$ host=$selected_host$ TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
 | fillnull ingest_pipe 0 
-| bin _time $selected_span$
+| bin _time $selected_metrics_span$
 | stats
     $selected_thruput_function$(instantaneous_kbps) as instantaneous_kbps
     $selected_thruput_function$(instantaneous_eps) as instantaneous_eps
@@ -116,7 +120,7 @@ $finished_per_series_thruput$
     <query>$metrics$ host=$selected_host$ TERM(group=pipeline) TERM(processor=*)
 | fillnull ingest_pipe 0
 | table _time host ingest_pipe processor name executes cpu_seconds cumulative_hits
-| bin _time $selected_span$ 
+| bin _time $selected_metrics_span$ 
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -155,7 +159,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
   <search id="queue">
     <query>$metrics$ host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
 | fillnull ingest_pipe 0 
-| bin _time $selected_span$ 
+| bin _time $selected_metrics_span$ 
 | stats 
     avg(current_size_kb) as current_size_kb
     by _time ingest_pipe host name max_size_kb
@@ -167,7 +171,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
   <search id="tcp_out">
     <query>$metrics$ TERM(group=tcpout_connections) host=$selected_host$ 
 | fillnull ingest_pipe 0 
-| bin _time $selected_span$ 
+| bin _time $selected_metrics_span$ 
 | stats
     sum(tcp_Kprocessed) as tcp_Kprocessed
     median(tcp_avg_thruput) as tcp_avg_thruput
@@ -209,7 +213,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="finished_per_series_thruput">| noop</set>
     </done>
     <query>| search group=per_$selected_group$_thruput ingest_pipe=$filter_pipelines$ 
-| bin _time $selected_span$ 
+| bin _time $selected_metrics_span$ 
 | stats $selected_per_series_function$(eps) as eps
     $selected_per_series_function$(kb) as kb
     $selected_per_series_function$(ev) as ev
@@ -221,7 +225,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
   <search id="channels_filtered" base="channels">
     <query>
 | search ingest_pipe=$filter_pipelines$         
-| timechart $selected_span$ limit=30
+| timechart $selected_metrics_span$ limit=30
     $selected_channels_function$(current_size) as current_size
     $selected_channels_function$(inactive_channels) as inactive_channels
     $selected_channels_function$(new_channels) as new_channels
@@ -243,7 +247,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(data.total_bytes_indexed) as total_bytes_indexed
     avg(data.total_bytes_received) as total_bytes_received
     where index=_introspection data.series::http_event_collector_token host=$selected_host$ 
-    by _time data.token_name data.format data.transport $selected_span$
+    by _time data.token_name data.format data.transport $selected_introspection_span$
 
           </query>
     <earliest>$time.earliest$</earliest>
@@ -392,7 +396,8 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <latest>now</latest>
       </default>
       <change>
-        <eval token="form.selected_span">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/400)/31)*31)."sec"</eval>
+        <eval token="selected_metrics_span">"span=".if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31)."sec"</eval>
+        <eval token="selected_introspection_span">"span=".if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10)."sec"</eval>
         <unset token="finished_per_series_thruput"></unset>
         <unset token="finished_per_series_thruput"></unset>
         <set token="series_thruput_max">0</set>
@@ -418,10 +423,14 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </query>
       </search>
     </input>
-    <input type="text" token="selected_span">
-      <label>Set span</label>
-      <default>31sec</default>
-      <prefix>span=</prefix>
+    <input type="dropdown" token="selected_bins">
+      <label>Select number of bins</label>
+      <choice value="100">100</choice>
+      <choice value="250">250</choice>
+      <choice value="500">500</choice>
+      <choice value="750">750</choice>
+      <choice value="1000">1000</choice>
+      <default>500</default>
     </input>
   </fieldset>
   <row rejects="$selected_host$">
@@ -617,7 +626,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <chart>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
-| timechart $selected_span$ limit=0 
+| timechart $selected_metrics_span$ limit=0 
     avg($selected_thruput_variable$) by ingest_pipe 
 | eval *=0 
 | foreach * 
@@ -703,7 +712,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <title>Select window and indexer to drill in</title>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
-| timechart limit=50 $selected_span$ $selected_hec_fields$ $hec_split_by$</query>
+| timechart limit=50 $selected_introspection_span$ $selected_hec_fields$ $hec_split_by$</query>
         </search>
         <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
@@ -753,12 +762,17 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <chart>
         <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_host">
-          <query>
-| rename _mem as total_mem 
+          <progress>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+          <query>| rename _mem as total_mem 
 | rename _swap as total_swap 
 | eval total_cpu=host_cpu_system_pct+host_cpu_user_pct
 
-| timechart span=31sec
+| timechart $selected_introspection_span$
     $selected_introspection_function_host$(total_cpu) as "host_cpu_system_pct+host_cpu_user_pct"
     $selected_introspection_function_host$(host_cpu_system_pct) as cpu_system_pct 
     $selected_introspection_function_host$(host_cpu_user_pct) as cpu_user_pct 
@@ -769,12 +783,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     max(total_mem) as total_mem
 | eval max_cpu=100
     $host_attributes$</query>
-          <progress>
-            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </progress>
-          <done>
-            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </done>
         </search>
         <option name="charting.axisY2.abbreviation">auto</option>
         <option name="charting.axisY2.enabled">1</option>
@@ -813,7 +821,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <choice value="sum">sum</choice>
         <choice value="range">range</choice>
         <choice value="var">variance</choice>
-        <default>avg</default>
+        <default>sum</default>
       </input>
       <input type="dropdown" token="per_process_split_by">
         <label>Split by</label>
@@ -825,7 +833,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <title>Utilization of Splunk server</title>
         <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_per_process">
-          <query>| timechart span=31sec
+          <query>| timechart $selected_introspection_span$
     $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
     $selected_introspection_function_per_process$(splunkd_fd_used) as splunkd_fd_used
     $selected_introspection_function_per_process$(splunkd_mem_used) as splunkd_mem_used
@@ -867,7 +875,7 @@ $per_process_attributes$</query>
       <chart>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
-| timechart $selected_span$ avg($queue_fill$) by name</query>
+| timechart $selected_metrics_span$ avg($queue_fill$) by name</query>
           <progress>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </progress>
@@ -931,7 +939,7 @@ $per_process_attributes$</query>
           <done>
             <set token="finished_per_series_thruput">| noop</set>
           </done>
-          <query>| timechart $selected_span$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+          <query>| timechart $selected_metrics_span$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
@@ -1163,7 +1171,7 @@ $per_process_attributes$</query>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
-| timechart limit=50 $selected_span$ avg($selected_processor_variable$) by key</query>
+| timechart limit=50 $selected_metrics_span$ avg($selected_processor_variable$) by key</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -1275,7 +1283,7 @@ $per_process_attributes$</query>
 | search ingest_pipe=$filter_pipelines$ 
 | rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)" 
 | appendpipe 
-    [| timechart $selected_span$ limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$] 
+    [| timechart $selected_metrics_span$ limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$] 
 | appendpipe 
     [| sort 0 + _time 
     | streamstats $tcp_out_overlay$ ] 
