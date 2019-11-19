@@ -1,5 +1,6 @@
 <form>
-  <label>Debug slow indexers</label>
+  <label>Debug replication delays</label>
+  <description>Another groovy operations dashboard by Richard Morgan productions</description>
   <init>
     <set token="seconds_for_bin">62</set>
     <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
@@ -11,14 +12,18 @@
 | rex field=_raw "bid=(?&lt;idx&gt;[^~]+)"
 | eval state=if(searchmatch("BucketReplicator full"), "blocked", "unblocked"),
     end=if(searchmatch("has room now"), true(), NULL)
-| fields + _time host bid peer _raw indexer idx state
+| table _time host bid peer _raw indexer idx state
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
+    <done>
+      <set token="bucketreplicator_sid">$job.sid$</set>
+    </done>
   </search>
   <search>
-    <query>| dbinspect index=_internal 
+    <query>
+| dbinspect index=_internal 
 | stats count by guId splunk_server 
 | rename splunk_server as indexer 
 | rename guId as peer</query>
@@ -30,6 +35,14 @@
     <progress>
       <unset token="guid_to_host_mapping">$job.sid$</unset>
     </progress>
+  </search>
+  <search id="transactions">
+    <query>
+| loadjob $bucketreplicator_sid$
+| search idx=$selected_idx$
+| transaction host bid startswith=eval(state="blocked") endswith=eval(state="unblocked") mvraw=true</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
   </search>
   <fieldset submitButton="false">
     <input type="dropdown" token="selected_indexers">
@@ -57,7 +70,7 @@
 | appendpipe 
     [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
     | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+        search="host  IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
     | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
 | rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
 | eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
@@ -100,12 +113,6 @@
         <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
       </change>
     </input>
-    <input type="checkbox" token="show_doc">
-      <label>Show documentation panel</label>
-      <choice value="hide">Show documentation</choice>
-      <delimiter> </delimiter>
-      <default>hide</default>
-    </input>
   </fieldset>
   <row rejects="$selected_targets$">
     <panel>
@@ -123,9 +130,21 @@
         <choice value="indexer">The problem indexer</choice>
         <default>indexer</default>
       </input>
+      <input type="dropdown" token="selected_idx">
+        <label>Select index</label>
+        <choice value="*">*</choice>
+        <search base="bucketreplicator_base">
+          <query>| stats count by idx 
+| sort - count
+| eval label=idx." (".count.")"</query>
+        </search>
+        <default>*</default>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>idx</fieldForValue>
+      </input>
       <chart>
         <search base="bucketreplicator_base">
-          <query>| search BucketReplicator full
+          <query>| search BucketReplicator full idx=$selected_idx$
 | chart limit=50 count by $selected_replication_indexer$ idx</query>
         </search>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
@@ -162,26 +181,69 @@
         <option name="trellis.scales.shared">1</option>
         <option name="trellis.size">medium</option>
         <drilldown>
-          <set token="selected_idx">$click.name2$</set>
+          <set token="form.selected_idx">$click.name2$</set>
         </drilldown>
       </chart>
     </panel>
   </row>
   <row>
     <panel>
-      <title>$selected_idx$</title>
-      <table>
-        <search base="bucketreplicator_base" id="transactions">
-          <query>| where idx="$selected_idx$"
-| stats count by bid</query>
+      <title>Timeline of delays $selected_idx$</title>
+      <input type="dropdown" token="selected_timeline_attribute">
+        <label>Select X-axis</label>
+        <choice value="host">Complaining indexer</choice>
+        <choice value="indexer">Remote indexer</choice>
+        <choice value="bid">Bucket ID</choice>
+        <default>indexer</default>
+      </input>
+      <chart>
+        <search base="transactions">
+          <query>| xyseries _time $selected_timeline_attribute$ duration</query>
         </search>
-        <option name="count">10</option>
-        <option name="drilldown">cell</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
           <set token="selected_bid">$row.bid$</set>
         </drilldown>
-      </table>
+        <selection>
+          <set token="selected_earliest">$start$</set>
+          <set token="selected_latest">$end$</set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Selected summary $selected_idx$</title>
+      <input type="dropdown" token="selected_summary_attribute">
+        <label>Select X-axis</label>
+        <choice value="indexer host">local, remote</choice>
+        <choice value="host indexer">remote, local</choice>
+        <choice value="indexer bid">remote, bid</choice>
+        <choice value="host bid">local, bid</choice>
+        <choice value="indexer">remote</choice>
+        <choice value="host">local</choice>
+        <default>indexer host</default>
+      </input>
+      <input type="dropdown" token="selected_summary_aggregator">
+        <label>Select aggregator</label>
+        <choice value="sum(duration)">total duration blocked</choice>
+        <choice value="avg(duration)">average duration blocked</choice>
+        <choice value="count">count</choice>
+        <default>sum(duration)</default>
+      </input>
+      <chart>
+        <search base="transactions">
+          <query>| where _time &gt; $selected_earliest$ and _time &lt; $selected_latest$
+| chart limit=80 $selected_summary_aggregator$ by $selected_summary_attribute$</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">417</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
 </form>
