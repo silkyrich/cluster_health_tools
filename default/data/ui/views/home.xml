@@ -35,6 +35,16 @@ You can access the dashboards and the sources from the links below. When install
 <p>This tool measures event delay at scale simply by comparing the indexed field "_indexTime" and _time using tstats. By default, the search targets very event received over the last second. Use this tool to find indexes which are receiving from the past or the future, and then drill in to find which specific hosts are responsible for the ill-timed events.</p>
 <h3><a target="_blank" rel="noopener noreferrer" href="event_delay_for_host">Event delay for host</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay_for_host.xml">download xml</a></h3>
 <p>This tool is similar to "Event delay per index", but instead of measuring one second for all hosts, it measures one host for 24 hours (by default). Use this tool to understand if a host is sending data to the cluster in a timely manor.</p>
+
+https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/debug_replication.xml
+
+<h3><a target="_blank" rel="noopener noreferrer" href="debug_replication">Debug replication delay</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/debug_replication.xml">download xml</a></h3>
+<p>Blocking on indexers can be caused by a few factors, they are disk IO, saturated CPU, network latency and network throughput. Network throughput can be a problem in cloud enviroments where indexers are place in various racks around the data center and contention for network resources are in play, just because you have a 10Gbit interface doesn't mean you are going to get that between pairs of hosts. This dashboard measure the blocking reported by the indexers when sending to a remote host allowing you to surface problematic indexers. It then plots the delay by reporting indexer, the remote blocked indexers and the individual bucket. 
+  
+  
+</p>
+
+
 <h3><a target="_blank" rel="noopener noreferrer" href="event_delay_for_host">Bucket roll analysis</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_delay_for_host.xml">download xml</a></h3>
 <p>This tool allows you to understand and measure the efficiency of the bucket rolling across all indexes, and drills down into the behaviour of specific indexes. Select a bucket and it constructs a search to find what is in that bucket. Use this tool to understand and reduce the frequency of bucket rolls.</p>
 <h3><a target="_blank" rel="noopener noreferrer" href="event_distribution_measurement">Bucket roll analysis</a> - <a target="_blank" rel="noopener noreferrer" href="https://raw.githubusercontent.com/silkyrich/cluster_health_tools/master/default/data/ui/views/event_distribution_measurement.xml">download xml</a></h3>
