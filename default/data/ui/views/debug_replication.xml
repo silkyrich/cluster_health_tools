@@ -1,0 +1,187 @@
+<form>
+  <label>Debug slow indexers</label>
+  <init>
+    <set token="seconds_for_bin">62</set>
+    <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
+  </init>
+  <search id="bucketreplicator_base">
+    <query>$_internal$ sourcetype=splunkd $selected_targets$ replication queue for TERM(peer=*) (BucketReplicator full) OR (has room now)
+| join peer 
+    [| loadjob $guid_to_host_mapping$] 
+| rex field=_raw "bid=(?&lt;idx&gt;[^~]+)"
+| eval state=if(searchmatch("BucketReplicator full"), "blocked", "unblocked"),
+    end=if(searchmatch("has room now"), true(), NULL)
+| fields + _time host bid peer _raw indexer idx state
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <search>
+    <query>| dbinspect index=_internal 
+| stats count by guId splunk_server 
+| rename splunk_server as indexer 
+| rename guId as peer</query>
+    <earliest>-15m</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="guid_to_host_mapping">$job.sid$</set>
+    </done>
+    <progress>
+      <unset token="guid_to_host_mapping">$job.sid$</unset>
+    </progress>
+  </search>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="selected_indexers">
+      <label>1. Select CM, site or hosts</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>search</fieldForValue>
+      <search>
+        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort 0 - count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
+    </input>
+    <input type="text" token="selected_targets">
+      <label>Selected targets</label>
+    </input>
+    <input type="time" token="time">
+      <label>Select time range of the report</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="checkbox" token="show_doc">
+      <label>Show documentation panel</label>
+      <choice value="hide">Show documentation</choice>
+      <delimiter> </delimiter>
+      <default>hide</default>
+    </input>
+  </fieldset>
+  <row rejects="$selected_targets$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select an cluster, site or host</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_targets$">
+    <panel>
+      <title>BucketReplicator full messages sending to indexers</title>
+      <input type="dropdown" token="selected_replication_indexer">
+        <label>Split by</label>
+        <choice value="host">Indexer complaining</choice>
+        <choice value="indexer">The problem indexer</choice>
+        <default>indexer</default>
+      </input>
+      <chart>
+        <search base="bucketreplicator_base">
+          <query>| search BucketReplicator full
+| chart limit=50 count by $selected_replication_indexer$ idx</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">353</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <drilldown>
+          <set token="selected_idx">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$selected_idx$</title>
+      <table>
+        <search base="bucketreplicator_base" id="transactions">
+          <query>| where idx="$selected_idx$"
+| stats count by bid</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_bid">$row.bid$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
