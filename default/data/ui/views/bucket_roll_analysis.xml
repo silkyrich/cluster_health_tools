@@ -98,9 +98,19 @@
     </done>
   </search>
   <search id="freeze_base">
-    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
+    <query>
+      
+| multisearch 
+[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
 | rex field=bid "(?&lt;idx&gt;[^~]+)"
-| stats min(_time) as _time values(idx) as idx values(host) as hosts by bid
+| fields _time idx host
+]
+[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd  DatabaseDirectoryManager Initiating local freeze TERM(cid=)
+| rex field=_raw "cid=\"[^|]+\|(?&lt;idx&gt;[^~]+)~"
+| fields _time idx  host
+]
+| table _time idx host
+      
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
