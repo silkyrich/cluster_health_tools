@@ -4,6 +4,7 @@
   <init>
     <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
     <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
+    <set token="_introspection">index=_introspection</set>
     <set token="series_thruput_max">0</set>
     <eval token="series_thruput_min">now()</eval>
   </init>
@@ -243,7 +244,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(data.num_of_requests_to_disabled_token) as num_of_requests_to_disabled_token
     avg(data.total_bytes_indexed) as total_bytes_indexed
     avg(data.total_bytes_received) as total_bytes_received
-    where index=_introspection data.series::http_event_collector_token host=$selected_host$ 
+    where $introspection$ data.series::http_event_collector_token host=$selected_host$ 
     by _time data.token_name data.format data.transport $selected_introspection_span$
 
           </query>
@@ -362,7 +363,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         $selected_introspection_function_host$(data.mem_used) as host_mem_used
         $selected_introspection_function_host$(data.normalized_load_avg_1min) as host_normalized_load_avg_1min
         $selected_introspection_function_host$(data.swap_used) as host_swap_used
-        where component=hostwide index=_introspection host=$selected_host$ 
+        where component=hostwide $introspection$ host=$selected_host$ 
         by data.swap data.os_name data.os_name_ext data.os_version data.mem data.cpu_count data.cpu_arch data.virtual_cpu_count data.splunk_version data.os_build data.instance_guid host _time span=1sec 
         | rename data.* as _*
         </query>
@@ -380,7 +381,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         $selected_introspection_function_per_process$(data.t_count) as splunkd_t_count
         $selected_introspection_function_per_process$(data.written_mb) as splunkd_written_mb
         $selected_introspection_function_per_process$(data.read_mb) as splunkd_read_mb
-        where index=_introspection component::perprocess host=$selected_host$ data.process=splunkd
+        where $introspection$ component::perprocess host=$selected_host$ data.process=splunkd
         by host data.process_type _time span=1s </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
