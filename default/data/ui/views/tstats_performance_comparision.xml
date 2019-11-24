@@ -1,5 +1,6 @@
 <form>
-  <label>compare search performance</label>
+  <label>Compare search performance</label>
+  <description>From version 8 we have tstats with PREFIX, this dashboard contains 4 examples of the search and displays information from introspection about the execution costs of the search</description>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label></label>
@@ -10,9 +11,25 @@
     </input>
     <input type="dropdown" token="splitby">
       <label>split by</label>
+      <choice value="layer">layer</choice>
       <choice value="data.search_props.sid">data.search_props.sid</choice>
       <choice value="host">host</choice>
-      <default>data.search_props.sid</default>
+      <default>layer</default>
+    </input>
+    <input type="dropdown" token="selected_attribute">
+      <label>attribute</label>
+      <choice value="normalized_pct_cpu">normalized_pct_cpu</choice>
+      <choice value="pct_cpu">pct_cpu</choice>
+      <choice value="pct_memory">pct_memory</choice>
+      <choice value="read_mb">read_mb</choice>
+      <choice value="fd_used">fd_used</choice>
+      <choice value="page_faults">page_faults</choice>
+      <choice value="elapsed">elapsed</choice>
+      <default>pct_cpu</default>
+    </input>
+    <input type="text" token="selected_hosts">
+      <label>Set filter for host selection</label>
+      <default>host=*</default>
     </input>
   </fieldset>
   <row>
@@ -139,10 +156,11 @@
       <chart>
         <title>$hostname_search_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_search_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$hostname_search_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -156,10 +174,11 @@
       <chart>
         <title>$hostname_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -182,10 +201,6 @@
       <chart>
         <title>$introspection_search_query$</title>
         <search id="introspection_search">
-          <query>index=_introspection data.cpu_user_pct=* host=idx* 
-| timechart limit=0 p95(data.cpu_user_pct) as data.cpu_user_pct by host</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
           <progress>
             <set token="introspection_search">$job.runDuration$</set>
             <set token="introspection_search_sid">$job.sid$</set>
@@ -194,6 +209,10 @@
           <done>
             <set token="introspection_search_sid">$job.sid$</set>
           </done>
+          <query>index=_introspection data.cpu_user_pct=* $selected_hosts$ 
+| timechart  span=3hr limit=0 p95(data.cpu_user_pct) as data.cpu_user_pct by host</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -205,7 +224,7 @@
       <chart>
         <title>$introspection_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.cpu_user_pct) as cpu_user_pct where component=hostwide index=_introspection host=idx* by host _time span=3hr
+          <query>| tstats p95(data.cpu_user_pct) as cpu_user_pct where component=hostwide index=_introspection $selected_hosts$ by host _time span=3hr
 | timechart span=3hr limit=0 p95(cpu_user_pct) as cpu_user_pct by host</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -260,24 +279,28 @@
       <chart>
         <title>$introspection_search_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$introspection_search_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$introspection_search_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
-        <option name="charting.chart">line</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
     <panel>
-      <title>Search performance results</title>
+      <title>Tstats performance results</title>
       <chart>
         <title>$introspection_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$hostname_tstats_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$introspection_tstats_sid$  by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -307,7 +330,7 @@
           <done>
             <set token="queue_search_sid">$job.sid$</set>
           </done>
-          <query>index=_internal sourcetype=splunkd host=idx* TERM(group=queue) TERM(name=*) 
+          <query>index=_internal sourcetype=splunkd $selected_hosts$ TERM(group=queue) TERM(name=*) 
 | timechart limit=0 span=3hr p99(current_size) by name</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -360,7 +383,7 @@
           <done>
             <set token="queue_tstats_sid">$job.sid$</set>
           </done>
-          <query>| tstats p99(PREFIX(current_size=)) as current_size where index=_internal sourcetype=splunkd host=idx* TERM(group=queue) TERM(name=*) by PREFIX(name=) _time span=3hr
+          <query>| tstats p99(PREFIX(current_size=)) as current_size where index=_internal sourcetype=splunkd $selected_hosts$ TERM(group=queue) TERM(name=*) by PREFIX(name=) _time span=3hr
 | rename name= as name
 | timechart limit=0 span=3hr p99(current_size) by name</query>
           <earliest>$time.earliest$</earliest>
@@ -378,10 +401,11 @@
       <chart>
         <title>$queue_search_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$queue_search_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$queue_search_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -390,14 +414,15 @@
       </chart>
     </panel>
     <panel>
-      <title>Search performance results</title>
+      <title>Tstats performance results</title>
       <chart>
         <title>$queue_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$queue_tstats_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$queue_tstats_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.chart">area</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -462,14 +487,15 @@
   </row>
   <row>
     <panel>
-      <title>Searchg Performance</title>
+      <title>Search Performance</title>
       <chart>
         <title>$introspection_search_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$connect_type_search_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$connect_type_search_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>
@@ -479,14 +505,15 @@
       </chart>
     </panel>
     <panel>
-      <title>Search performance</title>
+      <title>Tstats performance</title>
       <chart>
         <title>$connect_type_tstats_query$</title>
         <search>
-          <query>| tstats p95(data.normalized_pct_cpu) as normalized_pct_cpu where index=_introspection component::perprocess data.search_props.sid=*$connect_type_tstats_sid$ by _time data.search_props.sid host span=1sec
-| timechart span=11sec limit=0 fixedrange=false p95(normalized_pct_cpu) as normalized_pct_cpu by $splitby$</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
+          <query>| tstats p95(data.$selected_attribute$) as $selected_attribute$ where index=_introspection component::perprocess data.search_props.sid=*$connect_type_tstats_sid$ by _time data.search_props.sid host span=1sec
+| eval layer=if(searchmatch("data.search_props.sid=remote*"),"peer","sh")
+| timechart span=11sec limit=0 fixedrange=false p95($selected_attribute$) as $selected_attribute$ by $splitby$</query>
+          <earliest>-4h@m</earliest>
+          <latest>now</latest>
         </search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">area</option>

@@ -1,34 +1,43 @@
 <form>
-  <label>Forwarder performance</label>
+  <label>Debug Ingestion</label>
+  <description>Another groovy debug dashboard from Richard Morgan</description>
   <init>
-    <set token="_internal">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
+    <set token="_introspection">index=_introspection</set>
     <set token="series_thruput_max">0</set>
-    <eval token="series_thruput_min">now()</eval>a</init>
+    <eval token="series_thruput_min">now()</eval>
+  </init>
   <search id="annotation_restarts">
-    <query>| multisearch 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
-    | eval column="started" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
-    | eval column="new" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
-    | eval column="shutdown" ] 
-    [ search $_internal$ host=$selected_forwarder$ sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
-    | eval column="crash" ] 
-| fields + _time host column 
-| appendpipe 
-    [| transaction startswith=(column="oom" OR column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
-    | eval column=mvjoin(column,"-&gt;"), 
-        _time=_time+duration] 
+    <query>
+| multisearch 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
+    | eval column="started" 
+    | fields + _time host column] 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
+    | eval column="new" 
+    | fields + _time host column ] 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
+    | eval column="shutdown" 
+    | fields + _time host column ] 
+    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
+    | eval column="crash" 
+    | fields + _time host column ] 
+| transaction startswith=(column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
+| eval column=mvjoin(column," -&gt; "), 
+    _time=_time+duration 
 | where column!="started" 
-| eval annotation_label=host, annotation_category=column</query>
+| eval annotation_label=host, annotation_category=column
+| table _time ann*      
+      </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <sampleRatio>1</sampleRatio>
   </search>
   <search id="thruput">
-    <query>$_internal$ host=$selected_host$ METRICS TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
+    <query>$metrics$ host=$selected_host$ TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary)
 | fillnull ingest_pipe 0 
-| bin _time span=31sec
+| bin _time $selected_metrics_span$
 | stats
     $selected_thruput_function$(instantaneous_kbps) as instantaneous_kbps
     $selected_thruput_function$(instantaneous_eps) as instantaneous_eps
@@ -44,7 +53,7 @@
     <latest>$time.latest$</latest>
   </search>
   <search id="connecting_forwarders">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
+    <query>$metrics$ TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
 | fillnull ingest_pipe 0
 | eventstats dc(_time) as readings 
 | stats 
@@ -99,17 +108,17 @@ $finished_per_series_thruput$
     <latest>$selection_thruput_latest$</latest>
   </search>
   <search id="per_series_thruput">
-    <query>$_internal$ host=$selected_host$ METRICS sourcetype=splunkd TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
+    <query>$metrics$ host=$selected_host$ TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)
 | fillnull ingest_pipe 0
 | table _time host group ingest_pipe series eps ev kbps kb max_age avg_age</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
   <search id="pipeline_processor">
-    <query>$_internal$ host=$selected_host$ METRICS METRICS TERM(group=pipeline) TERM(processor=*)
+    <query>$metrics$ host=$selected_host$ TERM(group=pipeline) TERM(processor=*)
 | fillnull ingest_pipe 0
 | table _time host ingest_pipe processor name executes cpu_seconds cumulative_hits
-| bin _time span=31sec 
+| bin _time $selected_metrics_span$ 
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -121,7 +130,8 @@ $finished_per_series_thruput$
     by _time processor ingest_pipe name</query>
   </search>
   <search id="annotation_blocking">
-    <query>$_internal$ host=$selected_host$ source=*metrics* TERM(blocked=true) 
+    <query>$metrics$ host=$selected_host$ TERM(group=queue) TERM(name=*) TERM(blocked=true) 
+| fillnull ingest_pipe 0
 | stats values(name) as name by host _time ingest_pipe 
 | eval 
     annotation_label= "pipeline #".ingest_pipe." blocked", 
@@ -137,7 +147,7 @@ $finished_per_series_thruput$
   </search>
   <search id="channels">
     <query>
-$_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
+$metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | fillnull ingest_pipe 0 
 | table _time host ingest_pipe current_size inactive_channels new_channels removed_channels reclaimed_channel timedout_channels abandoned_channels 
 </query>
@@ -145,9 +155,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="queue">
-    <query>$_internal$ Metrics sourcetype=splunkd host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
+    <query>$metrics$ host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
 | fillnull ingest_pipe 0 
-| bin _time span=62sec 
+| bin _time $selected_metrics_span$ 
 | stats 
     avg(current_size_kb) as current_size_kb
     by _time ingest_pipe host name max_size_kb
@@ -157,9 +167,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="tcp_out">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpout_connections) host=$selected_host$ 
+    <query>$metrics$ TERM(group=tcpout_connections) host=$selected_host$ 
 | fillnull ingest_pipe 0 
-| bin _time span=31sec 
+| bin _time $selected_metrics_span$ 
 | stats
     sum(tcp_Kprocessed) as tcp_Kprocessed
     median(tcp_avg_thruput) as tcp_avg_thruput
@@ -172,7 +182,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="annotation_broken_pipes">
-    <query>$_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
+    <query>$splunkd$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
 | eval annotation_label=src,
     annotation_category="Dropped forwarder" 
 | table _time ann*</query>
@@ -180,7 +190,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="annotation_parsing_problems">
-    <query>$_internal$ sourcetype=splunkd WARN component=DateParserVerbose host=$selected_host$
+    <query>$splunkd$ WARN component=DateParserVerbose host=$selected_host$
 | eval reason = case(searchmatch("Accepted time format has changed possibly indicating a problem in extracting timestamps"),"Accepted time format has changed possibly indicating a problem in extracting timestamps",
     searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),"The TIME_FORMAT specified is matching timestamps outside of the acceptable time window",
     searchmatch("A possible timestamp match is outside of the acceptable time window"),"A possible timestamp match is outside of the acceptable time window",
@@ -190,7 +200,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     searchmatch("Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD"), "Failed to parse timestamp in first MAX_TIMESTAMP_LOOKAHEAD",
     searchmatch("The TIME_FORMAT specified is matching timestamps outside of the acceptable time window"),"The TIME_FORMAT specified is matching timestamps outside of the acceptable time window",
     searchmatch("The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable"), "The same timestamp has been used for consecutive times. If more than 200K events have the same timestamp, not all events may be retrieveable") 
-| rex field=_raw "Context:\s+source(::|=)(?&lt;naughty_source&gt;[^\|]+)\|host(::|=)(?&lt;naughty_host&gt;[^\|]+)\|(?&lt;naughty_sourcetype&gt;[^\|]+)\|(?&lt;number&gt;\d+)" 
+| rex field=_raw "Context:\s+source(::|=)(?&lt;naughty_source&gt;[^\|]+)\|host(::|=)(?&lt;naughty_host&gt;[^\|]+)\|(?&lt;naughty_sourcetype&gt;[^\|]+)\|(?&lt;naughty_number&gt;\d+)?" 
 | table _time reason naughty* 
 </query>
     <earliest>$time.earliest$</earliest>
@@ -201,7 +211,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="finished_per_series_thruput">| noop</set>
     </done>
     <query>| search group=per_$selected_group$_thruput ingest_pipe=$filter_pipelines$ 
-| bin _time span=31sec 
+| bin _time $selected_metrics_span$ 
 | stats $selected_per_series_function$(eps) as eps
     $selected_per_series_function$(kb) as kb
     $selected_per_series_function$(ev) as ev
@@ -211,8 +221,9 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     by _time series host</query>
   </search>
   <search id="channels_filtered" base="channels">
-    <query>| search ingest_pipe=$filter_pipelines$ 
-| timechart span=31sec limit=30
+    <query>
+| search ingest_pipe=$filter_pipelines$         
+| timechart $selected_metrics_span$ limit=30
     $selected_channels_function$(current_size) as current_size
     $selected_channels_function$(inactive_channels) as inactive_channels
     $selected_channels_function$(new_channels) as new_channels
@@ -223,6 +234,158 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     by ingest_pipe
 </query>
   </search>
+  <search id="hec_token_base">
+    <query>
+            | tstats 
+    avg(data.num_of_events) as num_of_events
+    avg(data.num_of_parser_errors) as num_of_parser_errors
+    avg(data.num_of_requests) as num_of_requests
+    avg(data.num_of_requests_in_mint_format) as num_of_requests_in_mint_format
+    avg(data.num_of_requests_to_disabled_token) as num_of_requests_to_disabled_token
+    avg(data.total_bytes_indexed) as total_bytes_indexed
+    avg(data.total_bytes_received) as total_bytes_received
+    where $introspection$ data.series::http_event_collector_token host=$selected_host$ 
+    by _time data.token_name data.format data.transport $selected_introspection_span$
+
+          </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="tcp_in_hostname_base">
+    <query>$metrics$ TERM(group=tcpin_connections) NOT(DispatchManager) TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
+| fillnull ingest_pipe value=0 
+| table _time host ingest_pipe kb tcp_Bps tcp_KBps tcp_avg_thruput tcp_Kprocessed tcp_eps process_time_ms chan_new_kBps evt_misc_kBps evt_raw_kBps evt_fields_kBps evt_fn_kBps evt_fv_kBps evt_fn_str_kBps evt_fn_meta_dyn_kBps evt_fn_meta_predef_kBps evt_fn_meta_str_kBps evt_fv_num_kBps evt_fv_str_kBps evt_fv_predef_kBps evt_fv_offlen_kBps evt_fv_fp_kBps build version os arch hostname guid fwdType ssl lastIndexer ack connectionType sourceHost sourceIp sourcePort destPort
+
+
+</query>
+    <earliest>$selection_earliest_tcp_out$</earliest>
+    <latest>$selection_latest_tcp_out$</latest>
+  </search>
+  <search base="tcp_in_hostname_base" id="tcp_in_hostname">
+    <query>
+| stats 
+    $tcp_in_hostname_aggregator$(kb) as kb
+    $tcp_in_hostname_aggregator$(tcp_Bps) as tcp_Bps
+    $tcp_in_hostname_aggregator$(tcp_KBps) as tcp_KBps
+    $tcp_in_hostname_aggregator$(tcp_avg_thruput) as tcp_avg_thruput
+    $tcp_in_hostname_aggregator$(tcp_Kprocessed) as tcp_Kprocessed
+    $tcp_in_hostname_aggregator$(tcp_eps) as tcp_eps
+    $tcp_in_hostname_aggregator$(process_time_ms) as process_time_ms
+    $tcp_in_hostname_aggregator$(chan_new_kBps) as chan_new_kBps
+    $tcp_in_hostname_aggregator$(evt_misc_kBps) as evt_misc_kBps
+    $tcp_in_hostname_aggregator$(evt_raw_kBps) as evt_raw_kBps
+    $tcp_in_hostname_aggregator$(evt_fields_kBps) as evt_fields_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_kBps) as evt_fn_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_kBps) as evt_fv_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_str_kBps) as evt_fn_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_dyn_kBps) as evt_fn_meta_dyn_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_predef_kBps) as evt_fn_meta_predef_kBps
+    $tcp_in_hostname_aggregator$(evt_fn_meta_str_kBps) as evt_fn_meta_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_num_kBps) as evt_fv_num_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_str_kBps) as evt_fv_str_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_predef_kBps) as evt_fv_predef_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_offlen_kBps) as evt_fv_offlen_kBps
+    $tcp_in_hostname_aggregator$(evt_fv_fp_kBps) as evt_fv_fp_kBps
+    values(build) as _build 
+    values(version) as _version
+    values(os) as _os 
+    values(arch) as _arch 
+    values(guid) as _guid 
+    values(fwdType) as _fwdType 
+    values(ssl) as _ssl 
+    values(ack) as _ack 
+    values(connectionType) as _connectionType 
+    values(sourcePort) as _sourcePort 
+    values(sourceHost) as _sourceHost
+    values(sourceIp) as _sourceIp
+    values(destPort) as _destPort by host ingest_pipe
+| table *
+</query>
+    <progress>
+      <set token="tcp_incomming.build">$result._build$</set>
+      <set token="tcp_incomming.version">$result._version$</set>
+      <set token="tcp_incomming.os">$result._os$</set>
+      <set token="tcp_incomming.arch">$result._arch$</set>
+      <set token="tcp_incomming.hostname">$result._hostname$</set>
+      <set token="tcp_incomming.guid">$result._guid$</set>
+      <set token="tcp_incomming.fwdType">$result._fwdType$</set>
+      <set token="tcp_incomming.ssl">$result._ssl$</set>
+      <set token="tcp_incomming.ack">$result._ack$</set>
+      <set token="tcp_incomming.connectionType">$result._connectionType$</set>
+      <set token="tcp_incomming.sourceHost">$result._sourceHost$</set>
+      <set token="tcp_incomming.sourceIp">$result._sourceIp$</set>
+      <set token="tcp_incomming.destPort">$result._destPort$</set>
+      <set token="tcp_incomming.sourcePort">$result._sourcePort$</set>
+    </progress>
+  </search>
+  <search base="tcp_in_hostname">
+    <query>| stats values(host) as hosts
+| eval hosts="host IN (".mvjoin(hosts,", ").")"</query>
+    <done>
+      <set token="targets_drill_up">$result.hosts$</set>
+    </done>
+    <progress>
+      <set token="targets_drill_up">$result.hosts$</set>
+    </progress>
+  </search>
+  <search id="introspection_resource_usage_host">
+    <progress>
+      <set token="host.os_name">$result._os_name$</set>
+      <set token="host.swap">$result._swap$</set>
+      <set token="host.cpu_count">$result._cpu_count$</set>
+      <set token="host.cpu_arch">$result._cpu_arch$</set>
+      <set token="host.mem">$result._mem$</set>
+      <set token="host.virtual_cpu_count">$result._virtual_cpu_count$</set>
+      <set token="host.splunk_version">$result._splunk_version$</set>
+      <set token="host.build">$result._os_build$</set>
+      <set token="host.instance_guid">$result._instance_guid$</set>
+      <set token="host.os_version">$result._os_version$</set>
+      <set token="host.os_name_ext">$result._os_name_ext$</set>
+      <set token="host.hostwide_introspection_sid"></set>
+    </progress>
+    <done>
+      <set token="host.os_name">$result._os_name$</set>
+      <set token="host.swap">$result._swap$</set>
+      <set token="host.cpu_count">$result._cpu_count$</set>
+      <set token="host.cpu_arch">$result._cpu_arch$</set>
+      <set token="host.mem">$result._mem$</set>
+      <set token="host.virtual_cpu_count">$result._virtual_cpu_count$</set>
+      <set token="host.splunk_version">$result._splunk_version$</set>
+      <set token="host.build">$result._os_build$</set>
+      <set token="host.instance_guid">$result._instance_guid$</set>
+      <set token="host.os_version">$result._os_version$</set>
+      <set token="host.os_name_ext">$result._os_name_ext$</set>
+      <set token="host.hostwide_introspection_sid"></set>
+    </done>
+    <query>| tstats
+        $selected_introspection_function_host$(data.cpu_system_pct) as host_cpu_system_pct
+        $selected_introspection_function_host$(data.cpu_user_pct) as host_cpu_user_pct
+        $selected_introspection_function_host$(data.mem_used) as host_mem_used
+        $selected_introspection_function_host$(data.normalized_load_avg_1min) as host_normalized_load_avg_1min
+        $selected_introspection_function_host$(data.swap_used) as host_swap_used
+        where component=hostwide $introspection$ host=$selected_host$ 
+        by data.swap data.os_name data.os_name_ext data.os_version data.mem data.cpu_count data.cpu_arch data.virtual_cpu_count data.splunk_version data.os_build data.instance_guid host _time span=1sec 
+        | rename data.* as _*
+        </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="introspection_resource_usage_per_process">
+    <query>| tstats 
+        $selected_introspection_function_per_process$(data.elapsed) as splunkd_elapsed
+        $selected_introspection_function_per_process$(data.fd_used) as splunkd_fd_used
+        $selected_introspection_function_per_process$(data.mem_used) as splunkd_mem_used
+        $selected_introspection_function_per_process$(data.normalized_pct_cpu) as splunkd_normalized_pct_cpu
+        $selected_introspection_function_per_process$(data.pct_cpu) as splunkd_pct_cpu
+        $selected_introspection_function_per_process$(data.pct_memory) as splunkd_pct_memory
+        $selected_introspection_function_per_process$(data.t_count) as splunkd_t_count
+        $selected_introspection_function_per_process$(data.written_mb) as splunkd_written_mb
+        $selected_introspection_function_per_process$(data.read_mb) as splunkd_read_mb
+        where $introspection$ component::perprocess host=$selected_host$ data.process=splunkd
+        by host data.process_type _time span=1s </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -231,17 +394,48 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <latest>now</latest>
       </default>
       <change>
-        <unset token="finished_per_series_thruput"></unset>
-        <unset token="finished_per_series_thruput"></unset>
-        <set token="series_thruput_max">0</set>
-        <eval token="series_thruput_min">now()</eval>
+        <condition match="isnotnull($time.latest$)">
+          <eval token="form.selected_metrics_span">if(isnull($time.latest$),31, if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31))</eval>
+          <eval token="form.selected_introspection_span">if(isnull($time.latest$),10,if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10))</eval>
+          <unset token="finished_per_series_thruput"></unset>
+          <set token="series_thruput_max">0</set>
+          <eval token="series_thruput_min">now()</eval>
+        </condition>
       </change>
     </input>
     <input type="text" token="selected_host">
       <label>Enter forwarder name</label>
       <change>
-        <unset token="filter_pipelines"></unset>
+        <set token="filter_pipelines">*</set>
         <unset token="show_tcp_out_panel"></unset>
+        <unset token="show_hostwide_panel"></unset>
+        <unset token="show_queue_panel"></unset>
+        <unset token="host.os_name">$result._os_name$</unset>
+        <unset token="host.swap">$result._swap$</unset>
+        <unset token="host.cpu_count">$result._cpu_count$</unset>
+        <unset token="host.cpu_arch">$result._cpu_arch$</unset>
+        <unset token="host.mem">$result._mem$</unset>
+        <unset token="host.virtual_cpu_count">$result._virtual_cpu_count$</unset>
+        <unset token="host.splunk_version">$result._splunk_version$</unset>
+        <unset token="host.build">$result._os_build$</unset>
+        <unset token="host.instance_guid">$result._instance_guid$</unset>
+        <unset token="host.os_version">$result._os_version$</unset>
+        <unset token="host.os_name_ext">$result._os_name_ext$</unset>
+        <unset token="host.hostwide_introspection_sid"></unset>
+        <unset token="tcp_incomming.build">$result._build$</unset>
+        <unset token="tcp_incomming.version">$result._version$</unset>
+        <unset token="tcp_incomming.os">$result._os$</unset>
+        <unset token="tcp_incomming.arch">$result._arch$</unset>
+        <unset token="tcp_incomming.hostname">$result._hostname$</unset>
+        <unset token="tcp_incomming.guid">$result._guid$</unset>
+        <unset token="tcp_incomming.fwdType">$result._fwdType$</unset>
+        <unset token="tcp_incomming.ssl">$result._ssl$</unset>
+        <unset token="tcp_incomming.ack">$result._ack$</unset>
+        <unset token="tcp_incomming.connectionType">$result._connectionType$</unset>
+        <unset token="tcp_incomming.sourceHost">$result._sourceHost$</unset>
+        <unset token="tcp_incomming.sourceIp">$result._sourceIp$</unset>
+        <unset token="tcp_incomming.destPort">$result._destPort$</unset>
+        <unset token="tcp_incomming.sourcePort">$result._sourcePort$</unset>
       </change>
     </input>
     <input type="dropdown" token="filter_pipelines">
@@ -256,6 +450,27 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </query>
       </search>
     </input>
+    <input type="dropdown" token="selected_bins">
+      <label>Select number of bins</label>
+      <choice value="100">100</choice>
+      <choice value="250">250</choice>
+      <choice value="500">500</choice>
+      <choice value="750">750</choice>
+      <choice value="1000">1000</choice>
+      <initialValue>500</initialValue>
+    </input>
+    <input type="text" token="selected_metrics_span" depends="$hide$">
+      <label>selected_metrics_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>31</initialValue>
+    </input>
+    <input type="text" token="selected_introspection_span" depends="$hide$">
+      <label>selected_introspection_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>10</initialValue>
+    </input>
   </fieldset>
   <row rejects="$selected_host$">
     <panel>
@@ -265,8 +480,150 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     </panel>
   </row>
   <row depends="$selected_host$">
+    <panel depends="$show_hostwide_panel$">
+      <html>
+    <style>
+			
+			
+#info_table {
+  font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#info_table td, #info_table th {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+#info_table tr:nth-child(even){background-color: #f2f2f2;}
+
+#info_table tr:hover {background-color: #ddd;}
+
+#info_table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: #4CAF50;
+  color: white;
+}
+			</style> 
+        <h2>Hostwide introspection reports</h2>
+        <table id="info_table">
+          <tr>
+            <th>Attribute</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>Splunk Version</td>
+			    <td>$host.splunk_version$</td>
+		    </tr>
+        <tr>
+          <td>Build</td>
+			    <td>$host.build$</td>
+		    </tr>
+        <tr>
+          <td>CPU architecture</td>
+			    <td>$host.cpu_arch$</td>
+		    </tr>
+        <tr>
+          <td>Real cores</td>
+			    <td>$host.cpu_count$</td>
+		    </tr>
+        <tr>
+          <td>Memory</td>
+			    <td>$host.mem$</td>
+		    </tr>
+        <tr>
+          <td>Swap</td>
+			    <td>$host.swap$</td>
+		    </tr>
+        <tr>
+          <td>Virtual cores</td>
+			    <td>$host.virtual_cpu_count$</td>
+		    </tr>
+        <tr>
+          <td>GUID</td>
+			    <td>$host.instance_guid$</td>
+	      </tr>
+        <tr>
+          <td>Operating System</td>
+    			<td>$host.os_name$</td>
+		    </tr>
+        <tr>
+          <td>Operating System Extended</td>
+    			<td>$host.os_name_ext$</td>
+		    </tr>
+        <tr>
+          <td>Operating System</td>
+    			<td>$host.os_version$</td>
+		    </tr>
+      </table>
+    </html>
+    </panel>
+    <panel depends="$show_tcp_out_panel$">
+      <html>
+        <h2>Upstream host reports</h2>
+        <table id="info_table">
+          <tr>
+            <th>Attribute</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>Splunk version</td>
+			    <td>$tcp_incomming.version$</td>
+		    </tr>
+        <tr>
+          <td>Build</td>
+			    <td>$tcp_incomming.build$</td>
+		    </tr>
+        <tr>
+          <td>CPU architecture</td>
+			    <td>$tcp_incomming.arch$</td>
+		    </tr>
+        <tr>
+          <td>Forwarder type</td>
+			    <td>$tcp_incomming.fwdType$</td>
+		    </tr>
+        <tr>
+          <td>ACK</td>
+			    <td>$tcp_incomming.ack$</td>
+	      </tr>
+        <tr>
+          <td>SSL configured</td>
+			    <td>$tcp_incomming.ssl$</td>
+		    </tr>
+        <tr>
+          <td>GUID</td>
+			    <td>$tcp_incomming.guid$</td>
+	      </tr>
+        <tr>
+          <td>Connection type</td>
+    			<td>$tcp_incomming.connectionType$</td>
+		    </tr>
+        <tr>
+          <td>Source host</td>
+    			<td>$tcp_incomming.sourceHost$</td>
+		    </tr>
+        <tr>
+          <td>Source IP</td>
+    			<td>$tcp_incomming.sourceIp$</td>
+		    </tr>
+        <tr>
+          <td>Source Port</td>
+    			<td>$tcp_incomming.sourcePort$</td>
+		    </tr>
+        <tr>
+          <td>Destination Port</td>
+    			<td>$tcp_incomming.destPort$</td>
+		    </tr>
+      </table>
+</html>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
     <panel>
-      <title>The throughput per pipeline for $selected_host$ for all pipelines - select a pipeline for more detail</title>
+      <title>The throughput per pipeline for $selected_host$ for all pipelines with restart annotation (click to select pipeline)</title>
       <input type="dropdown" token="selected_thruput">
         <label>Select thruput metric</label>
         <choice value="thruput">thruput</choice>
@@ -306,15 +663,16 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_blocking" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
-| timechart span=31sec limit=0 
+| timechart $selected_metrics_span$ limit=0 
     avg($selected_thruput_variable$) by ingest_pipe 
 | eval *=0 
 | foreach * 
-    [| eval *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
+    *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -333,19 +691,98 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </chart>
     </panel>
   </row>
-  <row depends="$selected_host$,$time.earliest$,$time.latest$">
+  <row depends="$selected_host$">
     <panel>
+      <title>Create sharable link</title>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="debug_ingestion?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Open this dashboard in a new window with absolute for selected range time</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_ingestion?form.time.earliest=$selection_thruput_earliest$&amp;form.time.latest=$selection_thruput_latest$&amp;form.selected_host=$selected_host$&amp;form.selected_metrics_span=$form.selected_metrics_span$&amp;form.selected_introspection_span=$form.selected_introspection_span$&amp;form.selected_bins=$selected_bins$">Open this dashboard in a new window with absolute for selected range time</a>
         </h2>
       </html>
     </panel>
   </row>
-  <row depends="$selected_host$">
+  <row depends="$selected_host$" rejects="$show_hec_panel$">
     <panel>
-      <title>Load average for $selected_host$ with annotated restarts</title>
-      <input type="dropdown" token="selected_load_average_function">
+      <title>HEC details per token - not pipeline aware</title>
+      <html>
+        <h1 style="text-align:center">No HEC ingestion detected</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$show_hec_panel$">
+    <panel>
+      <title>HEC details per token - not pipeline aware</title>
+      <input type="multiselect" token="selected_hec_fields">
+        <label>Select attribute</label>
+        <choice value="avg(num_of_events)">num_of_events</choice>
+        <choice value="avg(num_of_parser_errors)">num_of_parser_errors</choice>
+        <choice value="avg(num_of_requests)">num_of_requests</choice>
+        <choice value="avg(num_of_requests_in_mint_format)">num_of_requests_in_mint_format</choice>
+        <choice value="avg(num_of_requests_to_disabled_token)">num_of_requests_to_disabled_token</choice>
+        <choice value="avg(total_bytes_indexed)">total_bytes_indexed</choice>
+        <choice value="avg(total_bytes_received)">total_bytes_received</choice>
+        <delimiter> </delimiter>
+        <default>avg(total_bytes_indexed),avg(total_bytes_received),avg(num_of_events),avg(num_of_parser_errors)</default>
+      </input>
+      <input type="dropdown" token="hec_split_by">
+        <label>Split HEC data by</label>
+        <choice value="by data.format">format</choice>
+        <choice value="by data.token_name">token_name</choice>
+        <choice value="by data.transport">transport</choice>
+        <choice value="| noop">no split</choice>
+        <default>| noop</default>
+      </input>
+      <input type="dropdown" token="selected_hec_token">
+        <label>Select HEC token</label>
+        <choice value="*">*</choice>
+        <fieldForLabel>data.token_name</fieldForLabel>
+        <fieldForValue>data.token_name</fieldForValue>
+        <search base="hec_token_base">
+          <query>| stats count by data.token_name </query>
+          <progress>
+            <eval token="show_hec_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_hec_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+        </search>
+        <default>*</default>
+      </input>
+      <chart>
+        <title>Select window and indexer to drill in</title>
+        <search base="hec_token_base">
+          <query>| search data.token_name=$selected_hec_token$
+| timechart limit=50 $selected_introspection_span$ $selected_hec_fields$ $hec_split_by$</query>
+        </search>
+        <search base="annotation" type="annotation"></search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">377</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$" rejects="$show_hostwide_panel$">
+    <panel>
+      <title>Hostwide resource usage with annotated restarts</title>
+      <html>
+        <h1 style="text-align:center">No introspection data found</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$show_hostwide_panel$">
+    <panel>
+      <title>Hostwide resource usage with annotated restarts</title>
+      <input type="dropdown" token="host_attributes">
+        <label>Show metrics</label>
+        <choice value="| table _time total_mem mem_used normalized_load_avg_1min">memory</choice>
+        <choice value="| table _time max_cpu  host_cpu_system_pct+host_cpu_user_pct cpu_system_pct cpu_user_pct normalized_load_avg_1min">cpu</choice>
+        <choice value="| table _time total_swap swap_used normalized_load_avg_1min">swap</choice>
+        <default>| table _time max_cpu  host_cpu_system_pct+host_cpu_user_pct cpu_system_pct cpu_user_pct normalized_load_avg_1min</default>
+      </input>
+      <input type="dropdown" token="selected_introspection_function_host">
         <label>Select aggregation function</label>
         <choice value="avg">average</choice>
         <choice value="median">median</choice>
@@ -363,14 +800,97 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="thruput">
-          <query>| search name=thruput 
-| fields _time load_average 
-| timechart span=31sec $selected_load_average_function$(load_average) as load_average</query>
-        </search>
         <search base="annotation_restarts" type="annotation"></search>
+        <search base="introspection_resource_usage_host">
+          <progress>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+          <query>| rename _mem as total_mem 
+| rename _swap as total_swap 
+| eval total_cpu=host_cpu_system_pct+host_cpu_user_pct
+
+| timechart $selected_introspection_span$
+    $selected_introspection_function_host$(total_cpu) as "host_cpu_system_pct+host_cpu_user_pct"
+    $selected_introspection_function_host$(host_cpu_system_pct) as cpu_system_pct 
+    $selected_introspection_function_host$(host_cpu_user_pct) as cpu_user_pct 
+    $selected_introspection_function_host$(host_normalized_load_avg_1min) as normalized_load_avg_1min
+    $selected_introspection_function_host$(host_swap_used) as swap_used 
+    $selected_introspection_function_host$(host_mem_used) as mem_used 
+    max(total_swap) as total_swap
+    max(total_mem) as total_mem
+| eval max_cpu=100
+    $host_attributes$</query>
+        </search>
+        <option name="charting.axisY2.abbreviation">auto</option>
+        <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">normalized_load_avg_1min</option>
+        <option name="charting.chart.stackMode">default</option>
         <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">394</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Splunkd resource usage with with annotated restarts</title>
+      <input type="dropdown" token="per_process_attributes">
+        <label>Show metrics</label>
+        <choice value="| table _time *normalized_pct_cpu*">CPU %</choice>
+        <choice value="| table _time *cpu* | fields - *normalized_pct_cpu*">CPU</choice>
+        <choice value="| table _time *_mem* | fields - *pct*">Memory</choice>
+        <choice value="| table _time *fd_used*">File handles</choice>
+        <choice value="| table _time *_mb*">Data</choice>
+        <default>| table _time *normalized_pct_cpu*</default>
+      </input>
+      <input type="dropdown" token="selected_introspection_function_per_process">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>sum</default>
+      </input>
+      <input type="dropdown" token="per_process_split_by">
+        <label>Split by</label>
+        <choice value="| noop">None</choice>
+        <choice value="by data.process_type">Process type</choice>
+        <default>| noop</default>
+      </input>
+      <chart>
+        <title>Utilization of Splunk server</title>
+        <search base="annotation_restarts" type="annotation"></search>
+        <search base="introspection_resource_usage_per_process">
+          <query>| timechart $selected_introspection_span$
+    $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
+    $selected_introspection_function_per_process$(splunkd_fd_used) as splunkd_fd_used
+    $selected_introspection_function_per_process$(splunkd_mem_used) as splunkd_mem_used
+    $selected_introspection_function_per_process$(splunkd_normalized_pct_cpu) as splunkd_normalized_pct_cpu
+    $selected_introspection_function_per_process$(splunkd_pct_cpu) as splunkd_pct_cpu
+    $selected_introspection_function_per_process$(splunkd_pct_memory) as splunkd_pct_memory
+    $selected_introspection_function_per_process$(splunkd_t_count) as splunkd_t_count
+    $selected_introspection_function_per_process$(splunkd_written_mb) as splunkd_written_mb
+    $selected_introspection_function_per_process$(splunkd_read_mb) as splunkd_read_mb
+    $per_process_split_by$
+$per_process_attributes$</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">394</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -379,7 +899,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <panel>
       <title>Queue filling for pipeline $filter_pipelines$ on $selected_host$</title>
       <html>
-        <h1 style="text-align:center">No blocking detected</h1>
+        <h1 style="text-align:center">No queuing detected !!!</h1>
       </html>
     </panel>
   </row>
@@ -393,15 +913,18 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
-| timechart span=31sec avg($queue_fill$) by name</query>
+| timechart $selected_metrics_span$ avg($queue_fill$) by name</query>
+          <progress>
+            <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -452,6 +975,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $selected_metrics_span$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
+        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -461,13 +992,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 
 
           </query>
-        </search>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>
-| timechart span=31sec limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -484,7 +1008,15 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </chart>
     </panel>
   </row>
-  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$">
+  <row depends="$selected_host$,$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$" rejects="$show_forwarders_panel$">
+    <panel>
+      <title>Forwarders connecting to ...</title>
+      <html>
+        <h1 style="text-align:center">No incomming forwarders detected</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$,$show_forwarders_panel$">
     <panel>
       <title>Forwarders connecting to $selected_host$ showing $selected_host_count$ forwarders</title>
       <input type="dropdown" token="selected_host_version">
@@ -530,6 +1062,7 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           </progress>
           <done>
             <set token="selected_host_count">$job.resultCount$</set>
+            <eval token="show_forwarders_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
           <query>| search type=$selected_host_type$ os=$selected_host_os$ version=$selected_host_version$ ingest_pipe=$filter_pipelines$
 | rename guid_count as "# guids"
@@ -592,24 +1125,36 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           <scale type="threshold">80</scale>
         </format>
         <drilldown>
-          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_metrics_span=$form.selected_metrics_span$&amp;form.selected_introspection_span=$form.selected_introspection_span$&amp;form.selected_bins=$selected_bins$</link>
         </drilldown>
       </table>
     </panel>
   </row>
-  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$">
+  <row depends="$selected_host$,$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$" rejects="$show_parsing_panel$">
+    <panel>
+      <title>Parsing problems ...</title>
+      <html>
+        <h1 style="text-align:center">No parsing issues detected in selected time range</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$finished_per_series_thruput$,$selection_per_series_earliest$,$selection_per_series_latest$,$show_parsing_panel$">
     <panel>
       <title>Parsing problems $selected_host$ for all pipelines</title>
       <table>
         <search base="annotation_parsing_problems">
+          <done>
+            <eval token="show_parsing_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
           <query>| search _time&gt;$selection_per_series_earliest$ _time&lt;$selection_per_series_latest$
 | stats count values(reason) as reason by naughty_host naughty_sourcetype naughty_source
-| sort - count</query>
+| sort - count
+| eval _url="index=* host=\"".naughty_host."\" sourcetype=\"".naughty_sourcetype."\" source::\"".naughty_source."\" _index_earliest=$selection_per_series_earliest$ _index_latest=$selection_per_series_latest$ earliest=$time.earliest$ latest=$time.latest$"</query>
         </search>
         <option name="count">10</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_self">debug_ingestion?form.selected_sourcetype=$row.naughty_sourcetype$&amp;form.selected_source=$row.naughty_source$&amp;form.selected_host=$row.naughty_host$&amp;form.earliest=asdf&amp;form.latest=asdf</link>
+          <link target="_blank">search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$row._url$</link>
         </drilldown>
       </table>
     </panel>
@@ -660,14 +1205,14 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="pipeline_processor_aggregated">
-          <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
-| eval key="#".ingest_pipe." ".processor." &amp; ".name 
-| timechart limit=50 span=31sec avg($selected_processor_variable$) by key</query>
-        </search>
         <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
     annotation_category=reason
 | table _time anno*</search>
+        <search base="pipeline_processor_aggregated">
+          <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
+| eval key="#".ingest_pipe." ".processor." &amp; ".name 
+| timechart limit=50 $selected_metrics_span$ avg($selected_processor_variable$) by key</query>
+        </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -709,6 +1254,11 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="channels_filtered">
+          <query>
+          
+| fields _time $channel_variable$</query>
+        </search>
         <search base="annotation_broken_pipes" type="annotation">
           <query>
             $_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
@@ -716,10 +1266,6 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     annotation_category="Dropped forwarder" 
 | table _time ann*
           </query>
-        </search>
-        <search base="channels_filtered">
-          <query>
-| fields _time $channel_variable$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -757,11 +1303,36 @@ $_internal$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <choice value="group">group</choice>
         <default>destIp</default>
       </input>
+      <input type="dropdown" token="tcp_out_overlay">
+        <label>Overlay</label>
+        <choice value="count dc(destIp)">count + discount count</choice>
+        <choice value="dc(destIp)">distinct count</choice>
+        <choice value="count">count</choice>
+        <default>dc(destIp)</default>
+      </input>
       <chart>
-        <title>$selected_earliest$ $selected_latest$   $selected_name2$</title>
+        <title>Select time range to see what targets recieved data from this host</title>
+        <search base="tcp_out">
+          <progress>
+            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+          <query>| eval data="drop" 
+| search ingest_pipe=$filter_pipelines$ 
+| rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)" 
+| appendpipe 
+    [| timechart $selected_metrics_span$ limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$] 
+| appendpipe 
+    [| sort 0 + _time 
+    | streamstats $tcp_out_overlay$ ] 
+| where isnull(data) 
+| stats values(*) as * by _time</query>
+        </search>
         <search id="annotation_timeout" type="annotation">
           <query>
-$_internal$ host=$selected_host$ sourcetype=splunkd TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
+$splunkd$ host=$selected_host$ TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
 | eval annotation_label="connect fail",
     annotation_category=destHost
 $show_tcp_out_panel$    
@@ -769,40 +1340,72 @@ $show_tcp_out_panel$
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
-        <search base="tcp_out">
-          <done>
-            <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </done>
-          <query>| search ingest_pipe=$filter_pipelines$ 
-| rex field=name "^(?&lt;group&gt;[^:]+):[^:]+:[^:]+:(?&lt;channel&gt;\d+)"
-| timechart limit=80 avg($tcp_out_variable$) by $tcp_out_splitby$</query>
-        </search>
+        <selection>
+          <eval token="selection_earliest_tcp_out">$start$</eval>
+          <eval token="selection_latest_tcp_out">$end$</eval>
+        </selection>
+        <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">count,dc(destIp)</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">412</option>
         <option name="refresh.display">progressbar</option>
-        <selection>
-          <eval token="selection_earliest_tcp_out">$start$</eval>
-          <eval token="selection_latest_tcp_out">$end$</eval>
-        </selection>
       </chart>
     </panel>
   </row>
   <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$">
     <panel>
-      <title>Targets recieving data from $selected_host$ for selected duration</title>
+      <title>Targets recieving data from $selected_host$ for selected duration - drill up to recieving target</title>
+      <input type="dropdown" token="tcp_in_hostname_attribute">
+        <label>Select attribute</label>
+        <choice value="kb">kb</choice>
+        <choice value="tcp_Bps">tcp_Bps</choice>
+        <choice value="tcp_KBps">tcp_KBps</choice>
+        <choice value="tcp_avg_thruput">tcp_avg_thruput</choice>
+        <choice value="tcp_Kprocessed">tcp_Kprocessed</choice>
+        <choice value="tcp_eps">tcp_eps</choice>
+        <choice value="process_time_ms">process_time_ms</choice>
+        <choice value="chan_new_kBps">chan_new_kBps</choice>
+        <choice value="evt_misc_kBps">evt_misc_kBps</choice>
+        <choice value="evt_raw_kBps">evt_raw_kBps</choice>
+        <choice value="evt_fields_kBps">evt_fields_kBps</choice>
+        <choice value="evt_fn_kBps">evt_fn_kBps</choice>
+        <choice value="evt_fv_kBps">evt_fv_kBps</choice>
+        <choice value="evt_fn_str_kBps">evt_fn_str_kBps</choice>
+        <choice value="evt_fn_meta_dyn_kBps">evt_fn_meta_dyn_kBps</choice>
+        <choice value="evt_fn_meta_predef_kBps">evt_fn_meta_predef_kBps</choice>
+        <choice value="evt_fn_meta_str_kBps">evt_fn_meta_str_kBps</choice>
+        <choice value="evt_fv_num_kBps">evt_fv_num_kBps</choice>
+        <choice value="evt_fv_str_kBps">evt_fv_str_kBps</choice>
+        <choice value="evt_fv_predef_kBps">evt_fv_predef_kBps</choice>
+        <choice value="evt_fv_offlen_kBps">evt_fv_offlen_kBps</choice>
+        <choice value="evt_fv_fp_kBps">evt_fv_fp_kBps</choice>
+        <default>kb</default>
+      </input>
+      <input type="dropdown" token="tcp_in_hostname_aggregator">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
       <chart>
-        <title>Drill down to select upstream target</title>
-        <search>
-          <query>$_internal$ TERM(hostname=$selected_host$) earliest=$selection_earliest_tcp_out$ latest=$selection_latest_tcp_out$ 
-| fillnull ingest_pipe 0
-| sort host
-| chart sum(kb) as kb 
-    by host ingest_pipe</query>
-          <earliest>$selection_earliest_tcp_out$</earliest>
-          <latest>$selection_latest_tcp_out$</latest>
+        <search base="tcp_in_hostname">
+          <query>| xyseries host ingest_pipe $tcp_in_hostname_attribute$ 
+| foreach * 
+       [| eval &lt;&lt;FIELD&gt;&gt;=if(isnum(&lt;&lt;FIELD&gt;&gt;),round('&lt;&lt;FIELD&gt;&gt;',2),host)]</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -811,9 +1414,19 @@ $show_tcp_out_panel$
         <option name="height">423</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.ingest_pipe=$click.name$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.filter_pipelines=$click.name2$&amp;form.selected_metrics_span=$form.selected_metrics_span$&amp;form.selected_introspection_span=$form.selected_introspection_span$&amp;form.selected_bins=$selected_bins$</link>
         </drilldown>
       </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$,$targets_drill_up$">
+    <panel>
+      <title>Drill up to view the ingestion for the targets recieving data from this host</title>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$targets_drill_up$">Debug ingestion for  upstream targets</a>
+        </h2>
+      </html>
     </panel>
   </row>
 </form>

@@ -1,12 +1,12 @@
 <form>
-  <label>Debug incomming forwarders</label>
-  <description>This dashboard performs analytics on all the forwarder connections coming into a customer stack</description>
+  <label>Debug Incomming forwarders</label>
   <init>
     <set token="seconds_for_bin">62</set>
-    <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
+    <set token="metrics">(index=core_splunk_internal OR index=_internal) Metrics (sourcetype=splunkd OR sourcetype=metrics)</set>
+    <set token="splunkd">(index=core_splunk_internal OR index=_internal) sourcetype=splunkd</set>
   </init>
   <search id="forwarders_base">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_targets$
+    <query>$metrics$ TERM(group=tcpin_connections) $selected_targets$
 | stats 
     sum(kb) as sum_kb
     avg(chan_new_kBps) as avg_chan_new_kBps
@@ -23,14 +23,18 @@
     dc(sourceIp) as count_sources
     dc(host) as indexer_count
     by hostname
-| table *</query>
+| addinfo
+| table *
+</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
     <progress>
       <set token="total_forwarder_count">$job.resultCount$</set>
+      <eval token="duration">$result.info_max_time$-$result.info_min_time$</eval>
     </progress>
     <done>
       <set token="total_forwarder_count">$job.resultCount$</set>
+      <eval token="duration">$result.info_max_time$-$result.info_min_time$</eval>
     </done>
   </search>
   <search base="forwarders_base" id="forwarders_ranked">
@@ -41,8 +45,8 @@
     sum(sum_kb) as total_sum_kb 
     dc(guid) as all_forwarders 
     max(indexer_count) as all_indexers
-| eval indexer_coverage=indexer_count."/".all_indexers,
-indexer_coverage_pct=indexer_count/all_indexers
+| eval target_coverage=indexer_count."/".all_indexers,
+target_coverage_pct=indexer_count/all_indexers
 | sort 0 - sum_kb 
 | streamstats 
     sum(sum_kb) as accumlated_sum_kb 
@@ -57,16 +61,20 @@ indexer_coverage_pct=indexer_count/all_indexers
     by all_forwarders 
 | eval coverage_kbps=accumlated_avg_kbps/total_sum_avg_KBps, 
     progress_through_forwarders_kbps=(ranking_most_data_kbps/all_forwarders) * 100 
-| table hostname guid guid_count *</query>
+| table hostname guid guid_count *
+</query>
     <progress>
-      <unset token="total_indexer_count"></unset>
+      <set token="total_indexer_count">$result.all_indexers$</set>
+      <eval token="total_sum_gb">round($result.total_sum_kb$/(1024*1024),2)</eval>
     </progress>
     <done>
       <set token="total_indexer_count">$result.all_indexers$</set>
+      <eval token="total_sum_gb">round($result.total_sum_kb$/(1024*1024),2)</eval>
+      <eval token="average_data_rate_ps">round(($total_sum_gb$*1024)/$duration$,2)</eval>
     </done>
   </search>
   <search id="single_forwarder_base">
-    <query>$_internal$ Metrics sourcetype=splunkd TERM(group=tcpin_connections) $selected_forwarders$ $selected_targets$
+    <query>$metrics$ TERM(group=tcpin_connections) $selected_forwarders$ $selected_targets$
     | table _time host kb tcp_avg_thruput tcp_eps tcp_KBps hostname guid guid_count chan_new_kBps 
     </query>
     <earliest>$time.earliest$</earliest>
@@ -74,8 +82,8 @@ indexer_coverage_pct=indexer_count/all_indexers
   </search>
   <search base="forwarders_ranked" id="forwarders_filtered">
     <query>| search (progress_through_forwarders_kbps&gt;=$selected_min$, progress_through_forwarders_kbps&lt;=$selected_max$) OR ( progress_through_forwarders_kb&gt;=$selected_min$, progress_through_forwarders_kb&lt;=$selected_max$) 
-| rename indexer_coverage_pct as "%" 
-| rename indexer_coverage as "indexer coverage"
+| rename target_coverage_pct as "%" 
+| rename target_coverage as "indexer coverage"
 | rename ranking_most_data_kbps as "speed ranking" 
 | rename ranking_most_data_kb as "volume ranking" 
 | rename max_tcp_KBps as "max speed" 
@@ -89,21 +97,30 @@ indexer_coverage_pct=indexer_count/all_indexers
 </query>
   </search>
   <search id="annotation">
-    <query>| tstats count where $_internal$ Metrics sourcetype=splunkd $selected_targets$ TERM(blocked=true) TERM(group=queue) TERM(name=tcpin*) by host _time span=$seconds_for_bin$sec 
+    <query>| tstats count where $metrics$ $selected_targets$ TERM(blocked=true) TERM(group=queue) TERM(name=tcpin*) by host _time span=$seconds_for_bin$sec 
 | table _time host count 
 | eval annotation_label="Blocked input",
     annotation_category=host</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search base="selected_forwarders">
+    <query>| stats values(hostname) as hosts
+| eval hosts="host IN (".mvjoin(hosts,", ").")"</query>
+    <done>
+      <set token="hosts_drilldown">$result.hosts$</set>
+    </done>
+    <progress>
+      <set token="hosts_drilldown">$result.hosts$</set>
+    </progress>
+  </search>
   <fieldset submitButton="false">
-    <input type="multiselect" token="form.selected_targets">
+    <input type="dropdown" token="selected_indexers">
       <label>1. Select CM, site or hosts</label>
-      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
-        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now 
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
 | eval cluster_master=host 
 | fields + site_pair cluster_master 
@@ -132,6 +149,14 @@ indexer_coverage_pct=indexer_count/all_indexers
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
     </input>
     <input type="text" token="selected_targets">
       <label>Selected targets</label>
@@ -219,40 +244,44 @@ Select ranges in the chart and the table below will be filtered. For instance if
   </row>
   <row depends="$selected_targets$">
     <panel>
-      <title>Selected range covers from $selected_min$% to $selected_max$%</title>
+      <title>Targets recieved $total_sum_gb$ GB of data from connecting over $duration$ seconds = $average_data_rate_ps$ MB/s</title>
       <chart>
+        <title>Selected range covers from $selected_min$% to $selected_max$% ($selected_forwarders_pct$%) of all forwarders in aggregate they send approximately $selected_volume_pct$% (~$selected_volume_abs$GB) of data recieved</title>
         <search base="forwarders_ranked">
-          <query>| bin progress_through_forwarders_kb bins=1000 
-| bin progress_through_forwarders_kbps bins=1000 
+          <query>| bin progress_through_forwarders_kb bins=1000 start=0 end=100
+| bin progress_through_forwarders_kbps bins=1000 start=0 end=100
 | appendpipe 
     [| stats max(coverage_kb) as coverage 
         by progress_through_forwarders_kb all_forwarders 
     | sort + progress_through_forwarders_kb 
     | fields progress_through_forwarders_kb coverage 
     | rename progress_through_forwarders_kb as progress_through_forwarders
-    | eval column="kb"]
+    | eval column="volume"]
 | appendpipe 
     [| stats max(coverage_kbps) as coverage 
         by progress_through_forwarders_kbps all_forwarders 
     | sort + progress_through_forwarders_kbps 
     | fields progress_through_forwarders_kbps coverage 
     | rename progress_through_forwarders_kbps as progress_through_forwarders
-    | eval column="kbps"]
+    | eval column="speed"]
 | where isnotnull(column)
 | rex field=progress_through_forwarders "(?&lt;sort&gt;/d+)-" 
 | chart values(coverage) by progress_through_forwarders column
-| rename kb as volume
-| rename kbps as data_rate</query>
+| eval "volume %"=round(volume*100,1), "speed %"=round(speed*100,1)
+| fields - volume speed</query>
         </search>
         <selection>
           <eval token="selected_min">substr($start$,1,len(rtrim($start$,"0123456789."))-1)</eval>
           <eval token="selected_max">substr($end$,-(len($end$)-len(rtrim($end$,"0123456789."))))</eval>
+          <eval token="selected_forwarders_pct">round($selected_max$-$selected_min$,1)</eval>
+          <eval token="selected_volume_abs">round((($end.volume %$/100-$start.volume %$/100))*$total_sum_gb$,0)</eval>
+          <eval token="selected_volume_pct">round($end.volume %$-$start.volume %$,2)</eval>
         </selection>
         <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
         <option name="charting.axisLabelsX.majorLabelStyle.rotation">-90</option>
         <option name="charting.axisTitleX.text">All forwarders sorted from the largest to the smallest</option>
         <option name="charting.axisTitleY.text">percentage of data covered by the forwarders</option>
-        <option name="charting.axisY.maximumNumber">1</option>
+        <option name="charting.axisY.maximumNumber">100</option>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -389,6 +418,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
         <fieldForValue>coverage</fieldForValue>
         <default>*</default>
       </input>
+      <input type="text" token="filter_hostname">
+        <label>hostname filter</label>
+        <default>*</default>
+      </input>
       <table>
         <title>For more detail click on some forwarders and more charts will open allowing you to compare performance and behaviours of those you selected</title>
         <search base="forwarders_filtered" id="selected_forwarders">
@@ -398,11 +431,12 @@ Select ranges in the chart and the table below will be filtered. For instance if
           <done>
             <set token="selected_forwarder_count">$job.resultCount$</set>
           </done>
-          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ "indexer coverage"="$selected_forwarder_coverage$"
+          <query>| search type=$selected_forwarder_type$ os=$selected_forwarder_os$ version=$selected_forwarder_version$ "indexer coverage"="$selected_forwarder_coverage$" hostname=$filter_hostname$
 | rename guid_count as "# guids"</query>
         </search>
         <option name="count">20</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="number" field="indexer coverage">
           <option name="precision">0</option>
           <option name="unit">%</option>
@@ -453,6 +487,16 @@ Select ranges in the chart and the table below will be filtered. For instance if
       </table>
     </panel>
   </row>
+  <row>
+    <panel>
+      <title>Drill down to intermediate forwarders</title>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
+        </h2>
+      </html>
+    </panel>
+  </row>
   <row depends="$selected_forwarders$">
     <panel>
       <title>Drill down to other dashboards for futher analysis</title>
@@ -463,9 +507,8 @@ Select ranges in the chart and the table below will be filtered. For instance if
 | fields - count hostname</query>
         </search>
         <option name="drilldown">cell</option>
-        <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">/app/search/$click.name2$?form.selected_host=$click.value$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">$click.name2$?form.selected_host=$click.value$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </table>
     </panel>
@@ -475,17 +518,17 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <title>The volume of data generated by each forwarder - click on forwarder to drill down</title>
       <chart>
         <title>Does the forwarder send data constantly or periodically? How do the forwarders compare in terms of volume?</title>
-        <search base="annotation" type="annotation"></search>
         <search base="single_forwarder_base">
           <query>| timechart limit=0 span=$seconds_for_bin$sec sum(kb) by hostname</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">collapsed</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">all</option>
         <option name="height">286</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">forwarder_performance?form.selected_host=$click.name2$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.name2$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
         </drilldown>
       </chart>
     </panel>
@@ -495,10 +538,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <title>The peak data rates for each forwarder - click on forwarder to remove from selection</title>
       <chart>
         <title>Does the forwarders send data in spikes? Does this translate into event delay?</title>
-        <search base="annotation" type="annotation"></search>
         <search base="single_forwarder_base">
           <query>| timechart limit=0 span=$seconds_for_bin$sec max(tcp_avg_thruput) by hostname</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">collapsed</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -510,16 +553,21 @@ Select ranges in the chart and the table below will be filtered. For instance if
   <row depends="$selected_forwarders$">
     <panel>
       <title>The percentage of the cluster the forwarder sent to over time</title>
+      <input type="dropdown" token="count_aggregator">
+        <label>Select aggregator</label>
+        <choice value="dc(host) as count">Count distinct hosts</choice>
+        <choice value="count">Count</choice>
+        <default>dc(host) as count</default>
+      </input>
       <chart>
         <title>How did each forwarder connect to the cluster over time? Did it connect to every indexer in the cluster? How long did it take to sweep all indexers?</title>
         <search base="single_forwarder_base">
           <query>| bin span=$seconds_for_bin$sec _time
 | sort 0 + hostname _time
-| streamstats dc(host) as count by  hostname 
+| streamstats $count_aggregator$ by  hostname 
 | xyseries _time hostname count
-| eval all_indexers=$total_indexer_count$
 | addinfo
-| eval time_mins = round((_time - info_min_time) / 60,0)
+| eval time_mins = round((_time - info_min_time) / 60,0), all_targets=$total_indexer_count$
 | fields - info_* _time
 | table time_mins all_indexers *</query>
         </search>
@@ -537,10 +585,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <title>New channel creation (experimental)</title>
       <chart>
         <title>Is channel creation healthy for each forwarder? The excessive channel creation can cause throughput problems on the indexers</title>
-        <search base="annotation" type="annotation"></search>
         <search base="single_forwarder_base">
           <query>| timechart limit=0 span=$seconds_for_bin$sec max(chan_new_kBps) by hostname</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">collapsed</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>

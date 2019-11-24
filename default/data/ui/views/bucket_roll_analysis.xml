@@ -1,22 +1,22 @@
 <form>
   <label>Bucket roll analysis</label>
-  <search id="hot_roll_time_narrowed">
+  <search id="hot_roll_base_time_narrowed">
     <query>
-      | loadjob $hot_roll$
+      | loadjob $hot_roll_base$
       | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
     </query>
     <progress>
-      <unset token="hot_roll_time_narrowed"></unset>
-      <unset token="hot_roll_time_narrowed_index_filtered"></unset>
+      <unset token="hot_roll_base_time_narrowed"></unset>
+      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="hot_roll_time_narrowed">$job.sid$</set>
-      <eval token="hot_roll_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="hot_roll_base_time_narrowed">$job.sid$</set>
+      <eval token="hot_roll_base_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
   <search id="merged_finished">
     <query>
-| loadjob $base$ 
+| loadjob $merge_hot_frozen_report$ 
 | timechart span=$seconds_for_bin$ count by column 
 | eval frozen=-frozen, _inflation=0
 | foreach * 
@@ -30,83 +30,96 @@
       <eval token="merged_finished_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="hot_roll_time_narrowed_index_filtered">
+  <search id="hot_roll_base_time_narrowed_index_filtered">
     <query>
-      | loadjob $hot_roll_time_narrowed$
+      | loadjob $hot_roll_base_time_narrowed$
       | search $selected_indexes$
     </query>
     <progress>
-      <unset token="hot_roll_time_narrowed_index_filtered"></unset>
+      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="hot_roll_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="hot_roll_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="hot_roll_base_time_narrowed_index_filtered">$job.sid$</set>
+      <eval token="hot_roll_base_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="freeze_time_narrowed">
+  <search id="freeze_base_time_narrowed">
     <query>
-      | loadjob $freeze$
+      | loadjob $freeze_base$
       | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
     </query>
     <progress>
-      <unset token="freeze_time_narrowed"></unset>
-      <unset token="hot_roll_time_narrowed_index_filtered"></unset>
+      <unset token="freeze_base_time_narrowed"></unset>
+      <unset token="hot_roll_base_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="freeze_time_narrowed">$job.sid$</set>
-      <eval token="freeze_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="freeze_base_time_narrowed">$job.sid$</set>
+      <eval token="freeze_base_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="freeze_time_narrowed_index_filtered">
+  <search id="freeze_base_time_narrowed_index_filtered">
     <query>
-      | loadjob $freeze_time_narrowed$
+      | loadjob $freeze_base_time_narrowed$
       | search $selected_indexes$
     </query>
     <progress>
-      <unset token="freeze_time_narrowed_index_filtered"></unset>
+      <unset token="freeze_base_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="freeze_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="freeze_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="freeze_base_time_narrowed_index_filtered">$job.sid$</set>
+      <eval token="freeze_base_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="base_time_narrowed">
+  <search id="merge_hot_frozen_report_time_narrowed">
     <query>
-      | loadjob $base$
+      | loadjob $merge_hot_frozen_report$
       | where _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
     </query>
     <progress>
-      <unset token="base_time_narrowed"></unset>
-      <unset token="base_time_narrowed_index_filtered"></unset>
+      <unset token="merge_hot_frozen_report_time_narrowed"></unset>
+      <unset token="merge_hot_frozen_report_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="base_time_narrowed">$job.sid$</set>
-      <eval token="base_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="merge_hot_frozen_report_time_narrowed">$job.sid$</set>
+      <eval token="merge_hot_frozen_report_time_narrowed_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="base_time_narrowed_index_filtered">
+  <search id="merge_hot_frozen_report_time_narrowed_index_filtered">
     <query>
-      | loadjob $base_time_narrowed$
+      | loadjob $merge_hot_frozen_report_time_narrowed$
       | search $selected_indexes$
     </query>
     <progress>
-      <unset token="base_time_narrowed_index_filtered"></unset>
+      <unset token="merge_hot_frozen_report_time_narrowed_index_filtered"></unset>
     </progress>
     <done>
-      <set token="base_time_narrowed_index_filtered">$job.sid$</set>
-      <eval token="base_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="merge_hot_frozen_report_time_narrowed_index_filtered">$job.sid$</set>
+      <eval token="merge_hot_frozen_report_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="freeze" base="base">
-    <query> | where type="freeze"
-| stats min(_time) as _time values(idx) as idx values(host) as hosts by bid
+  <search id="freeze_base">
+    <query>
+      
+| multisearch 
+[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
+| rex field=bid "(?&lt;idx&gt;[^~]+)"
+| fields _time idx host
+]
+[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd  DatabaseDirectoryManager Initiating local freeze TERM(cid=)
+| rex field=_raw "cid=\"[^|]+\|(?&lt;idx&gt;[^~]+)~"
+| fields _time idx  host
+]
+| table _time idx host
+      
 </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
     <progress>
-      <unset token="freeze"></unset>
+      <unset token="freeze_base"></unset>
     </progress>
     <done>
-      <set token="freeze">$job.sid$</set>
-      <eval token="freeze_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="freeze_base">$job.sid$</set>
+      <eval token="freeze_base_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
   <search id="dummy_search_to_make_span_calculated">
@@ -120,16 +133,41 @@
       <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500)&lt;1,1,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/500))</eval>
     </done>
   </search>
-  <search id="hot_roll" base="base">
-    <query>
-| where type="closed"
+  <search id="hot_roll_base">
+    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
+| rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
+| eval size_mb=size/(1024*1024) 
+| eval duration=to_time-from_time
 | table _time host idx bid duration from to size_mb caller to_time from_time</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
     <progress>
-      <unset token="hot_roll"></unset>
+      <unset token="hot_roll_base"></unset>
     </progress>
     <done>
-      <eval token="hot_roll_url">urlencode("| loadjob ".$job.sid$)</eval>
-      <set token="hot_roll">$job.sid$</set>
+      <eval token="hot_roll_base_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="hot_roll_base">$job.sid$</set>
+    </done>
+  </search>
+  <search id="merge_hot_frozen_report">
+    <query>| union 
+    [| loadjob $freeze_base$ 
+    | eval column="frozen" 
+        ] 
+    [| loadjob $hot_roll_base$ 
+    | eval column=if(isnull(caller),"null",caller) 
+        ] 
+    | table *
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <progress>
+      <unset token="merge_hot_frozen_report"></unset>
+    </progress>
+    <done>
+      <eval token="merge_hot_frozen_report_url">urlencode("| loadjob ".$job.sid$)</eval>
+      <set token="merge_hot_frozen_report">$job.sid$</set>
     </done>
   </search>
   <search id="annotations_base">
@@ -195,7 +233,7 @@
       <set token="excluded_by_name">$result.excluded_by_name$</set>
     </done>
     <query>
-| loadjob $hot_roll_time_narrowed$
+| loadjob $hot_roll_base_time_narrowed$
 | stats count as size by idx 
 | sort - size 
 | eval filter_name=if(searchmatch("$filter_index_names$"), 0, 1) 
@@ -333,7 +371,7 @@
       <title>Indexes rolling hot buckets</title>
       <single>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed$
+          <query>| loadjob $hot_roll_base_time_narrowed$
             | stats dc(idx) as indexes</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
@@ -349,7 +387,7 @@
       <title>Indexes freezing buckets</title>
       <single>
         <search>
-          <query>| loadjob $freeze_time_narrowed$
+          <query>| loadjob $freeze_base_time_narrowed$
             | stats dc(idx) as count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
@@ -365,7 +403,7 @@
           <done>
             <set token="frozen_rolled_count">$result.count$</set>
           </done>
-          <query>| loadjob $freeze_time_narrowed$
+          <query>| loadjob $freeze_base_time_narrowed$
 | stats count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
@@ -382,7 +420,7 @@
           <done>
             <set token="hot_rolled_count">$result.count$</set>
           </done>
-          <query>| loadjob $hot_roll_time_narrowed$
+          <query>| loadjob $hot_roll_base_time_narrowed$
 | stats count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
@@ -419,7 +457,7 @@
       <chart>
         <search>
           <query>
-| loadjob $hot_roll$
+| loadjob $hot_roll_base$
 | chart limit=50 count by caller</query>
         </search>
         <option name="charting.chart">pie</option>
@@ -433,7 +471,7 @@
       <title>Reasons for rolling buckets by size</title>
       <chart>
         <search>
-          <query>| loadjob $hot_roll$
+          <query>| loadjob $hot_roll_base$
 | chart limit=50 sum(size_mb) as size_mb by caller
 | fields - size</query>
           <earliest>$earliest$</earliest>
@@ -461,7 +499,7 @@
       <title>Size of bucket creation</title>
       <chart>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed$            
+          <query>| loadjob $hot_roll_base_time_narrowed$            
 | bin size_mb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
           <earliest>$earliest$</earliest>
@@ -488,7 +526,7 @@
       <title>Rolling of buckets over time by caller</title>
       <chart>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed$
+          <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | stats count by caller _time
 | xyseries _time caller count</query>
@@ -522,7 +560,7 @@
       <chart>
         <search>
           <query>
-| loadjob $hot_roll_time_narrowed$
+| loadjob $hot_roll_base_time_narrowed$
 | timechart 
     fixedrange=false
     span=$drilldown_seconds_for_bin$
@@ -552,7 +590,7 @@
       <chart>
         <search>
           <query>
-| loadjob $hot_roll_time_narrowed$
+| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | chart 
     count
@@ -597,7 +635,7 @@
       <title>Creation of buckets by index over time</title>
       <chart>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed_index_filtered$
+          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$
 | timechart 
     fixedrange=false 
     span=$drilldown_seconds_for_bin$ 
@@ -620,7 +658,7 @@
       <title>Freezing of buckets by index</title>
       <chart>
         <search>
-          <query>| loadjob $freeze_time_narrowed_index_filtered$
+          <query>| loadjob $freeze_base_time_narrowed_index_filtered$
 | timechart 
     fixedrange=false 
     span=$drilldown_seconds_for_bin$ 
@@ -650,7 +688,7 @@
         <title>Rate of inflation in bucket for index</title>
         <search>
           <query>
-| loadjob $base_time_narrowed_index_filtered$
+| loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
 | bin _time span=$drilldown_seconds_for_bin$sec
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
@@ -681,7 +719,7 @@
       <chart>
         <title>Buckets created by the caller and the index</title>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed_index_filtered$ 
+          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$ 
 | bin _time span=$drilldown_seconds_for_bin$ 
 | chart 
     limit=$filter_head_indexes$
@@ -724,7 +762,7 @@
       <chart>
         <title>Buckets created by index and the caller</title>
         <search>
-          <query>| loadjob $hot_roll_time_narrowed_index_filtered$
+          <query>| loadjob $hot_roll_base_time_narrowed_index_filtered$
 | bin _time span=$drilldown_seconds_for_bin$ 
 | chart limit=$filter_head_indexes$ count by idx caller 
 | eval total=0
@@ -775,7 +813,7 @@
       <chart>
         <title>Count of buckets by size and duration for caller=$selected_caller$ idx=$selected_index$</title>
         <search>
-          <query>| loadjob $hot_roll$
+          <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | bin size_mb span=log2 
 | bin duration span=log2 
@@ -812,7 +850,7 @@
       <chart>
         <title>Count of buckets by duration and size for caller=$selected_caller$ idx=$selected_index$</title>
         <search>
-          <query>| loadjob $hot_roll$
+          <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | bin size_mb span=log2 
 | bin duration span=log2 
@@ -859,7 +897,7 @@
           <done>
             <set token="buckets">$job.sid$</set>
           </done>
-          <query>| loadjob $hot_roll$
+          <query>| loadjob $hot_roll_base$
 | search idx="$selected_index$" AND caller="$selected_caller$" AND _time&gt;=$merged_earliest$ AND _time&lt;=$merged_latest$
 | where $selected_size_filter$ AND $selected_duration_filter$ 
 | eval duration_str=tostring(duration,"duration")
@@ -950,40 +988,40 @@
       <title>Hyperlinks into the base reports</title>
       <html>
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_url$">freeze=$freeze$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_url$">freeze_base=$freeze_base$</a>
 </p>
 
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_time_narrowed_url$">freeze_time_narrowed=$freeze_time_narrowed$</a>
-</p>
-
-
-<p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_time_narrowed_index_filtered_url$">freeze_time_narrowed_index_filtered=$freeze_time_narrowed_index_filtered$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_time_narrowed_url$">freeze_base_time_narrowed=$freeze_base_time_narrowed$</a>
 </p>
 
 
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_url$">hot_roll=$hot_roll$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$freeze_base_time_narrowed_index_filtered_url$">freeze_base_time_narrowed_index_filtered=$freeze_base_time_narrowed_index_filtered$</a>
+</p>
+
+
+<p style="text-align:center">  
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_url$">hot_roll_base=$hot_roll_base$</a>
 </p>
 
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_time_narrowed_urll$">hot_roll_time_narrowed=$hot_roll_time_narrowed$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_time_narrowed_urll$">hot_roll_base_time_narrowed=$hot_roll_base_time_narrowed$</a>
 </p>
 
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_time_narrowed_index_filtered_urll$">hot_roll_time_narrowed_index_filtered=$hot_roll_time_narrowed_index_filtered$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$hot_roll_base_time_narrowed_index_filtered_urll$">hot_roll_base_time_narrowed_index_filtered=$hot_roll_base_time_narrowed_index_filtered$</a>
 </p>
 <p/>
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$base_url$">base=$base$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merge_hot_frozen_report_url$">merge_hot_frozen_report=$merge_hot_frozen_report$</a>
 </p>
 
 <p style="text-align:center">  
         <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merged_finished_url_url$">merged_finished=$merged_finished$</a>
 </p>
 <p style="text-align:center">  
-        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$base_time_narrowed_index_filtered_url$">base_time_narrowed_index_filtered=$base_time_narrowed_index_filtered$</a>
+        <a target="_blank" rel="noopener noreferrer" href="search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$merge_hot_frozen_report_time_narrowed_index_filtered_url$">merge_hot_frozen_report_time_narrowed_index_filtered=$merge_hot_frozen_report_time_narrowed_index_filtered$</a>
 </p>
 
 <p/>
@@ -1040,49 +1078,6 @@
       <html>
         <h1 style="text-align:center">Please select an cluster master and site</h1>
       </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search base="freeze"></search>
-      </table>
-    </panel>
-    <panel>
-      <table>
-        <search base="merged_finished"></search>
-      </table>
-    </panel>
-    <panel>
-      <table>
-        <search base="base"></search>
-      </table>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <table>
-        <search id="base">
-          <progress>
-            <unset token="base"></unset>
-          </progress>
-          <done>
-            <set token="base">$job.sid$</set>
-            <eval token="base_url">urlencode("| loadjob ".$job.sid$)</eval>
-          </done>
-          <query>index=_internal $selected_indexers$ ((source=*splunkd.log sourcetype=splunkd freeze completed succesfully) OR (source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*)))
-| rex field=_raw "bid=(?&lt;idx&gt;[^~]+)" 
-| rex field=_raw "to=db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
-| eval size_mb=size/(1024*1024),
-    duration=to_time-from_time,
-    type=if(searchmatch("freeze"),"freeze","closed"),
-    column=if(isnull(caller),"frozen",caller) 
-| table _time host idx bid duration from to size_mb caller to_time from_time type column</query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
-        </search>
-        <option name="refresh.display">progressbar</option>
-      </table>
     </panel>
   </row>
 </form>

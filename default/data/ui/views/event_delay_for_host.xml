@@ -127,7 +127,7 @@
       <html>
          <h1>
           <center>
-           <a href="/app/search/forwarder_throughput?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Hyperlink to _introspection metrics</a>
+           <a href="forwarder_throughput?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Hyperlink to _introspection metrics</a>
            </center>
            </h1>
       </html>
@@ -137,7 +137,7 @@
       <html>
          <h1>
           <center>
-           <a href="/app/search/forwarder_throughput?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Hyperlink to _internal logs</a>
+           <a href="forwarder_throughput?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Hyperlink to _internal logs</a>
            </center>
            </h1>
       </html>
@@ -147,7 +147,7 @@
       <html>
          <h1>
           <center>
-           <a href="/app/search/introspection_metrics_for_host?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Show HEC metrics</a>
+           <a href="introspection_metrics_for_host?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_host=$selected_host$">Show HEC metrics</a>
            </center>
            </h1>
       </html>

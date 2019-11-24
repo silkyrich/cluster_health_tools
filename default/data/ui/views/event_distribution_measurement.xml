@@ -1,6 +1,8 @@
 <form>
   <label>Event distribution measurements</label>
   <init>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
     <set token="steps">19</set>
   </init>
   <search id="baseSearch">
@@ -9,13 +11,12 @@
     </query>
   </search>
   <fieldset submitButton="false">
-    <input type="multiselect" token="selected_indexers">
+    <input type="dropdown" token="selected_indexers">
       <label>1. Select CM, site or hosts</label>
-      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
-        <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now 
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
 | eval cluster_master=host 
 | fields + site_pair cluster_master 
@@ -25,25 +26,36 @@
 | dedup site_pair 
 | rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
 | rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
-| eval search="host=".indexer, host_count=1
+| eval search="splunk_server=".indexer, host_count=1
 | appendpipe 
     [| stats values(indexer) as indexers by site_id short_name_cm 
     | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+        search="splunk_server IN  (".mvjoin(mvfilter(indexers!=""), ", ").")" 
     | eval label=site_id." (".host_count." idxs @ ".short_name_cm
         ] 
 | appendpipe 
     [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
     | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+        search="splunk_server IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
     | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
 | rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
 | eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
 | stats max(host_count) as count by label search
-| sort - count</query>
+| sort 0 - count</query>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
+    </input>
+    <input type="text" token="selected_targets">
+      <label>Selected targets</label>
     </input>
     <input type="multiselect" token="selected_index">
       <label>2. Select indexes to sample (be patient)</label>
@@ -51,8 +63,8 @@
       <fieldForValue>index</fieldForValue>
       <search>
         <query>| eventcount index=* index=_* summarize=false 
-| rename server as host
-| search $selected_indexers$
+| rename server as splunk_server
+| search $selected_targets$
 | stats sum(count) as size by index 
 | sort - size 
 | eval label=index."(".size.")"</query>
@@ -120,7 +132,7 @@
 | fields step_size jump step 
 | eval tstats_preamble=if(step==1,"| tstats prestats=t","| tstats prestats=t append=t") 
 | eval tstats_search="
-".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_indexers$ $selected_index$  by splunk_server index 
+".tstats_preamble." count max(_time) as latest_time min(_time) as min_time where earliest=-".(jump+$offset$)."sec latest=-$offset$sec $selected_targets$ $selected_index$  by splunk_server index 
 | eval period=if(isNull(period),\"".step_size."\",period)
 ", step_string=tostring(step_size,"duration")
 | fields - jump tstats_preamble
@@ -211,11 +223,12 @@
 | chart limit=100 values(normalized_stdev) as normalized_stdev by  period index
 | eval period=tostring(period,"duration")</query>
         </search>
-        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY.maximumNumber">10</option>
+        <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
-        <option name="height">378</option>
+        <option name="height">397</option>
       </chart>
     </panel>
   </row>
