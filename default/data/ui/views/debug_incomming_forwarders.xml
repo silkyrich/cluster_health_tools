@@ -496,7 +496,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
       </table>
     </panel>
   </row>
-  <row depends="$selected_forwarders$">
+  <row depends="$selected_targets$">
     <panel>
       <title>Drill down to intermediate forwarders</title>
       <html>
