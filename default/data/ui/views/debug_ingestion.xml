@@ -4,7 +4,7 @@
   <init>
     <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
     <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
-    <set token="_introspection">index=_introspection</set>
+    <set token="introspection">index=_introspection</set>
     <set token="series_thruput_max">0</set>
     <eval token="series_thruput_min">now()</eval>
   </init>
