@@ -1,0 +1,127 @@
+<form>
+  <label>Crash investigation</label>
+  <description>Another groovy debug dashboard from Richard Morgan productions</description>
+  <init>
+    <set token="audit">(index=_audit)</set>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
+    <set token="introspection">index=_introspection</set>
+  </init>
+  <search id="crashes_base">
+    <query>$splunkd$ $filter_host$ sourcetype=splunkd_crash_log TERM(build) TERM(Received) TERM(fatal) TERM(signal) TERM(splunkd)
+| rex field=_raw "^\[build (?&lt;build&gt;[0-9a-f]{12})\]" 
+| rex field=_raw "Received fatal signal (?&lt;received_fatal_signal&gt;\d)" 
+| rex field=_raw "Crashing thread: (?&lt;crashing_thread&gt;[^\s-]+)" 
+| rex field=_raw max_match=100 "\n\s\s(?&lt;back_trace&gt;\[[^]]+\]\s(?&lt;function_call&gt;[^\s]+).*)" 
+| rex field=_raw "Last errno: (?&lt;last_errno&gt;\d+)" 
+| eval crash=case(
+    searchmatch("TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC)"),"search",
+    searchmatch("TERM(build) NOT(TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC))"),"mothership"),
+    signature=md5(mvjoin(function_call,""))
+| fields _time host build crash received_fatal_signal crashing_thread back_trace threads_running function_call signature
+| stats list(*) as * by  _time host
+| foreach 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 
+    [| eval sub_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sub_stack, mvindex(function_call,&lt;&lt;FIELD&gt;&gt;)),sub_stack), 
+    sig_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sig_stack,md5(mvjoin(sub_stack,""))),sig_stack)]
+| fields - sub_stack back_trace
+| join build type=left [| loadjob $build_map_sid$]
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="build_map">
+    <query>| makeresults | eval build_map="6.0,182037|6.0.0.4,204109|6.0.1,189883|6.0.1.3,204108|6.0.10,272969|6.0.11,276357|6.0.12,277522|6.0.13,278006|6.0.14,278382|6.0.15,278774|6.0.2,196940|6.0.2.2,204107|6.0.3,204048|6.0.3,204106|6.0.5,214064|6.0.6,228831|6.0.7,241889|6.0.8,259987|6.0.9,267137|6.1.0,206881|6.1.1,207789|6.1.11,277527|6.1.12,278005|6.1.13,278305|6.1.14,278775|6.1.2,213098|6.1.3,220630|6.1.4,233537|6.1.5,239630|6.1.6,249101|6.1.7,260715|6.1.8,266909|6.1.9,272667|6.2.0,237341|6.2.0.1,237360|6.2.1,245427|6.2.1.1,252428|6.2.1.2,259063|6.2.1.3,262152|6.2.10,276849|6.2.11,277653|6.2.12,277845|6.2.13,278211|6.2.13.1,278423|6.2.14,278574|6.2.15,278770|6.2.2,255606|6.2.2.1,260295|6.2.3,264376|6.2.3.1,265391|6.2.3.1.1,271204|6.2.4,271043|6.2.4.1,272114|6.2.4.2,274692|6.2.5,272645|6.2.6,274160|6.2.7,275064|6.2.8,275559|6.2.9,276372|6.3.0,aa7d4b1ccb80|6.3.0.1,bac478facca4|6.3.0.2,8af456cb02af|6.3.0.3,a82aa90572fa|6.3.0.4,dc46d23c16ff|6.3.0.5,e4850de2317c|6.3.1,f3e41e4b37b2|6.3.1.0.1,9db85a215ec7|6.3.10,75de5c491bd1|6.3.11,d17c287b5612|6.3.12,911c7597cdd8|6.3.13,009ffcd0f855|6.3.1511.1,90ea9ab275dc|6.3.1511.2,989ef825729e|6.3.1511.3,40da1354c197|6.3.2,aaff59bb082c|6.3.2.1,cf197124fd48|6.3.2.2,b34133cb9679|6.3.3,f44afce176d0|6.3.3.0.1,8b48a3a5644b|6.3.3.2,1c1e99984d4c|6.3.3.3,9ee89d42abdd|6.3.3.4,bea15cb6e512|6.3.4,cae2458f4aef|6.3.5,8ef3e646d7b6|6.3.5.1,145a748c01fb|6.3.5.2,ffe4dc899759|6.3.6,1dc2bfe9d42|6.3.7,8bf976cd6a7c|6.3.8,1e8d95973e45|6.3.9,75b73647f7cd|6.4.0,f2c836328108|6.4.1,debde650d26e|6.4.1.1,926d5c41d8d1|6.4.1.1.1,377811cf5aef|6.4.1.1.2,ac60bacb82a8|6.4.1.2,00de1bf7ead6|6.4.1.2.1,7eedf7e1a8ff|6.4.1.3,ab4d3120c351|6.4.10,1c39464735cc|6.4.11,0691276baf18|6.4.2,00f5bb3fa822|6.4.3,b03109c2bad4|6.4.4,b53a5c14bb5e|6.4.4.1,01e053f0470e|6.4.5,e82289930bdd|6.4.6,6635aa31e851|6.4.7,cac34cc2bb32|6.4.8,5dedc6298537|6.4.9,493044ecc65a|6.5.0,59c8927def0f|6.5.1,f74036626f0c|6.5.1.1,39c7fd872a87|6.5.1.2,8a20d8d7400d|6.5.1.3,d7d84fa6a0bd|6.5.10,8114be174b06|6.5.1612,a8914247a786|6.5.2,67571ef4b87d|6.5.2.1,6ddbff6d9c2c|6.5.2.2,2c493b610abf|6.5.2.3,1ad764225ac0|6.5.2.4,fe64800a0fd4|6.5.3,36937ad027d4|6.5.3.1,bf0ff7c2ab8b|6.5.3.2,40075dab5beb|6.5.4,adb84211dd7c|6.5.4.1,d67480c977b1|6.5.5,586c3ec08cfb|6.5.5.1,3d35d7c516a2|6.5.6,44f873cfa227|6.5.7,f44cfc17f820|6.5.8,96271d9ba09a|6.5.9,eb980bc2467e|6.6.0,1c4f3bbe1aea|6.6.1,aeae3fe0c5af|6.6.10,2b5f6c3d5f96|6.6.11,a4e9ea700cba|6.6.12,ff1b28d42e4c|6.6.2,4b804538c686|6.6.3,e21ee54bc796|6.6.3.2,6d752d94c69f|6.6.3.3,6d5c511f21ab|6.6.3.4,61f4a4172dd0|6.6.3.5,3c9c61252428|6.6.3.6,8112d4c3bd5d|6.6.4,00895e76d346|6.6.4.1,0cdd444994f1|6.6.5,b119a2a8b0ad|6.6.6,ff5e72edc7c4|6.6.6.1,3726298c0da0|6.6.7,429660948eb8|6.6.8,6c27a8439c1e|6.6.9,7ca2e86659b7|7.0.0,c8a78efdd40f|7.0.0.1,baf324169244|7.0.1,2b5b15c4ee89|7.0.10,d8401e2713e7|7.0.11,ca372bdc34bc|7.0.11.1,890181452bae|7.0.12,2b7671dcb5e1|7.0.13,b6e41c05f519|7.0.2,03bbabbd5c0f|7.0.2.1,a52a53f7edc4|7.0.3,fa31da744b51|7.0.3.1,db5bd1668d94|7.0.3.2,5bdcd5729ae5|7.0.3.3,268bf7b2599f|7.0.3.4,26590c68a494|7.0.3.5,89a1575a5c0f|7.0.3.6,c7bfc947bd0b|7.0.3.7,6169add9bd45|7.0.3.8,637dc937bd32|7.0.4,68ba48f99743|7.0.4.1,9ae125c3d908|7.0.4.2,a162f38e0dbf|7.0.5,23d8175df399|7.0.5.1,2aba2d3d71bc|7.0.5.2,e488e1389aaf|7.0.5.3,8f93f8750357|7.0.5.4,0700a78c551d|7.0.5.5,02b315c1c42f|7.0.5.6,1b0251355513|7.0.5.7,3c8832c91b7d|7.0.6,3e6d6611992a|7.0.7,b803471b1c68|7.0.8,b1976516a355|7.0.8.1,30deaae500d1|7.0.8.2,c46937989eff|7.0.8.3,9394e0aeb257|7.0.8.4,ae3b0d980261|7.0.8.5,c3e02dedf40a|7.0.8.7,9bd1046c2cc1|7.0.9,12f0d9382e96|7.0.9.1,05c842e8a806|7.1.2,a0c72a66db66|7.1.2.1,b74cd94fb801|7.1.3,51d9cac7b837|7.1.3.1,1f6ea26f4030|7.1.3.1.1,8c830b55aa74|7.1.3.3,b219f32f0f0f|7.1.3.4,c68e68e6c8bd|7.1.3.6,062d1f3ce951|7.1.4,5a7a840afcb3|7.1.4.1,102891c799cd|7.1.5,fd4da3d4caf1|7.1.6,8f009a3f5353|7.1.6.1,3a8f19971411|7.1.6.2,2f026e4e011c|7.1.7,39ea4c097c30|7.1.8,3856f9bb4747|7.1.9,45b25e1f9be3|7.2.0,8c86330ac18|7.2.1,be11b2c46e23|7.2.1.1,2d6acd5fa26e|7.2.1.2,f89ad7279024|7.2.1.3,06eae1bf22c3|7.2.2,48f4f251be37|7.2.3,06d57c595b80|7.2.3.1,402d27e7f7db|7.2.4,8a94541dcfac|7.2.4.1,16c50c8a1b70|7.2.4.2,fb30470262e3|7.2.5,088f49762779|7.2.5.1,962d9a8e1586|7.2.6,c0bf0f679ce9|7.2.7,f817a93effc2|7.2.7.1,0bc984fe4eeb|7.2.7.3,2bfb24ae5e79|7.2.7.4,578dd6e8db4e|7.2.8,d613a50d43ac|7.2.8.1,fb2982d8fde7|7.2.9,2dc56eaf3546|7.3.0,657388c7a488|7.3.1,bd63e13aa157|7.3.1.1,8e225e1518e2|7.3.2,c60db69f8e32|7.3.3,7af3758d0d5e|8.0.0,1357bef0a7f6"
+| eval pair=split(build_map,"|")
+| fields - build_map _time
+| mvexpand pair
+| eval pair=split(pair,","), version=mvindex(pair,0), build=mvindex(pair,1)
+| fields - pair</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="build_map_sid">$job.sid$</set>
+    </done>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select forwarder</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <condition match="isnotnull($time.latest$)">
+          <eval token="form.selected_metrics_span">if(isnull($time.latest$),31, if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31))</eval>
+          <eval token="form.selected_introspection_span">if(isnull($time.latest$),10,if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10))</eval>
+          <unset token="finished_per_series_thruput"></unset>
+          <set token="series_thruput_max">0</set>
+          <eval token="series_thruput_min">now()</eval>
+        </condition>
+      </change>
+    </input>
+    <input type="dropdown" token="selected_bins">
+      <label>Select number of bins</label>
+      <choice value="100">100</choice>
+      <choice value="250">250</choice>
+      <choice value="500">500</choice>
+      <choice value="750">750</choice>
+      <choice value="1000">1000</choice>
+      <initialValue>500</initialValue>
+    </input>
+    <input type="text" token="selected_introspection_span" depends="$hide$">
+      <label>selected_introspection_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>10</initialValue>
+    </input>
+    <input type="text" token="selected_metrics_span" depends="$hide$">
+      <label>selected_metrics_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>31</initialValue>
+    </input>
+    <input type="text" token="filter_host">
+      <label>Host filter</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Crashes</title>
+      <chart>
+        <search base="crashes_base">
+          <query>| stats count by version</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes over time</title>
+      <chart>
+        <search base="crashes_base">
+          <query>| timechart $selected_metrics_span$ count by version</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search base="crashes_base">
+          <query>| stats count by host version crash crashing_thread</query>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
