@@ -1,0 +1,114 @@
+<form>
+  <init>
+    <set token="seconds_for_bin">62</set>
+    <set token="_internal">(index=core_splunk_internal OR index=_internal)</set>
+  </init>
+  <label>Debug bucket rolls</label>
+  <search id="hot_lru">
+    <query>$_internal$ $selected_targets$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=lru) 
+| rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
+| eval size_mb=size/(1024*1024) 
+| eval duration=to_time-from_time
+| table _time host idx bid duration from to size_mb caller to_time from_time</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="selected_indexers">
+      <label>1. Select CM, site or hosts</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>search</fieldForValue>
+      <search>
+        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort 0 - count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
+    </input>
+    <input type="text" token="selected_targets">
+      <label>Selected targets</label>
+    </input>
+    <input type="time" token="time">
+      <label>Select time range of the report</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+    <input type="dropdown" token="time_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">Crude</choice>
+      <choice value="250">Low</choice>
+      <choice value="500">Medium</choice>
+      <choice value="750">High</choice>
+      <choice value="999">Ultra</choice>
+      <default>500</default>
+      <change>
+        <eval token="seconds_for_bin">if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$)&lt;31,31,round((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$time_resolution$))</eval>
+      </change>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <chart>
+        <search base="hot_lru">
+          <query>| eval bin_size=size_mb 
+| bin bin_size span=log2 
+| sort + bin_size
+| chart limit=100 count by  bin_size idx</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">415</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search base="hot_lru">
+          <query>| noop</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>
