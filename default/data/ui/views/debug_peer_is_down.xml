@@ -1,0 +1,292 @@
+<form>
+  <label>Distributed Peer Errors</label>
+  <description>Another groovy debug dashboard from Richard Morgan</description>
+  <init>
+    <set token="audit">(index=_audit)</set>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal)</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
+    <set token="introspection">index=_introspection</set>
+  </init>
+  <search id="status_down_base">
+    <query>$splunkd$ sourcetype=splunkd DistributedPeerManager status=Down Unable to distribute to peer named
+| rex field=_raw "Unable to distribute to peer named (?&lt;peer_name&gt;[^\s]*) at uri=(?&lt;peer_uri&gt;[^:]+):" 
+| eval peer_name=if(peer_name="",peer_uri, peer_name)
+| table _time host peer_name peer_uri</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="status_down_hosts" base="status_down_base">
+    <query>| stats count by host </query>
+  </search>
+  <search id="host_searches">
+    <query>$audit$ host=$selected_host$ TERM(action=search) TERM(info=granted) TERM(search_id=*) 
+| fields + _time host user search_id</query>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
+  </search>
+  <search id="base_indexer_searches">
+    <query>$splunkd$ TERM(server=$selected_host$) sourcetype=splunkd_remote_searches (Streamed search search starting) OR (Streamed search connection terminated)
+| eval stage=if(searchmatch("starting"),1,0)
+| table _time host search_id stage
+</query>
+    <earliest>$selection_earliest$</earliest>
+    <latest>$selection_latest$</latest>
+  </search>
+  <search id="annotations_base">
+    <query>| union 
+    [ search $splunkd$ component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
+    | eval annotation_label= case(searchmatch("finished"),"Finished RR", searchmatch("rebalance"), "Trigger Rebalance", searchmatch("Starting"),"Starting RR"), annotation_category= case(searchmatch("finished"),"Finished", searchmatch("rebalance"), "Rebalance", searchmatch("Starting"),"Starting") 
+    | table _time anno* _raw
+        ] 
+    [| tstats count prestats=true where $filter_important_hosts$ $splunkd$ sourcetype=splunkd TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s 
+    | eval type="startup" 
+    | tstats count prestats=true append=true where $filter_important_hosts$ $splunkd$ sourcetype=splunkd TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s 
+    | eval type=if(isNull(type),"guid change",type) 
+    | tstats count prestats=true append=true where $filter_important_hosts$ $splunkd$ sourcetype=splunkd TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s 
+    | eval type=if(isNull(type),"shutdown",type) 
+    | rex field=host "^(?&lt;host_short&gt;[^.]+)" 
+    | stats count by host_short type _time 
+    | rex field=queue "^(?&lt;queue_short&gt;[^q]+)queue" 
+    | eval annotation_label=type." on ".host_short, annotation_category=type 
+    | sort - _time 
+    | fields _time host_short anno* ] 
+    [ search $splunkd$ host=c0m1* log_level=info TERM(from=*) TERM(to=*) TERM(reason=*) transitioning (up OR down OR restarting) 
+    | eval host=peer_name
+    | search $filter_important_hosts$
+    | rex field=peer_name "^(?&lt;short_name&gt;[^\.]+)" 
+    | eval annotation_label=from."-&gt;".to." ".short_name,
+        annotation_category="CMPeer - ".reason 
+    | table _time annotation_label annotation_category] 
+| table *</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="get_filters">
+    <done>
+      <set token="filter_important_hosts">$result.hosts_IN$</set>
+      <set token="filter_indexer">$result.indexer_IN$</set>
+      <set token="filter_cluster_master">$result.cluster_master_IN$</set>
+      <set token="filter_search_heads">$result.search_heads_IN$</set>
+    </done>
+    <query>$splunkd$ INFO TERM(instance_roles=*) (search_head OR cluster_master OR indexer) sourcetype=splunkd TERM(group=instance) 
+| fields host instance_roles index_cluster_label
+| eval search_head=if(like(instance_roles,"%search_head%"),1,0),
+    cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
+    indexer=if(like(instance_roles,"%indexer%"),1,0) 
+| stats 
+    values(host) as all_hosts
+    values(eval(if(search_head=1,host,""))) as search_heads 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer
+| eval 
+    search_heads_IN="host IN (".mvjoin(mvfilter(search_heads!=""), ", ").")",
+    cluster_master_IN="host IN (".mvjoin(mvfilter(cluster_master!=""), ", ").")",
+    indexer_IN="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")",
+    hosts_IN="host IN (".mvjoin(mvfilter(all_hosts!=""), ", ").")",
+    
+    search_heads_OR="(host=".mvjoin(mvfilter(search_heads!=""), " OR host=").")",
+    cluster_master_OR="(host=".mvjoin(mvfilter(cluster_master!=""), " OR host=").")",
+    indexer_OR="(host=".mvjoin(mvfilter(indexer!=""), " OR host=").")",
+    hosts_OR="(host=".mvjoin(mvfilter(all_hosts!=""), " OR host=").")"</query>
+    <earliest>-60m@m</earliest>
+    <latest>now</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select forwarder</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <condition match="isnotnull($time.latest$)">
+          <eval token="form.selected_metrics_span">if(isnull($time.latest$),31, if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31))</eval>
+          <eval token="form.selected_introspection_span">if(isnull($time.latest$),10,if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10))</eval>
+          <unset token="finished_per_series_thruput"></unset>
+          <set token="series_thruput_max">0</set>
+          <eval token="series_thruput_min">now()</eval>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="selected_metrics_span" depends="$hide$">
+      <label>selected_metrics_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>31</initialValue>
+    </input>
+    <input type="text" token="selected_introspection_span" depends="$hide$">
+      <label>selected_introspection_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>10</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>host=$selected_host$ recieved timeouts from the following search peers</title>
+      <input type="dropdown" token="selected_bins">
+        <label>Select number of bins</label>
+        <choice value="100">100</choice>
+        <choice value="250">250</choice>
+        <choice value="500">500</choice>
+        <choice value="750">750</choice>
+        <choice value="1000">1000</choice>
+        <initialValue>500</initialValue>
+      </input>
+      <input type="dropdown" token="selected_host">
+        <label>Select search head with errors</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="status_down_hosts">
+          <query>
+| eval label=host." (".count.")"
+| sort - count</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <chart>
+        <search base="status_down_base">
+          <query>| search host=$selected_host$
+| timechart $selected_introspection_span$ bins=1000 limit=0 count by peer_name</query>
+        </search>
+        <search base="annotations_base" type="annotation">
+          <query>
+</query>
+        </search>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">337</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h2 style="text-align:center">
+        <a target="_blank" rel="noopener noreferrer" href="peer_is_down_errors?form.time.earliest=$selection_earliest$&amp;form.time.latest=$selection_latest$">Open this dashboard in a new window with the time selection above</a>
+        </h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Duration of search outages, select an outage to reveal what the indexers where doing</title>
+      <input type="dropdown" token="filter_host">
+        <label>select host</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="status_down_base">
+          <query>| stats count by host | stats count | eval label=host." (".count.")"</query>
+        </search>
+      </input>
+      <input type="dropdown" token="filter_peer">
+        <label>select peer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>search_peer</fieldForValue>
+        <search base="status_down_base">
+          <query>| stats count by search_peer | stats count | eval label=search_peer." (".count.")"</query>
+        </search>
+      </input>
+      <table>
+        <search base="status_down_base">
+          <query>| sort - _time
+| transaction peer_name host maxpause=120s maxevents=10000000 
+| table _time label duration eventcount host peer_name 
+| eval duration_string=tostring(duration,"duration")
+| eval _realtime=_time
+| sort - eventcount</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <set token="selected_earliest">$row._realtime$</set>
+          <eval token="selected_latest">$row._realtime$+$row.duration$</eval>
+          <set token="form.selected_search_head">$row.host$</set>
+          <set token="selected_peer">$row.peer_name$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>The number of searches executed by the search peers from search head</title>
+      <input type="dropdown" token="selected_indexers">
+        <label>1. Select CM, site or hosts</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>search</fieldForValue>
+        <search>
+          <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now 
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
+| eval cluster_master=host 
+| fields + site_pair cluster_master 
+| fields - _* 
+| dedup site_pair 
+| mvexpand site_pair 
+| dedup site_pair 
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+| eval search="host=".indexer, host_count=1
+| appendpipe 
+    [| stats values(indexer) as indexers by site_id short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN  (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
+        ] 
+| appendpipe 
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
+    | eval host_count=mvcount(indexers), 
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
+| stats max(host_count) as count by label search
+| sort 0 - count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <change>
+          <condition value="None"></condition>
+          <condition>
+            <eval token="form.selected_targets">$selected_indexers$</eval>
+          </condition>
+        </change>
+        <choice value="None">None</choice>
+        <default>None</default>
+      </input>
+      <input type="text" token="selected_targets">
+        <label>Selected targets</label>
+        <default>host=*</default>
+      </input>
+      <input type="dropdown" token="selected_search_head">
+        <label>selected_search_head</label>
+        <choice value="*">*</choice>
+        <search base="get_filters">
+          <query>| fields + search_heads
+| mvexpand search_heads
+| where search_heads!=""</query>
+        </search>
+        <default>*</default>
+        <fieldForLabel>search_heads</fieldForLabel>
+        <fieldForValue>search_heads</fieldForValue>
+      </input>
+      <chart>
+        <search>
+          <query>| tstats count where $splunkd$ $selected_targets$ sourcetype=splunkd_remote_searches Streamed search TERM(starting:) TERM($selected_search_head$) by host
+| sort - host</query>
+          <earliest>$selected_earliest$</earliest>
+          <latest>$selected_latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
