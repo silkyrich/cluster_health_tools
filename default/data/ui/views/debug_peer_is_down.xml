@@ -144,14 +144,19 @@
         <choice value="*">*</choice>
         <default>*</default>
       </input>
+      <input type="text" token="filter_peers">
+        <label>Filter peer names</label>
+        <default>*</default>
+        <prefix>peer_name=</prefix>
+      </input>
       <chart>
-        <search base="status_down_base">
-          <query>| search host=$selected_host$
-| timechart $selected_introspection_span$ bins=1000 limit=0 count by peer_name</query>
-        </search>
         <search base="annotations_base" type="annotation">
           <query>
 </query>
+        </search>
+        <search base="status_down_base">
+          <query>| search host=$selected_host$ $filter_peers$
+| timechart $selected_introspection_span$ bins=1000 limit=0 count by peer_name</query>
         </search>
         <selection>
           <set token="selection_earliest">$start$</set>
@@ -177,25 +182,36 @@
   <row>
     <panel>
       <title>Duration of search outages, select an outage to reveal what the indexers where doing</title>
-      <input type="dropdown" token="filter_host">
-        <label>select host</label>
+      <input type="dropdown" token="filter_search_head">
+        <label>Select search head</label>
         <fieldForLabel>label</fieldForLabel>
         <fieldForValue>host</fieldForValue>
         <search base="status_down_base">
-          <query>| stats count by host | stats count | eval label=host." (".count.")"</query>
+          <query>| stats count by host 
+| eval label=host." (".count.")"
+| sort - count</query>
         </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <prefix>host=</prefix>
       </input>
-      <input type="dropdown" token="filter_peer">
-        <label>select peer</label>
+      <input type="dropdown" token="filter_search_peer">
+        <label>Select search peer</label>
         <fieldForLabel>label</fieldForLabel>
-        <fieldForValue>search_peer</fieldForValue>
+        <fieldForValue>peer_name</fieldForValue>
         <search base="status_down_base">
-          <query>| stats count by search_peer | stats count | eval label=search_peer." (".count.")"</query>
+          <query>| stats count by peer_name 
+| eval label=peer_name." (".count.")"
+| sort - count</query>
         </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <prefix>peer_name=</prefix>
       </input>
       <table>
         <search base="status_down_base">
-          <query>| sort - _time
+          <query>| search $filter_search_head$ $filter_search_peer$
+| sort - _time
 | transaction peer_name host maxpause=120s maxevents=10000000 
 | table _time label duration eventcount host peer_name 
 | eval duration_string=tostring(duration,"duration")
@@ -204,6 +220,7 @@
         </search>
         <option name="count">10</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <drilldown>
           <set token="selected_earliest">$row._realtime$</set>
           <eval token="selected_latest">$row._realtime$+$row.duration$</eval>
