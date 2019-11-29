@@ -1,5 +1,5 @@
 <form>
-  <label>Crash investigation</label>
+  <label>Crash investigation tool</label>
   <description>Another groovy debug dashboard from Richard Morgan productions</description>
   <init>
     <set token="audit">(index=_audit)</set>
@@ -24,8 +24,9 @@
     [| eval sub_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sub_stack, mvindex(function_call,&lt;&lt;FIELD&gt;&gt;)),sub_stack), 
     sig_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sig_stack,md5(mvjoin(sub_stack,""))),sig_stack)]
 | fields - sub_stack back_trace
-| join build type=left [| loadjob $build_map_sid$]
-
+| lookup build_version_map.csv build 
+| eval build_version=build." (".version.")"
+$wait_for_lookup$
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -36,18 +37,20 @@
 | fields - build_map _time
 | mvexpand pair
 | eval pair=split(pair,","), version=mvindex(pair,0), build=mvindex(pair,1)
-| fields - pair</query>
+| fields - pair
+| outputlookup build_version_map.csv
+</query>
     <earliest>-24h@h</earliest>
     <latest>now</latest>
     <done>
-      <set token="build_map_sid">$job.sid$</set>
+      <set token="wait_for_lookup">| noop</set>
     </done>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
-      <label>Select forwarder</label>
+      <label>Time range</label>
       <default>
-        <earliest>-60m@m</earliest>
+        <earliest>-24h@h</earliest>
         <latest>now</latest>
       </default>
       <change>
@@ -88,23 +91,10 @@
   </fieldset>
   <row>
     <panel>
-      <title>Crashes</title>
+      <title>Crashes over time by build and version</title>
       <chart>
         <search base="crashes_base">
-          <query>| stats count by version</query>
-        </search>
-        <option name="charting.axisY.scale">log</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">default</option>
-        <option name="charting.drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Crashes over time</title>
-      <chart>
-        <search base="crashes_base">
-          <query>| timechart $selected_metrics_span$ count by version</query>
+          <query>| timechart $selected_metrics_span$ count by build_version</query>
         </search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -114,13 +104,143 @@
   </row>
   <row>
     <panel>
-      <table>
+      <title>Crashes by build and version</title>
+      <chart>
         <search base="crashes_base">
-          <query>| stats count by host version crash crashing_thread</query>
+          <query>| chart count by build_version</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes by fatal signal</title>
+      <chart>
+        <search base="crashes_base">
+          <query>| chart count by received_fatal_signal</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Crashes by thread</title>
+      <chart>
+        <search base="crashes_base">
+          <query>| stats count by crashing_thread</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes by signatures</title>
+      <chart>
+        <search base="crashes_base">
+          <query>| stats count by signature</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>All servers that are crashing</title>
+      <input type="dropdown" token="selected_build_version">
+        <label>Build version</label>
+        <choice value="*">*</choice>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>build_version</fieldForValue>
+        <search base="crashes_base">
+          <query>| chart count by build_version
+| eval label=build_version." (".count.")"</query>
+        </search>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_signature">
+        <label>Signature</label>
+        <choice value="*">*</choice>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>signature</fieldForValue>
+        <search base="crashes_base">
+          <query>| stats count by signature
+| eval label=signature." (".count.")"</query>
+        </search>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_thread">
+        <label>Thread</label>
+        <choice value="*">*</choice>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>crashing_thread</fieldForValue>
+        <search base="crashes_base">
+          <query>| stats count by crashing_thread
+| eval label=crashing_thread." (".count.")"</query>
+        </search>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_signal">
+        <label>Signal</label>
+        <choice value="*">*</choice>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>received_fatal_signal</fieldForValue>
+        <search base="crashes_base">
+          <query>| stats count by received_fatal_signal
+| eval label=received_fatal_signal." (".received_fatal_signal.")"</query>
+        </search>
+        <default>*</default>
+      </input>
+      <table>
+        <title>| search signature=$selected_signature$ build_version=$selected_build_version$ thread=$selected_thread$ signal=$selected_signal$ | stats count by host version crash crashing_thread</title>
+        <search base="crashes_base">
+          <query>| search signature=$selected_signature$ build_version=$selected_build_version$ crashing_thread=$selected_thread$ received_fatal_signal=$selected_signal$
+| stats count by host version crash crashing_thread</query>
         </search>
         <option name="count">100</option>
-        <option name="drilldown">none</option>
+        <option name="drilldown">cell</option>
         <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="selected_host">$row.host$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$hide$">
+    <panel>
+      <html>
+    Here is the script required to extract the builds to version mapping. 
+    
+    for v in $(curl -s http://releases.splunk.com/released_builds/ | perl -ne 'print "$1\n" if /href="([678](?:\.\d+)+)\/"/'); do for base in debug splunk/windows; do curl -s http://releases.splunk.com/released_builds/$v/$base/ | perl -ne 'print "$1,$2,$3\n" if /href="splunkforwarder-unstripped-((?:\d+\.)+\d+)-([0-9a-fA-F]+)-([^\.]+)\.tgz"/'; done; done
+  </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Drill down on crashes for $selected_host$</title>
+      <table>
+        <title>Drill down to see splunkd.log 1min before crash</title>
+        <search base="crashes_base">
+          <query>| search host="$selected_host$"</query>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <eval token="drilldown_time_earliest">$row._time$-60</eval>
+          <link target="_blank">search?q=$splunkd$ sourcetype=splunkd host=$row.host$&amp;amp;earliest=$drilldown_time_earliest$&amp;amp;latest=$row._time$</link>
+        </drilldown>
       </table>
     </panel>
   </row>
