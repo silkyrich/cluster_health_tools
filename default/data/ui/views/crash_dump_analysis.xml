@@ -161,7 +161,7 @@ $wait_for_lookup$
   </row>
   <row>
     <panel>
-      <title>All servers that are crashing</title>
+      <title>Select crashing server to drill down to review crashes</title>
       <input type="dropdown" token="selected_build_version">
         <label>Build version</label>
         <choice value="*">*</choice>
