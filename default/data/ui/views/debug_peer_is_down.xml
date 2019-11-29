@@ -102,9 +102,8 @@
         <condition match="isnotnull($time.latest$)">
           <eval token="form.selected_metrics_span">if(isnull($time.latest$),31, if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31))</eval>
           <eval token="form.selected_introspection_span">if(isnull($time.latest$),10,if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10))</eval>
-          <unset token="finished_per_series_thruput"></unset>
-          <set token="series_thruput_max">0</set>
-          <eval token="series_thruput_min">now()</eval>
+          <unset token="selected_peer"/>
+          <unset token="form.selected_search_head"/>
         </condition>
       </change>
     </input>
@@ -146,13 +145,13 @@
         <default>*</default>
       </input>
       <chart>
-        <search base="status_down_base">
-          <query>| search host=$selected_host$
-| timechart $selected_introspection_span$ bins=1000 limit=0 count by peer_name</query>
-        </search>
         <search base="annotations_base" type="annotation">
           <query>
 </query>
+        </search>
+        <search base="status_down_base">
+          <query>| search host=$selected_host$
+| timechart $selected_introspection_span$ bins=1000 limit=0 count by peer_name</query>
         </search>
         <selection>
           <set token="selection_earliest">$start$</set>
@@ -214,7 +213,7 @@
       </table>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_peer$">
     <panel>
       <title>The number of searches executed by the search peers from search head</title>
       <input type="dropdown" token="selected_indexers">
@@ -278,14 +277,23 @@
       </input>
       <chart>
         <search>
-          <query>| tstats count where $splunkd$ $selected_targets$ sourcetype=splunkd_remote_searches Streamed search TERM(starting:) TERM($selected_search_head$) by host
-| sort - host</query>
+          <query>$splunkd$ $selected_targets$ sourcetype=splunkd_remote_searches Streamed search TERM(starting:) TERM($selected_search_head$) 
+| rex field=_raw "search_id=remote_(?&lt;search_head&gt;[^_]+)_"
+| chart limit=0 count by host search_head</query>
           <earliest>$selected_earliest$</earliest>
           <latest>$selected_latest$</latest>
         </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
         <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
         <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">large</option>
+        <option name="trellis.splitBy">search_head</option>
       </chart>
     </panel>
   </row>
