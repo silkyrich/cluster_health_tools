@@ -10,7 +10,7 @@
   <search id="crashes_base">
     <query>$splunkd$ $filter_host$ sourcetype=splunkd_crash_log TERM(build) TERM(Received) TERM(fatal) TERM(signal) TERM(splunkd)
 | rex field=_raw "^\[build (?&lt;build&gt;[0-9a-f]{12})\]" 
-| rex field=_raw "Received fatal signal (?&lt;received_fatal_signal&gt;\d)" 
+| rex field=_raw "Received fatal signal (?&lt;received_fatal_signal&gt;\d)(\s(?&lt;signal_description&gt;[^.]+))?" 
 | rex field=_raw "Crashing thread: (?&lt;crashing_thread&gt;[^\s-]+)" 
 | rex field=_raw max_match=100 "\n\s\s(?&lt;back_trace&gt;\[[^]]+\]\s(?&lt;function_call&gt;[^\s]+).*)" 
 | rex field=_raw "Last errno: (?&lt;last_errno&gt;\d+)" 
@@ -18,14 +18,14 @@
     searchmatch("TERM(build) TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC)"),"search",
     searchmatch("TERM(build) NOT(TERM(Process) TERM(renamed) TERM(CLOCK_MONOTONIC))"),"mothership"),
     signature=md5(mvjoin(function_call,""))
-| fields _time host build crash received_fatal_signal crashing_thread back_trace threads_running function_call signature
+| fields _time host build crash received_fatal_signal crashing_thread back_trace threads_running function_call signature signal_description
 | stats list(*) as * by  _time host
 | foreach 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 
     [| eval sub_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sub_stack, mvindex(function_call,&lt;&lt;FIELD&gt;&gt;)),sub_stack), 
     sig_stack=if(mvcount(function_call)&gt;=&lt;&lt;FIELD&gt;&gt;, mvappend(sig_stack,md5(mvjoin(sub_stack,""))),sig_stack)]
 | fields - sub_stack back_trace
 | lookup build_version_map.csv build 
-| eval build_version=build." (".version.")"
+| eval build_version=if(isnull(version),build, build." (".version.")")
 $wait_for_lookup$
 </query>
     <earliest>$time.earliest$</earliest>
@@ -93,9 +93,11 @@ $wait_for_lookup$
     <panel>
       <title>Crashes over time by build and version</title>
       <chart>
+        <title></title>
         <search base="crashes_base">
           <query>| timechart $selected_metrics_span$ count by build_version</query>
         </search>
+        <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -120,7 +122,7 @@ $wait_for_lookup$
       <title>Crashes by fatal signal</title>
       <chart>
         <search base="crashes_base">
-          <query>| chart count by received_fatal_signal</query>
+          <query>| chart count by signal_description</query>
         </search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">column</option>
@@ -200,14 +202,16 @@ $wait_for_lookup$
         <fieldForValue>received_fatal_signal</fieldForValue>
         <search base="crashes_base">
           <query>| stats count by received_fatal_signal
-| eval label=received_fatal_signal." (".received_fatal_signal.")"</query>
+| eval label=received_fatal_signal." (".count.")"</query>
         </search>
         <default>*</default>
       </input>
       <table>
-        <title>| search signature=$selected_signature$ build_version=$selected_build_version$ thread=$selected_thread$ signal=$selected_signal$ | stats count by host version crash crashing_thread</title>
         <search base="crashes_base">
-          <query>| search signature=$selected_signature$ build_version=$selected_build_version$ crashing_thread=$selected_thread$ received_fatal_signal=$selected_signal$
+          <query>| fillnull crashing_thread value=""
+| fillnull signature value=""
+| fillnull crash value=""
+| search signature="$selected_signature$" build_version="$selected_build_version$" crashing_thread="$selected_thread$" received_fatal_signal="$selected_signal$"
 | stats count by host version crash crashing_thread</query>
         </search>
         <option name="count">100</option>
