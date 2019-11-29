@@ -234,12 +234,14 @@ $wait_for_lookup$
       <table>
         <title>Drill down to see splunkd.log 1min before crash</title>
         <search base="crashes_base">
-          <query>| search host="$selected_host$"</query>
+          <query>| search host="$selected_host$"
+| eval _real_time=_time</query>
         </search>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <drilldown>
-          <eval token="drilldown_time_earliest">$row._time$-60</eval>
-          <link target="_blank">search?q=$splunkd$ sourcetype=splunkd host=$row.host$&amp;amp;earliest=$drilldown_time_earliest$&amp;amp;latest=$row._time$</link>
+          <eval token="drilldown_time_earliest">$row._real_time$-60</eval>
+          <link target="_blank">search?q=$splunkd$ sourcetype=splunkd host=$row.host$ earliest=$drilldown_time_earliest$ latest=$row._real_time$&amp;amp;earliest=$drilldown_time_earliest$&amp;amp;latest=$row._real_time$</link>
         </drilldown>
       </table>
     </panel>
