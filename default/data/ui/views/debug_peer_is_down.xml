@@ -1,5 +1,5 @@
 <form>
-  <label>Distributed Peer Errors</label>
+  <label>Debug peer is down</label>
   <description>Another groovy debug dashboard from Richard Morgan</description>
   <init>
     <set token="audit">(index=_audit)</set>
@@ -216,16 +216,17 @@
 | table _time label duration eventcount host peer_name 
 | eval duration_string=tostring(duration,"duration")
 | eval _realtime=_time
-| sort - eventcount</query>
+| sort - duration
+| rename host as search_head
+| rename peer as search_peer</query>
         </search>
         <option name="count">10</option>
         <option name="drilldown">cell</option>
-        <option name="refresh.display">progressbar</option>
         <drilldown>
-          <set token="selected_earliest">$row._realtime$</set>
-          <eval token="selected_latest">$row._realtime$+$row.duration$</eval>
-          <set token="form.selected_search_head">$row.host$</set>
-          <set token="selected_peer">$row.peer_name$</set>
+          <eval token="selected_earliest">$row._realtime$-60</eval>
+          <eval token="selected_latest">$row._realtime$+$row.duration$+60</eval>
+          <set token="form.selected_search_head">$row.search_head$</set>
+          <set token="selected_peer">$row.search_peer$</set>
         </drilldown>
       </table>
     </panel>
