@@ -1,0 +1,136 @@
+<form>
+  <label>Cache manager miss investigation tool</label>
+  <search id="base">
+    <done>
+      <eval token="execution_time">round($job.runDuration$,2)</eval>
+    </done>
+    <query>index=_internal group=cachemgr_bucket 
+    | bin _time span=$selected_span$sec
+| stats sum(cache_miss) as cache_miss by host _time
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <init>
+        <eval token="form.selected_span">61</eval>
+        <eval token="form.human_span">00:01:02</eval>
+  </init>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+        <eval token="duration_seconds">relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$)</eval>
+        <eval token="form.selected_span">ceiling($duration_seconds$/300/31)*31</eval>
+        <unset token="selected_host"></unset>
+        </condition>        
+      </change>
+    </input>
+    <input type="text" token="selected_span">
+      <label>span in seconds</label>
+      <default>62</default>
+      <change>
+        <eval token="form.human_span">tostring($form.selected_span$,"duration")</eval>
+      </change>
+    </input>
+    <input type="text" token="human_span">
+      <label>human readable span</label>
+      <default>00:01:02</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Cache manager misses per host, select time range + host for drill down</title>
+      <chart>
+        <search base="base">
+          <done>
+            <set token="execution_time">$job.runDuration$</set>
+          </done>
+          <query>| xyseries _time host cache_miss</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">429</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="selected_host">"host=".$click.name2$</eval>
+        </drilldown>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Searches executing on $selected_host$</title>
+      <table>
+        <title>Drill down to see details of search across all indexes</title>
+        <search>
+          <done>
+            <set token="search_execution_time">$job.runDuration$</set>
+          </done>
+          <done>
+            <set token="search_execution_time">$job.runDuration$</set>
+          </done>
+          <query>index=_internal $selected_host$ sourcetype=splunkd_remote_searches StreamedSearch Streamed search connection terminated search_id=*
+
+| rex field=_raw "search_rawdata_bucketcache_error=(?&lt;rawdata_bucketcache_error&gt;[\d.]+)"
+| rex field=_raw "search_rawdata_bucketcache_miss=(?&lt;rawdata_bucketcache_miss&gt;[\d.]+)"
+| rex field=_raw "search_index_bucketcache_error=(?&lt;index_bucketcache_error&gt;[\d.]+)"
+| rex field=_raw "search_index_bucketcache_hit=(?&lt;index_bucketcache_hit&gt;[\d.]+)"
+| rex field=_raw "search_index_bucketcache_miss=(?&lt;index_bucketcache_miss&gt;[\d.]+)"
+| rex field=_raw "search_rawdata_bucketcache_hit=(?&lt;rawdata_bucketcache_hit&gt;[\d.]+)"
+| rex field=_raw "search_rawdata_bucketcache_miss_wait=(?&lt;rawdata_bucketcache_miss_wait&gt;[\d.]+)"
+| rex field=_raw "search_index_bucketcache_miss_wait=(?&lt;index_bucketcache_miss_wait&gt;[\d.]+)"
+| rex field=_raw "drop_count=(?&lt;drop_count&gt;[\d.]+)"
+| rex field=_raw "scan_count=(?&lt;scan_count&gt;[\d.]+)"
+| rex field=_raw "eliminated_buckets=(?&lt;eliminated_buckets&gt;[\d.]+)"
+| rex field=_raw "considered_events=(?&lt;considered_events&gt;[\d.]+)"
+| rex field=_raw "decompressed_slices=(?&lt;decompressed_slices&gt;[\d.]+)"
+| rex field=_raw "events_count=(?&lt;events_count&gt;[\d.]+)"
+| rex field=_raw "total_slices=(?&lt;total_slices&gt;[\d.]+)"
+| rex field=_raw "considered_buckets=(?&lt;considered_buckets&gt;[\d.]+)"
+| stats 
+    sum(rawdata_bucketcache_error) as search_rawdata_bucketcache_error_sum
+    sum(rawdata_bucketcache_miss) as search_rawdata_bucketcache_miss_sum
+    sum(index_bucketcache_error) as search_index_bucketcache_error_sum
+    sum(index_bucketcache_hit) as search_index_bucketcache_hit_sum
+    sum(index_bucketcache_miss) as search_index_bucketcache_miss_sum
+    sum(rawdata_bucketcache_hit) as search_rawdata_bucketcache_hit_sum
+    sum(rawdata_bucketcache_miss_wait) as search_rawdata_bucketcache_miss_wait_sum.
+    sum(index_bucketcache_miss_wait) as search_index_bucketcache_miss_wait_sum.
+    min(_time) as time_min 
+    max(_time) as time_max
+    sum(drop_count) as drop_count_sum
+    sum(scan_count) as scan_count_sum14746
+    sum(eliminated_buckets) as eliminated_buckets_sum
+    sum(considered_events) as considered_events_sum
+    sum(decompressed_slices) as decompressed_slices_sum
+    sum(events_count) as events_count_sum14746
+    sum(total_slices) as total_slices_sum
+    sum(considered_buckets) as considered_buckets_sum
+    by search_id server
+| search search_id=remote_*
+| eval cache_misses=search_rawdata_bucketcache_miss_sum + search_index_bucketcache_miss_sum
+| sort - search_rawdata_bucketcache_miss_sum
+| table search_id cache_misses *
+| sort - cache_misses</query>
+          <earliest>$selection_earliest$</earliest>
+          <latest>$selection_latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=_*%20$row.search_id=$&amp;earliest=$selection_earliest$&amp;latest=$selection_latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
