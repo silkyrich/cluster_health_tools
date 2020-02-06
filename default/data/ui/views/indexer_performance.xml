@@ -333,7 +333,7 @@
       <set token="search_startup_delay_count">$job.resultCount$</set>
     </done>
     <query>$internal$ $indexer_filter_IN$ sourcetype=splunkd_remote_searches TERM(streamedsearch) TERM(active_searches=*) TERM(streamed) TERM(search) TERM(search) TERM(starting)  ZERO_TIME
-| rex field=_raw "_(?&lt;search_creation_time&gt;155\d{7}[_\.]\d+)" 
+| rex field=_raw "_(?&lt;search_creation_time&gt;15\d{8}[_\.]\d+)" 
 | eval search_creation_time=replace(search_creation_time,"_","."),
     delay=_time-search_creation_time 
 | stats avg(delay) as avg_search_startup_delay max(delay) as max_search_startup_delay sparkline(avg(delay),$seconds_for_bin$sec) as search_startup_delay by host
