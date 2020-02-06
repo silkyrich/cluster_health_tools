@@ -581,7 +581,6 @@ $single_indexer_only$
         <choice value="max_broken_pipes">max_broken_pipes</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
-        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_delay">max_delay</choice>
         <choice value="avg_search_concurrency">avg_search_concurrency</choice>
@@ -605,7 +604,6 @@ $single_indexer_only$
         <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
         <choice value="max_avg_service_ms">max_avg_service_ms</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
-        <choice value="avg_service_ms">avg_service_ms</choice>
         <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
         <choice value="avg_bucket_download_ps">avg_bucket_download_ps</choice>
         <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
@@ -1994,7 +1992,6 @@ cloud_flavor
         <choice value="max_broken_pipes">max_broken_pipes</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
-        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_delay">max_delay</choice>
         <choice value="avg_search_concurrency">avg_search_concurrency</choice>
@@ -2018,7 +2015,6 @@ cloud_flavor
         <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
         <choice value="max_avg_service_ms">max_avg_service_ms</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
-        <choice value="avg_service_ms">avg_service_ms</choice>
         <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
         <choice value="avg_bucket_download_ps">avg_bucket_download_ps</choice>
         <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
@@ -2031,6 +2027,8 @@ cloud_flavor
         <choice value="read_write_ratio_kb_ps">read_write_ratio_kb_ps</choice>
         <choice value="read_write_ratio_ps">read_write_ratio_ps</choice>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
+        <choice value="total_mothership_crashes">total_mothership_crashes</choice>
+        <choice value="total_search_crashes">total_search_crashes</choice>
         <choice value="max_search_startup_delay">max_search_startup_delay</choice>
         <choice value="avg_search_startup_delay">avg_search_startup_delay</choice>
         <default>avg_instantaneous_kbps</default>
@@ -2047,7 +2045,6 @@ cloud_flavor
         <choice value="max_broken_pipes">max_broken_pipes</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
-        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_delay">max_delay</choice>
         <choice value="avg_search_concurrency">avg_search_concurrency</choice>
@@ -2071,7 +2068,6 @@ cloud_flavor
         <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
         <choice value="max_avg_service_ms">max_avg_service_ms</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
-        <choice value="avg_service_ms">avg_service_ms</choice>
         <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
         <choice value="avg_bucket_download_ps">avg_bucket_download_ps</choice>
         <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
@@ -2092,7 +2088,7 @@ cloud_flavor
       </input>
       <input type="dropdown" token="bubble_selected_field_size">
         <label>Size</label>
-        <choice value="skipped_readings">skipped_readings</choice>
+                <choice value="skipped_readings">skipped_readings</choice>
         <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="max_instantaneous_kbps">max_instantaneous_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
@@ -2102,7 +2098,6 @@ cloud_flavor
         <choice value="max_broken_pipes">max_broken_pipes</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
-        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_delay">max_delay</choice>
         <choice value="avg_search_concurrency">avg_search_concurrency</choice>
@@ -2126,7 +2121,6 @@ cloud_flavor
         <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
         <choice value="max_avg_service_ms">max_avg_service_ms</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
-        <choice value="avg_service_ms">avg_service_ms</choice>
         <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
         <choice value="avg_bucket_download_ps">avg_bucket_download_ps</choice>
         <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
@@ -2197,7 +2191,6 @@ $show_bubble$</query>
         <choice value="max_broken_pipes">max_broken_pipes</choice>
         <choice value="avg_broken_pipes">avg_broken_pipes</choice>
         <choice value="avg_normalized_load_avg_1min">avg_normalized_load_avg_1min</choice>
-        <choice value="normalized_load_avg_1min">normalized_load_avg_1min</choice>
         <choice value="current_delay">current_delay</choice>
         <choice value="max_delay">max_delay</choice>
         <choice value="avg_search_concurrency">avg_search_concurrency</choice>
@@ -2221,7 +2214,6 @@ $show_bubble$</query>
         <choice value="avg_reads_kb_ps">avg_reads_kb_ps</choice>
         <choice value="max_avg_service_ms">max_avg_service_ms</choice>
         <choice value="avg_avg_service_ms">avg_avg_service_ms</choice>
-        <choice value="avg_service_ms">avg_service_ms</choice>
         <choice value="max_bucket_download_ps">max_bucket_download_ps</choice>
         <choice value="avg_bucket_download_ps">avg_bucket_download_ps</choice>
         <choice value="max_bucket_eviction_ps">max_bucket_eviction_ps</choice>
@@ -2236,6 +2228,8 @@ $show_bubble$</query>
         <choice value="stdev_instantaneous_kbps">stdev_instantaneous_kbps</choice>
         <choice value="total_mothership_crashes">total_mothership_crashes</choice>
         <choice value="total_search_crashes">total_search_crashes</choice>
+        <choice value="max_search_startup_delay">max_search_startup_delay</choice>
+        <choice value="avg_search_startup_delay">avg_search_startup_delay</choice>
         <default>avg_normalized_load_avg_1min</default>
       </input>
       <input type="dropdown" token="bar_aggregation_function">
