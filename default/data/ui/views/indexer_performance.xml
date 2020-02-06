@@ -94,35 +94,6 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  <search id="site_membership_sid">
-    <done>
-      <set token="site_membership_sid">$job.sid$</set>
-      <set token="site_membership_runtime">$job.runDuration$</set>
-      <set token="site_membership_progress">$job.doneProgress$</set>
-      <set token="site_membership_count">$job.resultCount$</set>
-    </done>
-    <progress>
-      <unset token="site_membership_sid"></unset>
-      <unset token="site_membership_runtime"></unset>
-      <set token="site_membership_progress">$job.doneProgress$</set>
-      <set token="site_membership_count">$job.resultCount$</set>
-    </progress>
-    <query>$internal$ sourcetype=splunkd CMMaster TERM(status=success) TERM(event=addBucket) site* NOT(source=*remote_searches.log) earliest=-1hr latest=now
-| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"[^\"]+)"
-| eval cluster_master=host
-| fields + site_pair cluster_master
-| fields - _*
-| dedup site_pair
-| mvexpand site_pair
-| dedup site_pair
-| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"(?&lt;host&gt;.*)"
-| eval cm_site_id=cluster_master."-".site_id
-| table host cluster_master site_id cm_site_id
-
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
   <search id="blocked_queues_sid">
     <refresh>$refresh_rate_seconds$</refresh>
     <done>
@@ -492,6 +463,34 @@ $single_indexer_only$
 | fields - data.os_version data.instance_guid data.os_build launch_time
 | sort - $selected_field$</query>
   </search>
+  <search id="site_membership_sid">
+    <done>
+      <set token="site_membership_sid">$job.sid$</set>
+      <set token="site_membership_runtime">$job.runDuration$</set>
+      <set token="site_membership_progress">$job.doneProgress$</set>
+      <set token="site_membership_count">$job.resultCount$</set>
+    </done>
+    <progress>
+      <unset token="site_membership_sid"></unset>
+      <unset token="site_membership_runtime"></unset>
+      <set token="site_membership_progress">$job.doneProgress$</set>
+      <set token="site_membership_count">$job.resultCount$</set>
+    </progress>
+    <query>$internal$ sourcetype=splunkd CMMaster TERM(status=success) TERM(event=addBucket) site* NOT(source=*remote_searches.log) earliest=-7d latest=now
+| head 1000
+| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+|default,\"[^\"]+)"
+| eval cluster_master=host
+| fields + site_pair cluster_master
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site\d+|default),\"(?&lt;host&gt;.*)"
+| eval cm_site_id=cluster_master."-".site_id
+| table host cluster_master site_id cm_site_id</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select time range</label>
@@ -532,14 +531,11 @@ $single_indexer_only$
       <input type="checkbox" token="show_table">
         <label></label>
         <choice value="| noop">Table</choice>
-        <delimiter/>
-        <default>| noop</default>
+        <initialValue>| noop</initialValue>
       </input>
       <input type="checkbox" token="show_debug">
         <label></label>
         <choice value="| noop">Debug</choice>
-        <delimiter/>
-        <default>| noop</default>
       </input>
       <input type="checkbox" token="show_bubble">
         <label></label>
