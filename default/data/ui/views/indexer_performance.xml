@@ -458,8 +458,7 @@
     <sampleRatio>1</sampleRatio>
   </search>
   <search base="result_set" id="filtered_result_set">
-    <query>| search ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
-$single_indexer_only$
+    <query>| search $not_filter$ ($selected_field$ &lt;= $filter_upper_bound$ AND $selected_field$ &gt;= $filter_lower_bound$) AND $split_by$="$selected_stack$"
 | fields - data.os_version data.instance_guid data.os_build launch_time
 | sort - $selected_field$</query>
   </search>
@@ -624,7 +623,6 @@ $single_indexer_only$
       </input>
       <input type="dropdown" token="split_by">
         <label>Split by</label>
-        <choice value="| noop">No split by</choice>
         <choice value="splunk_version">splunk_version</choice>
         <choice value="site_id">site_id</choice>
         <choice value="cluster_master">cluster_master</choice>
@@ -657,6 +655,9 @@ $single_indexer_only$
       <input type="checkbox" token="not_filter">
         <label>Toggle to invert filter</label>
         <choice value="NOT">NOT</choice>
+        <change>
+          <eval token="not_filter">if(isnull($not_filter$)," ",$not_filter$)</eval>
+        </change>
       </input>
       <chart>
         <title>Distribution of $selected_field$</title>
@@ -696,13 +697,6 @@ $single_indexer_only$
   </row>
   <row depends="$show_table$,$final_report$">
     <panel>
-      <input type="checkbox" token="single_indexer_filter">
-        <label></label>
-        <choice value="| eval random=random() | eventstats max(random) as max_random by stack | where max_random=random">Display one indexer per stack</choice>
-        <change>
-          <eval token="single_indexer_only">if(isnull($single_indexer_filter$),"| noop",$single_indexer_filter$)</eval>
-        </change>
-      </input>
       <html>
                 <style>#filter {
     padding: 10px;
@@ -710,7 +704,7 @@ $single_indexer_only$
     font-size: xx-large;
 }</style>
                 <div id="filter">
-                    <div style="color:black" align="center">$filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$ AND $split_by$=$selected_stack$</div>
+                    <div style="color:black" align="center">$not_filter$ ($filter_lower_bound$ &lt;= $selected_field$ &lt;= $filter_upper_bound$) AND $split_by$=$selected_stack$</div>
                 </div>
             </html>
       <html>
