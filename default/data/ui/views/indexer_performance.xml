@@ -453,7 +453,7 @@
     <query>| dbinspect $internal$ 
 | stats values(splunk_server) as indexer 
 | eval host_count=mvcount(indexer), indexer_IN="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"</query>
-    <earliest>-1hr</earliest>
+    <earliest>-2d</earliest>
     <latest>now</latest>
     <sampleRatio>1</sampleRatio>
   </search>
@@ -653,6 +653,10 @@ $single_indexer_only$
           <set token="selected_stack">*</set>
         </change>
         <delimiter/>
+      </input>
+      <input type="checkbox" token="not_filter">
+        <label>Toggle to invert filter</label>
+        <choice value="NOT">NOT</choice>
       </input>
       <chart>
         <title>Distribution of $selected_field$</title>
@@ -2088,7 +2092,7 @@ cloud_flavor
       </input>
       <input type="dropdown" token="bubble_selected_field_size">
         <label>Size</label>
-                <choice value="skipped_readings">skipped_readings</choice>
+        <choice value="skipped_readings">skipped_readings</choice>
         <choice value="avg_average_kbps">avg_average_kbps</choice>
         <choice value="max_instantaneous_kbps">max_instantaneous_kbps</choice>
         <choice value="avg_instantaneous_kbps">avg_instantaneous_kbps</choice>
