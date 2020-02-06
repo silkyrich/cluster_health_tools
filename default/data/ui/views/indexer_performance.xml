@@ -478,7 +478,7 @@ $single_indexer_only$
     </progress>
     <query>$internal$ sourcetype=splunkd CMMaster TERM(status=success) TERM(event=addBucket) site* NOT(source=*remote_searches.log) earliest=-7d latest=now
 | head 1000
-| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+|default,\"[^\"]+)"
+| rex field=_raw max_match=64 ",(?&lt;site_pair&gt;(?:site\d+|default),\"[^\"]+)"
 | eval cluster_master=host
 | fields + site_pair cluster_master
 | fields - _*
