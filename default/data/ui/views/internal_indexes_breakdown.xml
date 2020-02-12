@@ -1,0 +1,295 @@
+<form>
+  <label>Internal indexes breakdown</label>
+  <init>
+    <set token="internal_indexes">index=_*</set>
+    <set token="role_index">index=_internal</set>
+  </init>
+  <search id="compute_tcp_lookup">
+    <query>$role_index$ TERM(group=tcpin_connections) TERM(fwdType=uf) earliest=-60m latest=-58m 
+    | stats count by hostname 
+    | eval primary_role="universal_forwarder" 
+    | rename hostname as host
+    | eval lower_host=lower(host)
+| fields - count
+| outputlookup host_to_roles.csv</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="tcp_done">| noop</set>
+    </done>
+  </search>
+  <search id="compute_role_lookup">
+    <query>$role_index$ earliest=-90min latest=now sourcetype=splunkd Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master OR universal_forwarder) 
+| stats 
+    count 
+    values(instance_roles) as roles 
+    values(index_cluster_label) as idx_cluster_name
+    by instance_guid server_name 
+| eval mv_roles=split(roles, ", ") 
+| eval idx_cluster_name=if(idx_cluster_name="none", "", idx_cluster_name) 
+| stats 
+    count(eval(mv_roles="universal_forwarder")) as role_universal_forwarder
+    count(eval(mv_roles="indexer")) as role_indexer
+    count(eval(mv_roles="search_peer")) as role_search_peer
+    count(eval(mv_roles="cluster_search_head")) as role_cluster_search_head
+    count(eval(mv_roles="search_head")) as role_search_head
+    count(eval(mv_roles="cluster_slave")) as role_cluster_slave
+    count(eval(mv_roles="kv_store")) as role_kv_store_role 
+    count(eval(mv_roles="cluster_master")) as role_cluster_master
+    count(eval(mv_roles="license_master")) as role_license_master
+    count(eval(mv_roles="deployment_server_master")) as role_deployment_server
+    count(eval(mv_roles="deployment_client")) as role_deployment_client
+    count(eval(mv_roles="shc_captain")) as role_shc_captain
+    count(eval(mv_roles="shc_member")) as role_shc_member
+    by instance_guid server_name roles idx_cluster_name 
+| rename instance_guid as guid 
+| rename server_name as host 
+| eval primary_role=case(
+    role_universal_forwarder&gt;=1, "universal_forwarder",
+    role_indexer&gt;=1,"indexer",
+    role_cluster_master&gt;=1,"cluster_master",
+    role_cluster_search_head&gt;=1,"search_head_cluster",
+    role_search_head&gt;=1,"search_head",
+    role_license_master&gt;=1,"heavy_forwarder",
+    role_deployment_server_master&gt;=1,"deployment_server_master"
+    ) 
+| table host primary_role
+| outputlookup host_to_primary_role.csv</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="role_done">| noop</set>
+    </done>
+  </search>
+  <search id="base">
+    <query>| tstats count where $internal_indexes$ by host index sourcetype
+| rex field=host "^(?&lt;short_host&gt;[^.]+)" 
+| eval lower_host=lower(short_host) 
+| lookup host_to_primary_role.csv host output primary_role as role_main 
+| lookup host_to_roles.csv host output primary_role as role_tcp 
+| lookup host_to_roles.csv host as short_host output primary_role as role_short 
+| lookup host_to_roles.csv lower_host output primary_role as role_lower 
+| eval all_roles=""
+| foreach role_* [| eval all_roles=if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),mvappend(all_roles,'&lt;&lt;FIELD&gt;&gt;'),all_roles)]
+| fields - role_*
+| eval role=mvfilter(all_roles!="")
+| eval role=mvdedup(role)
+| fields - all_roles
+$role_done$
+$tcp_done$</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <search base="base" id="base_filtered">
+    <query>
+      | search $filter_indexes$ $filter_roles$ $filter_sourcetypes$
+    </query>
+  </search>
+  <search base="base" id="filter">
+    <query>| stats count by sourcetype index role</query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Select time range</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="multiselect" token="filter_indexes">
+      <label>Filter indexes</label>
+      <choice value="*">*</choice>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search base="filter">
+        <query>| stats sum(count) as count by index 
+| eval label=index." (".count.")"</query>
+      </search>
+      <default>*</default>
+      <delimiter>, </delimiter>
+      <prefix>index IN (</prefix>
+      <suffix>)</suffix>
+    </input>
+    <input type="multiselect" token="filter_roles">
+      <label>Filter roles</label>
+      <choice value="*">*</choice>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>role</fieldForValue>
+      <search base="filter">
+        <query>| stats sum(count) as count by role | eval label=role." (".count.")"</query>
+      </search>
+      <default>*</default>
+      <delimiter> , </delimiter>
+      <prefix>role IN (</prefix>
+      <suffix>)</suffix>
+    </input>
+    <input type="multiselect" token="filter_sourcetypes">
+      <label>Filter sourcetypes</label>
+      <choice value="*">*</choice>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>sourcetype</fieldForValue>
+      <search base="filter">
+        <query>| stats sum(count) as count by sourcetype 
+| eval label=sourcetype." (".count.")"</query>
+      </search>
+      <default>*</default>
+      <delimiter> , </delimiter>
+      <prefix>sourcetype IN (</prefix>
+      <suffix>)</suffix>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Relative sizes of indexes</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by index</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">308</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Relative numbers of roles</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats dc(host) by role</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">308</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Relative volumes of sourcetypes</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by sourcetype</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">308</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>All hosts logging into the internal indexes</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| chart sum(count) as events by host index
+| eval total_events=0
+| foreach VALUE_* [| eval total_events=total_events+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0) ]
+| sort - total_events
+| fields - total_events</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="height">305</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>What sourcetypes are populating each index?</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by index sourcetype</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">240</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">index</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>What roles are populating each index?</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by role index</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">252</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.splitBy">index</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>All hosts logging into the internal indexes</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by role sourcetype</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">463</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>How does each role translate populate indexes?</title>
+      <chart>
+        <search base="base_filtered">
+          <query>| stats sum(count) by role index</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">465</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+      </chart>
+    </panel>
+  </row>
+</form>
