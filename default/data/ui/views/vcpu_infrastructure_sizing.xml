@@ -406,7 +406,7 @@ All information is provided at your own risk. All data collected is classfied se
     primary_role="cluster_master", 0,
     primary_role="search_head", 1,
     primary_role="search_head_cluster", 1,
-    primary_role="heavy_forwarder", 1,
+    primary_role="heavy_forwarder", 0,
     primary_role="universal_forwarder", 0,
     primary_role="license_master", 0,
     primary_role="deployment_server_master",0
