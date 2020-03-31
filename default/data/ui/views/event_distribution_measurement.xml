@@ -173,16 +173,12 @@
       <title>Variation of events across the indexers $selected_index$</title>
       <input type="multiselect" token="filter_index">
         <label>Filter by index</label>
-        <fieldForLabel>index</fieldForLabel>
+        <fieldForLabel>label</fieldForLabel>
         <fieldForValue>index</fieldForValue>
-        <search>
-          <query>| rest /services/data/indexes
-| rename title as index 
-| fields + index
-| search $selected_index$
-| stats count by index
-| fields - count</query>
+        <search base="baseSearch">
+          <query>| stats count by index | eval label=index." (".count.")"</query>
         </search>
+
         <choice value="*">*</choice>
         <prefix>(</prefix>
         <suffix>)</suffix>
@@ -266,4 +262,5 @@
       </chart>
     </panel>
   </row>
+
 </form>
