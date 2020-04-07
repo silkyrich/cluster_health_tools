@@ -402,6 +402,19 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="annotation_channel_creation">
+    <query>| union 
+    [ search $splunkd$ host=$selected_host$ CASE(TailingProcessor) CASE(Pausing) CASE(TailReader) module 
+    | eval annotation_label="Paused",
+        annotation_category="TailingProcessor" 
+    | table _time ann* ] 
+    [ search $splunkd$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd 
+    | eval annotation_label=src,
+        annotation_category="Dropped forwarder" 
+    | table _time ann*]</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -420,7 +433,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </change>
     </input>
     <input type="text" token="selected_host">
-      <label>Enter forwarder name</label>
+      <label>Enter host name</label>
       <change>
         <set token="filter_pipelines">*</set>
         <unset token="show_tcp_out_panel"></unset>
@@ -475,17 +488,17 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <choice value="1000">1000</choice>
       <initialValue>500</initialValue>
     </input>
-    <input type="text" token="selected_introspection_span" depends="$hide$">
-      <label>selected_introspection_span</label>
-      <prefix>span=</prefix>
-      <suffix>sec</suffix>
-      <initialValue>10</initialValue>
-    </input>
     <input type="text" token="selected_metrics_span" depends="$hide$">
       <label>selected_metrics_span</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>31</initialValue>
+    </input>
+    <input type="text" token="selected_introspection_span" depends="$hide$">
+      <label>selected_introspection_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>10</initialValue>
     </input>
   </fieldset>
   <row rejects="$selected_host$">
@@ -680,6 +693,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart $selected_metrics_span$ limit=0 
@@ -689,7 +703,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
     *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -767,11 +780,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
+        <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
 | timechart limit=50 $selected_introspection_span$ $selected_hec_fields$ $hec_split_by$</query>
         </search>
-        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -817,7 +830,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_host">
           <progress>
             <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -841,6 +853,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | eval max_cpu=100
     $host_attributes$</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.axisY2.abbreviation">auto</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -888,7 +901,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Utilization of Splunk server</title>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_per_process">
           <query>| timechart $selected_introspection_span$
     $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
@@ -903,6 +915,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     $per_process_split_by$
 $per_process_attributes$</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -930,6 +943,9 @@ $per_process_attributes$</query>
         <default>current_size_kb</default>
       </input>
       <chart>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
+        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart $selected_metrics_span$ avg($queue_fill$) by name</query>
@@ -939,9 +955,6 @@ $per_process_attributes$</query>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
-        </search>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -992,14 +1005,6 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>| timechart $selected_metrics_span$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
-| foreach * 
-    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
-        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -1009,6 +1014,14 @@ $per_process_attributes$</query>
 
 
           </query>
+        </search>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $selected_metrics_span$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -1222,14 +1235,14 @@ $per_process_attributes$</query>
         <default>cpu_seconds</default>
       </input>
       <chart>
-        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
-    annotation_category=reason
-| table _time anno*</search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 $selected_metrics_span$ avg($selected_processor_variable$) by key</query>
         </search>
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -1271,18 +1284,15 @@ $per_process_attributes$</query>
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_channel_creation" type="annotation">
+          <query>
+
+          </query>
+        </search>
         <search base="channels_filtered">
           <query>
           
 | fields _time $channel_variable$</query>
-        </search>
-        <search base="annotation_broken_pipes" type="annotation">
-          <query>
-            $_internal$ host=$selected_host$ TcpInputProc Error encountered for connection Broken pipe from TERM(src=*) sourcetype=splunkd
-| eval annotation_label=src,
-    annotation_category="Dropped forwarder" 
-| table _time ann*
-          </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1329,6 +1339,11 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select time range to see what targets recieved data from this host</title>
+        <search base="tcp_output_annotation" type="annotation">
+          <query>
+ 
+    </query>
+        </search>
         <search base="tcp_out">
           <progress>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -1346,11 +1361,6 @@ $per_process_attributes$</query>
     | streamstats $tcp_out_overlay$ ] 
 | where isnull(data) 
 | stats values(*) as * by _time</query>
-        </search>
-        <search base="tcp_output_annotation" type="annotation">
-          <query>
- 
-    </query>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
