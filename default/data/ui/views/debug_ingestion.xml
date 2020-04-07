@@ -386,6 +386,22 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="tcp_output_annotation">
+    <query>| union 
+    [ search $splunkd$ host=$selected_host$ TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) CASE(StatusMgr) 
+    | eval annotation_label=destHost,
+        annotation_category="connect fail"
+        $show_tcp_out_panel$ 
+    | table _time host anno*
+        ] 
+    [ search (index=_internal OR index=core_splunk_internal) sourcetype=splunkd host=$selected_host$ CASE(Tcpout) CASE(Processor) CASE(TCP) output processor has paused data flow 
+    | rex field=_raw "Forwarding to output group (?&lt;group&gt;[^\s]+) has been blocked for (?&lt;duration&gt;\d+) seconds" 
+    | eval annotation_label="Output group ".group." is delayed for ".duration."secs",
+        annotation_category="TCP output processor has paused data flow" 
+    | table _time host anno*]</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -459,21 +475,22 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <choice value="1000">1000</choice>
       <initialValue>500</initialValue>
     </input>
-    <input type="text" token="selected_metrics_span" depends="$hide$">
-      <label>selected_metrics_span</label>
-      <prefix>span=</prefix>
-      <suffix>sec</suffix>
-      <initialValue>31</initialValue>
-    </input>
     <input type="text" token="selected_introspection_span" depends="$hide$">
       <label>selected_introspection_span</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>10</initialValue>
     </input>
+    <input type="text" token="selected_metrics_span" depends="$hide$">
+      <label>selected_metrics_span</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>31</initialValue>
+    </input>
   </fieldset>
   <row rejects="$selected_host$">
     <panel>
+      <title></title>
       <html>
         <h1 style="text-align:center">Please enter an exact hostname</h1>
       </html>
@@ -1330,15 +1347,10 @@ $per_process_attributes$</query>
 | where isnull(data) 
 | stats values(*) as * by _time</query>
         </search>
-        <search id="annotation_timeout" type="annotation">
+        <search base="tcp_output_annotation" type="annotation">
           <query>
-$splunkd$ host=$selected_host$ TERM(statusee=TcpOutputProcessor) TERM(eventType=connect_fail) StatusMgr
-| eval annotation_label="connect fail",
-    annotation_category=destHost
-$show_tcp_out_panel$    
+ 
     </query>
-          <earliest>$time.earliest$</earliest>
-          <latest>$time.latest$</latest>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
