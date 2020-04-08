@@ -245,7 +245,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     avg(data.total_bytes_indexed) as total_bytes_indexed
     avg(data.total_bytes_received) as total_bytes_received
     where $introspection$ data.series::http_event_collector_token host=$selected_host$ 
-    by _time data.token_name data.format data.transport $span_min_10s$
+    by _time data.token_name data.format data.transport $span_min_60s$
 
           </query>
     <earliest>$time.earliest$</earliest>
@@ -424,8 +424,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </default>
       <change>
         <condition match="isnotnull($time.latest$)">
-          <eval token="form.span_min_30s">if(isnull($time.latest$),31, if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;31,31,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/31)*31))</eval>
-          <eval token="form.span_min_10s">if(isnull($time.latest$),10,if((round(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)&lt;10,10,round(((relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))/$selected_bins$)/10)*10))</eval>
+          <eval token="duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="form.span_min_1s">if(isnull($time.latest$),1,if(($duration_seconds$/$selected_bins$)&lt;1,1,ceiling($duration_seconds$)</eval>
+          <eval token="form.span_min_10s">if(isnull($time.latest$),10,if(($duration_seconds$/$selected_bins$)&lt;10,10,ceiling(($duration_seconds$10)*10)</eval>
+          <eval token="form.span_min_30s">if(isnull($time.latest$),31,if(($duration_seconds$/$selected_bins$)&lt;31,31,ceiling(($duration_seconds$/31)*31)</eval>
+          <eval token="form.span_min_60s">if(isnull($time.latest$),31,if(($duration_seconds$/$selected_bins$)&lt;60,60,ceiling(($duration_seconds$/60)*60)</eval>
           <unset token="finished_per_series_thruput"></unset>
           <set token="series_thruput_max">0</set>
           <eval token="series_thruput_min">now()</eval>
@@ -488,17 +491,29 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <choice value="1000">1000</choice>
       <initialValue>500</initialValue>
     </input>
+    <input type="text" token="span_min_60s" depends="$hide$">
+      <label>span_min_30s</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>60</initialValue>
+    </input>
     <input type="text" token="span_min_30s" depends="$hide$">
       <label>span_min_30s</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
-      <initialValue>31</initialValue>
+      <initialValue>30</initialValue>
     </input>
     <input type="text" token="span_min_10s" depends="$hide$">
       <label>span_min_10s</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>10</initialValue>
+    </input>
+    <input type="text" token="span_min_1s" depends="$hide$">
+      <label>span_min_1s</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>1</initialValue>
     </input>
   </fieldset>
   <row rejects="$selected_host$">
@@ -703,6 +718,10 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
     *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <selection>
+          <set token="selection_thruput_earliest">$start$</set>
+          <set token="selection_thruput_latest">$end$</set>
+        </selection>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -714,10 +733,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <drilldown>
           <set token="form.filter_pipelines">$click.name2$</set>
         </drilldown>
-        <selection>
-          <set token="selection_thruput_earliest">$start$</set>
-          <set token="selection_thruput_latest">$end$</set>
-        </selection>
       </chart>
     </panel>
   </row>
