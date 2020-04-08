@@ -378,9 +378,12 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <query>| tstats 
     min(_indextime) as min_index_time 
     max(_indextime) as max_index_time 
-    count where $splunkd$ sourcetype=splunkd host=$selected_host$ 
+    count as event_count where $splunkd$ sourcetype=splunkd host=$selected_host$ 
     TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR TERM(ingest_pipe=0)) by _time source $span_min_1s$ 
-
+| eval min_delay=min_index_time-_time 
+| eval max_delay=max_index_time-_time-$form.span_min_1s$
+| streamstats count as count
+| eventstats max(count) as max_count
 </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -427,6 +430,12 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     | table _time anno*
     | eval ingest_pipe="*"
     ]</query>
+  </search>
+  <search id="event_delay_2">
+    <query>| tstats count max(_indextime) as index_time where $splunkd$ host=$selected_host$ source=*splunkd.log* by source _time span=1s
+| eval delay=index_time-_time </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -731,7 +740,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart $span_min_30s$ limit=0 
@@ -741,6 +749,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
     *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <selection>
           <set token="selection_thruput_earliest">$start$</set>
           <set token="selection_thruput_latest">$end$</set>
@@ -818,11 +827,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
-        <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
 | timechart limit=50 $span_min_10s$ $selected_hec_fields$ $hec_split_by$</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -868,6 +877,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_host">
           <progress>
             <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -891,7 +901,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | eval max_cpu=100
     $host_attributes$</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.axisY2.abbreviation">auto</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -939,6 +948,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Utilization of Splunk server</title>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_per_process">
           <query>| timechart $span_min_10s$
     $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
@@ -953,7 +963,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     $per_process_split_by$
 $per_process_attributes$</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -981,9 +990,6 @@ $per_process_attributes$</query>
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart $span_min_30s$ avg($queue_fill$) by name</query>
@@ -993,6 +999,9 @@ $per_process_attributes$</query>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1043,6 +1052,14 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
+        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -1052,14 +1069,6 @@ $per_process_attributes$</query>
 
 
           </query>
-        </search>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
-| foreach * 
-    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -1273,14 +1282,14 @@ $per_process_attributes$</query>
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*</search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 $span_min_30s$ avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
-    annotation_category=reason
-| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -1322,15 +1331,15 @@ $per_process_attributes$</query>
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_channel_creation" type="annotation">
-          <query>
-
-          </query>
-        </search>
         <search base="channels_filtered">
           <query>
           
 | fields _time $channel_variable$</query>
+        </search>
+        <search base="annotation_channel_creation" type="annotation">
+          <query>
+
+          </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1377,11 +1386,6 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select time range to see what targets recieved data from this host</title>
-        <search base="tcp_output_annotation" type="annotation">
-          <query>
- 
-    </query>
-        </search>
         <search base="tcp_out">
           <progress>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -1399,6 +1403,11 @@ $per_process_attributes$</query>
     | streamstats $tcp_out_overlay$ ] 
 | where isnull(data) 
 | stats values(*) as * by _time</query>
+        </search>
+        <search base="tcp_output_annotation" type="annotation">
+          <query>
+ 
+    </query>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
@@ -1491,35 +1500,17 @@ $per_process_attributes$</query>
   </row>
   <row>
     <panel>
-      <title>Default all splunk instances write to metrics.log every 30 seconds</title>
+      <title>Health of metrics firing</title>
+      <input type="dropdown" token="delay_metric">
+        <label>Show delay metric</label>
+        <choice value="| where count != 1 AND count != max_count | table _time max_delay min_delay">Event delay</choice>
+        <choice value="| xyseries _time source event_count">Execution frequency</choice>
+        <default>| xyseries _time source event_count</default>
+      </input>
       <chart>
         <title>Multiple files, gaps and dips are all bad</title>
         <search base="metrics_generation">
-          <query>| xyseries _time source count
-| eval expected_readings=ceiling($form.span_min_1s$/30)</query>
-        </search>
-        <selection>
-          <set token="event_delay_min">$start$</set>
-          <set token="event_delay_max">$end$</set>
-        </selection>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">expected_readings</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>The event delay reading metrics log</title>
-      <chart>
-        <title>By default all splunk instances log every 30 seconds, if we see this drop we can assume that generation thread was skipped or data was lost</title>
-        <search base="metrics_generation">
-          <query>| eval min_delay=min_index_time-_time 
-| eval max_delay=max_index_time-_time-$form.span_min_1s$
-| streamstats count as count
-| eventstats max(count) as max_count
-| where count != 1 AND count != max_count
-| table _time max_delay min_delay</query>
+          <query>$delay_metric$</query>
         </search>
         <selection>
           <set token="event_delay_min">$start$</set>
@@ -1535,16 +1526,22 @@ $per_process_attributes$</query>
   </row>
   <row>
     <panel>
-      <title>Zoom in on event delay on the internal files</title>
+      <title>Health of splunkd.log monitoring</title>
+      <input type="dropdown" token="delay_metric_2">
+        <label>Show delay metric</label>
+        <choice value="sum(count)">count</choice>
+        <choice value="avg(delay) as delay">avg(delay)</choice>
+        <choice value="p95(delay) as delay">p95(delay)</choice>
+        <choice value="max(delay) as delay">max(delay)</choice>
+        <default>avg(delay) as delay</default>
+      </input>
       <chart>
-        <search>
-          <query>| tstats max(_indextime) as index_time where $splunkd$ host=$selected_host$ by source _time span=1s
-| eval delay=index_time-_time 
-| timechart $span_min_1s$ count by source</query>
-          <earliest>$event_delay_min$</earliest>
-          <latest>$event_delay_max$</latest>
+        <title>Multiple files and delay is bad</title>
+        <search base="event_delay_2">
+          <query>| timechart $span_min_1s$ $delay_metric_2$ by source</query>
         </search>
         <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">all</option>
         <option name="refresh.display">progressbar</option>
       </chart>
