@@ -415,6 +415,17 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="metrics_generation">
+    <query>| tstats 
+    min(_indextime) as min_index_time 
+    max(_indextime) as max_index_time 
+    count where $splunkd$ sourcetype=splunkd host=$selected_host$ 
+    TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR TERM(ingest_pipe=0)) by _time source $span_min_30s$ 
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -424,11 +435,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </default>
       <change>
         <condition match="isnotnull($time.latest$)">
-          <eval token="duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
-          <eval token="form.span_min_1s">if(isnull($time.latest$),1,if(($duration_seconds$/$selected_bins$)&lt;1,1,ceiling($duration_seconds$)</eval>
-          <eval token="form.span_min_10s">if(isnull($time.latest$),10,if(($duration_seconds$/$selected_bins$)&lt;10,10,ceiling(($duration_seconds$10)*10)</eval>
-          <eval token="form.span_min_30s">if(isnull($time.latest$),31,if(($duration_seconds$/$selected_bins$)&lt;31,31,ceiling(($duration_seconds$/31)*31)</eval>
-          <eval token="form.span_min_60s">if(isnull($time.latest$),31,if(($duration_seconds$/$selected_bins$)&lt;60,60,ceiling(($duration_seconds$/60)*60)</eval>
+          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="form.span_min_1s">floor($form.duration_seconds$/$selected_resolution$)</eval>
+          <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
           <unset token="finished_per_series_thruput"></unset>
           <set token="series_thruput_max">0</set>
           <eval token="series_thruput_min">now()</eval>
@@ -482,7 +493,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         </query>
       </search>
     </input>
-    <input type="dropdown" token="selected_bins">
+    <input type="dropdown" token="selected_resolution">
       <label>Select number of bins</label>
       <choice value="100">100</choice>
       <choice value="250">250</choice>
@@ -490,9 +501,16 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <choice value="750">750</choice>
       <choice value="1000">1000</choice>
       <initialValue>500</initialValue>
+      <change>
+          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="form.span_min_1s">floor($form.duration_seconds$/$selected_resolution$)</eval>
+          <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
+      </change>
     </input>
     <input type="text" token="span_min_60s" depends="$hide$">
-      <label>span_min_30s</label>
+      <label>span_min_60s</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>60</initialValue>
@@ -514,6 +532,9 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>1</initialValue>
+    </input>
+    <input type="text" token="duration_seconds" depends="$hide$">
+      <label>duration_seconds</label>
     </input>
   </fieldset>
   <row rejects="$selected_host$">
@@ -708,7 +729,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_restarts" type="annotation"></search>
         <search base="thruput">
           <query>| search name=$selected_thruput$ 
 | timechart $span_min_30s$ limit=0 
@@ -718,6 +738,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
     *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotation_restarts" type="annotation"></search>
         <selection>
           <set token="selection_thruput_earliest">$start$</set>
           <set token="selection_thruput_latest">$end$</set>
@@ -741,7 +762,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <title>Create sharable link</title>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="debug_ingestion?form.time.earliest=$selection_thruput_earliest$&amp;form.time.latest=$selection_thruput_latest$&amp;form.selected_host=$selected_host$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_bins=$selected_bins$">Open this dashboard in a new window with absolute for selected range time</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_ingestion?form.time.earliest=$selection_thruput_earliest$&amp;form.time.latest=$selection_thruput_latest$&amp;form.selected_host=$selected_host$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_resolution=$selected_resolution$">Open this dashboard in a new window with absolute for selected range time</a>
         </h2>
       </html>
     </panel>
@@ -795,11 +816,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Select window and indexer to drill in</title>
-        <search base="annotation" type="annotation"></search>
         <search base="hec_token_base">
           <query>| search data.token_name=$selected_hec_token$
 | timechart limit=50 $span_min_10s$ $selected_hec_fields$ $hec_split_by$</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisY.scale">log</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
@@ -845,6 +866,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <default>avg</default>
       </input>
       <chart>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_host">
           <progress>
             <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -868,7 +890,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | eval max_cpu=100
     $host_attributes$</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.axisY2.abbreviation">auto</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -916,6 +937,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </input>
       <chart>
         <title>Utilization of Splunk server</title>
+        <search base="annotation_restarts" type="annotation"></search>
         <search base="introspection_resource_usage_per_process">
           <query>| timechart $span_min_10s$
     $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
@@ -930,7 +952,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     $per_process_split_by$
 $per_process_attributes$</query>
         </search>
-        <search base="annotation_restarts" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -958,9 +979,6 @@ $per_process_attributes$</query>
         <default>current_size_kb</default>
       </input>
       <chart>
-        <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
-        </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
 | timechart $span_min_30s$ avg($queue_fill$) by name</query>
@@ -970,6 +988,9 @@ $per_process_attributes$</query>
           <done>
             <eval token="show_queue_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
           </done>
+        </search>
+        <search base="annotation_blocking_filtered" type="annotation">
+          <query/>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1020,6 +1041,14 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select range to reveal what forwarders where connecting to what pipelines for the duration</title>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
+        </search>
         <search base="annotation_parsing_problems" type="annotation">
           <query>
             
@@ -1029,14 +1058,6 @@ $per_process_attributes$</query>
 
 
           </query>
-        </search>
-        <search base="per_series_thruput_filtered">
-          <done>
-            <set token="finished_per_series_thruput">| noop</set>
-          </done>
-          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
-| foreach * 
-    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
         <selection>
           <eval token="series_thruput_max">if($end$&gt;$series_thruput_max$,$end$,$series_thruput_max$)</eval>
@@ -1170,7 +1191,7 @@ $per_process_attributes$</query>
           <scale type="threshold">80</scale>
         </format>
         <drilldown>
-          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_bins=$selected_bins$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$row.hostname$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_resolution=$selected_resolution$</link>
         </drilldown>
       </table>
     </panel>
@@ -1250,14 +1271,14 @@ $per_process_attributes$</query>
         <default>cpu_seconds</default>
       </input>
       <chart>
+        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
+    annotation_category=reason
+| table _time anno*</search>
         <search base="pipeline_processor_aggregated">
           <query>| search ingest_pipe=$filter_pipelines$ $selected_processor$ 
 | eval key="#".ingest_pipe." ".processor." &amp; ".name 
 | timechart limit=50 $span_min_30s$ avg($selected_processor_variable$) by key</query>
         </search>
-        <search base="annotation_parsing_problems" type="annotation">| eval annotation_label=naughty_$selected_group$,
-    annotation_category=reason
-| table _time anno*</search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
@@ -1299,15 +1320,15 @@ $per_process_attributes$</query>
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotation_channel_creation" type="annotation">
-          <query>
-
-          </query>
-        </search>
         <search base="channels_filtered">
           <query>
           
 | fields _time $channel_variable$</query>
+        </search>
+        <search base="annotation_channel_creation" type="annotation">
+          <query>
+
+          </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1354,11 +1375,6 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <title>Select time range to see what targets recieved data from this host</title>
-        <search base="tcp_output_annotation" type="annotation">
-          <query>
- 
-    </query>
-        </search>
         <search base="tcp_out">
           <progress>
             <eval token="show_tcp_out_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -1376,6 +1392,11 @@ $per_process_attributes$</query>
     | streamstats $tcp_out_overlay$ ] 
 | where isnull(data) 
 | stats values(*) as * by _time</query>
+        </search>
+        <search base="tcp_output_annotation" type="annotation">
+          <query>
+ 
+    </query>
         </search>
         <selection>
           <eval token="selection_earliest_tcp_out">$start$</eval>
@@ -1451,7 +1472,7 @@ $per_process_attributes$</query>
         <option name="height">423</option>
         <option name="refresh.display">progressbar</option>
         <drilldown>
-          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.filter_pipelines=$click.name2$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_bins=$selected_bins$</link>
+          <link target="_blank">debug_ingestion?form.selected_host=$click.value$&amp;form.time.earliest=$selection_earliest_tcp_out$&amp;form.time.latest=$selection_latest_tcp_out$&amp;form.filter_pipelines=$click.name2$&amp;form.span_min_30s=$form.span_min_30s$&amp;form.span_min_10s=$form.span_min_10s$&amp;form.selected_resolution=$selected_resolution$</link>
         </drilldown>
       </chart>
     </panel>
@@ -1464,6 +1485,42 @@ $per_process_attributes$</query>
         <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$targets_drill_up$">Debug ingestion for  upstream targets</a>
         </h2>
       </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Splunkd metrics logging</title>
+      <chart>
+        <title>By default all splunk instances log every 30 seconds, if we see this drop we can assume that generation thread was skipped or data was lost</title>
+        <search base="metrics_generation">
+          <query>| xyseries _time source count
+| eval expected_readings=floor($form.span_min_30s$/30)</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">expected_readings</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Splunkd metrics logging</title>
+      <chart>
+        <title>By default all splunk instances log every 30 seconds, if we see this drop we can assume that generation thread was skipped or data was lost</title>
+        <search base="metrics_generation">
+          <query>| eval min_delay=min_index_time-_time 
+| eval max_delay=max_index_time-_time-$form.span_min_30s$
+| streamstats count as count
+| eventstats max(count) as max_count
+| where count != 1 AND count != max_count
+| table _time max_delay min_delay</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">expected_readings</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
 </form>
