@@ -421,7 +421,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     annotation_category=mvjoin(name,"+") 
 | table _time anno* ingest_pipe 
 | append 
-    [ search $splunkd$ sourcetype=splunkd CASE(IndexWriter) TERM(splunk-optimize) paused 
+    [ search $splunkd$ host=$selected_host$ sourcetype=splunkd CASE(IndexWriter) TERM(splunk-optimize) paused 
     | rex field=_raw "Too many tsidx files in idx=(?&lt;idx&gt;[^\s]+)" 
     | eval annotation_label="Too many tsidx ".idx, annotation_category="indexing paused" 
     | table _time anno*
