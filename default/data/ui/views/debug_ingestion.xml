@@ -417,11 +417,17 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="event_delay_2">
+    <query>| tstats count max(_indextime) as index_time where $splunkd$ host=$selected_host$ source=*splunkd.log* by source _time span=1s
+| eval delay=index_time-_time </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <search base="queue" id="annotation_blocking">
-    <query>| where _blocked="true" 
-| eval 
-    annotation_label= "pipeline #".ingest_pipe." blocked", 
-    annotation_category=mvjoin(name,"+") 
+    <query>| where _blocked="true"
+| stats list(name) as blocked by _time ingest_pipe
+| eval annotation_label=mvjoin(blocked,", "), annotation_category="Blocked Queue"
+| rex mode=sed field=annotation_label "s/queue//g"
 | table _time anno* ingest_pipe 
 | append 
     [ search $splunkd$ host=$selected_host$ sourcetype=splunkd CASE(IndexWriter) TERM(splunk-optimize) paused 
@@ -430,12 +436,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     | table _time anno*
     | eval ingest_pipe="*"
     ]</query>
-  </search>
-  <search id="event_delay_2">
-    <query>| tstats count max(_indextime) as index_time where $splunkd$ host=$selected_host$ source=*splunkd.log* by source _time span=1s
-| eval delay=index_time-_time </query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -976,7 +976,7 @@ $per_process_attributes$</query>
     <panel>
       <title>Queue filling for pipeline $filter_pipelines$ on $selected_host$</title>
       <html>
-        <h1 style="text-align:center">No queuing detected !!!</h1>
+        <h1 style="text-align:center">Congratulations! No queuing detected on this host!!!</h1>
       </html>
     </panel>
   </row>
