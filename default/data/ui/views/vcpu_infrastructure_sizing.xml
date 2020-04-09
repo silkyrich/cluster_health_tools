@@ -134,7 +134,7 @@ All information is provided at your own risk. All data collected is classfied se
           <done>
             <set token="metrics_instance">$job.sid$</set>
           </done>
-          <query>$_internal$ earliest=-90min latest=now sourcetype=splunkd NOT(MetricsSchemaProcessor)  Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
+          <query>$_internal$ earliest=-90min latest=now sourcetype=splunkd NOT(CASE(MetricSchemaProcessor))  Metrics TERM(group=instance) TERM(name=instance) (deployment_client OR cluster_search_head OR search_head OR indexer OR cluster_slave OR search_peer OR license_master) NOT(universal_forwarder)
 | stats 
     count 
     values(instance_roles) as roles 
