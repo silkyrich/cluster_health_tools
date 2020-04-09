@@ -405,7 +405,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <latest>$time.latest$</latest>
   </search>
   <search id="queue">
-    <query>$metrics$ host=$selected_host$ TERM(group=queue) NOT(largest_size=0) TERM(max_size_kb=*) NOT(current_size_kb=0)
+    <query>$metrics$ host=$selected_host$ TERM(group=queue) TERM(name=*) (NOT TERM(largest_size=0) TERM(max_size_kb=*) NOT(TERM(current_size_kb=0)))
 | fillnull ingest_pipe 0 
 | fillnull blocked false
 | bin _time $span_min_30s$ 
@@ -417,17 +417,11 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  <search id="event_delay_2">
-    <query>| tstats count max(_indextime) as index_time where $splunkd$ host=$selected_host$ source=$delay_source$ by source _time span=1s
-| eval delay=index_time-_time </query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
   <search base="queue" id="annotation_blocking">
-    <query>| where _blocked="true"
-| stats list(name) as blocked by _time ingest_pipe
-| eval annotation_label=mvjoin(blocked,", "), annotation_category="Blocked Queue"
-| rex mode=sed field=annotation_label "s/queue//g"
+    <query>| where _blocked="true" 
+| eval 
+    annotation_label= "pipeline #".ingest_pipe." blocked", 
+    annotation_category=mvjoin(name,"+") 
 | table _time anno* ingest_pipe 
 | append 
     [ search $splunkd$ host=$selected_host$ sourcetype=splunkd CASE(IndexWriter) TERM(splunk-optimize) paused 
@@ -436,6 +430,33 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     | table _time anno*
     | eval ingest_pipe="*"
     ]</query>
+  </search>
+  <search id="event_delay_2">
+    <query>| tstats count max(_indextime) as index_time where $splunkd$ host=$selected_host$ source=*splunkd.log* by source _time span=1s
+| eval delay=index_time-_time </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="tcpout_buffer">
+    <query>$splunkd$ (sourcetype=metrics OR sourcetype=splunkd) Metrics host=$selected_host$ TERM(group=queue) TERM(name=*) (TERM(max_size=*) TERM(current_size=*) TERM(largest_size=*) TERM(smallest_size=*)) 
+| fillnull ingest_pipe 0 
+| eval normalized_pct=round((current_size/max_size) * 100,2) 
+| eval blocked=if(normalized_pct&gt;99.8,"true","false") 
+| table _time host name ingest_pipe blocked max_size normalized_pct current_size largest_size smallest_size
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="tcpout_buffer_filtered" base="tcpout_buffer">
+    <query>
+      | search ingest_pipe=$filter_pipelines$
+    </query>
+  </search>
+  <search base="tcpout_buffer_filtered" id="tcpout_buffer_filtered_annotation">
+    <query>| where blocked="true" 
+| eval annotation_label="ingestion pipe ".ingest_pipe." is blocked",
+    annotation_category=name
+| table _time anno*</query>
   </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
@@ -526,17 +547,17 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <suffix>sec</suffix>
       <initialValue>60</initialValue>
     </input>
-    <input type="text" token="span_min_30s" depends="$hide$">
-      <label>span_min_30s</label>
-      <prefix>span=</prefix>
-      <suffix>sec</suffix>
-      <initialValue>30</initialValue>
-    </input>
     <input type="text" token="span_min_10s" depends="$hide$">
       <label>span_min_10s</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>10</initialValue>
+    </input>
+    <input type="text" token="span_min_30s" depends="$hide$">
+      <label>span_min_30s</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>30</initialValue>
     </input>
     <input type="text" token="span_min_1s" depends="$hide$">
       <label>span_min_1s</label>
@@ -976,7 +997,7 @@ $per_process_attributes$</query>
     <panel>
       <title>Queue filling for pipeline $filter_pipelines$ on $selected_host$</title>
       <html>
-        <h1 style="text-align:center">Congratulations! No queuing detected on this host!!!</h1>
+        <h1 style="text-align:center">No queuing detected !!!</h1>
       </html>
     </panel>
   </row>
@@ -1426,6 +1447,36 @@ $per_process_attributes$</query>
   </row>
   <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$">
     <panel>
+      <title>TCP output buffer for pipeline $filter_pipelines$ on $selected_host$</title>
+      <input type="dropdown" token="tcp_out_buff_attribute">
+        <label>Show buffer metric</label>
+        <choice value="largest_size">largest_size</choice>
+        <choice value="current_size">current_size</choice>
+        <choice value="normalized_pct">normalized_pct</choice>
+        <choice value="smallest_size">smallest_size</choice>
+        <default>largest_size</default>
+      </input>
+      <input type="dropdown" token="tcp_out_buff_aggregate">
+        <label>Show buffer aggregate</label>
+        <choice value="avg">avg</choice>
+        <choice value="max">max</choice>
+        <choice value="p95">p95</choice>
+        <choice value="min">min</choice>
+        <default>p95</default>
+      </input>
+      <chart>
+        <search base="tcpout_buffer_filtered">
+          <query>| eval label=name."-".ingest_pipe
+| timechart $span_min_10s$ $tcp_out_buff_aggregate$($tcp_out_buff_attribute$) by label</query>
+        </search>
+        <search base="tcpout_buffer_filtered_annotation" type="annotation"></search>
+        <option name="charting.chart">line</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$selection_earliest_tcp_out$,$selection_latest_tcp_out$">
+    <panel>
       <title>Targets recieving data from $selected_host$ for selected duration - drill up to recieving target</title>
       <input type="dropdown" token="tcp_in_hostname_attribute">
         <label>Select attribute</label>
@@ -1526,15 +1577,7 @@ $per_process_attributes$</query>
   </row>
   <row>
     <panel>
-      <title>Delay on reading the local log files</title>
-      <input type="dropdown" token="delay_source">
-        <label>Select source</label>
-        <choice value="*splunkd.log*">splunkd.log</choice>
-        <choice value="*audit.log*">audit.log</choice>
-        <choice value="*introspection.log*">introspection.log</choice>
-        <choice value="*metrics.log*">metrics.log</choice>
-        <default>*splunkd.log*</default>
-      </input>
+      <title>Health of splunkd.log monitoring</title>
       <input type="dropdown" token="delay_metric_2">
         <label>Show delay metric</label>
         <choice value="sum(count)">count</choice>
