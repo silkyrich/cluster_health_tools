@@ -1469,7 +1469,7 @@ $per_process_attributes$</query>
           <query>| eval label=name."-".ingest_pipe
 | timechart $span_min_10s$ $tcp_out_buff_aggregate$($tcp_out_buff_attribute$) by label</query>
         </search>
-        <search base="tcpout_buffer_filtered_annotation" type="annotation"></search>
+	      <search base="tcpout_buffer_filtered_annotation" type="annotation"><query></query></search>
         <option name="charting.chart">line</option>
         <option name="refresh.display">progressbar</option>
       </chart>
