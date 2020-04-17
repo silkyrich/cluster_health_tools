@@ -506,7 +506,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <title>Drill down to intermediate forwarders</title>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_incoming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
         </h2>
       </html>
     </panel>
