@@ -1,5 +1,11 @@
 <form>
   <label>Bucket roll analysis</label>
+  <init>
+    <set token="splunkd">(index=_internal) sourcetype=splunkd</set>
+    <set token="metrics">(index=_internal) (sourcetype=metrics OR sourcetype=splunkd) CASE(Metrics)</set>
+    <set token="introspection">index=_introspection</set>
+    <set token="internal_throughput">index=skynet_uf</set>
+  </init>  
   <search id="hot_roll_base_time_narrowed">
     <query>
       | loadjob $hot_roll_base$
@@ -97,31 +103,6 @@
       <eval token="merge_hot_frozen_report_time_narrowed_index_filtered_url">urlencode("| loadjob ".$job.sid$)</eval>
     </done>
   </search>
-  <search id="freeze_base">
-    <query>
-      
-| multisearch 
-[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully
-| rex field=bid "(?&lt;idx&gt;[^~]+)"
-| fields _time idx host
-]
-[| search index=customer_splunkd $selected_indexers$ source=*splunkd.log sourcetype=splunkd  DatabaseDirectoryManager Initiating local freeze TERM(cid=)
-| rex field=_raw "cid=\"[^|]+\|(?&lt;idx&gt;[^~]+)~"
-| fields _time idx  host
-]
-| table _time idx host
-      
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <progress>
-      <unset token="freeze_base"></unset>
-    </progress>
-    <done>
-      <set token="freeze_base">$job.sid$</set>
-      <eval token="freeze_base_url">urlencode("| loadjob ".$job.sid$)</eval>
-    </done>
-  </search>
   <search id="dummy_search_to_make_span_calculated">
     <query>| makeresults</query>
     <earliest>$time.earliest$</earliest>
@@ -134,7 +115,7 @@
     </done>
   </search>
   <search id="hot_roll_base">
-    <query>index=_internal $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
+    <query>$splunk$ $selected_indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
 | rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
 | eval size_mb=size/(1024*1024) 
 | eval duration=to_time-from_time
@@ -172,15 +153,15 @@
   </search>
   <search id="annotations_base">
     <query>| union 
-    [ search index=_internal component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
+    [ search $splunkd$ component=CMMaster ((Starting a rolling restart of the peers) OR (restart rolling finished) OR (scheduled rebalance primaries)) 
     | eval annotation_label= case(searchmatch("finished"),"Finished RR", searchmatch("rebalance"), "Trigger Rebalance", searchmatch("Starting"),"Starting RR"), annotation_category= case(searchmatch("finished"),"Finished", searchmatch("rebalance"), "Rebalance", searchmatch("Starting"),"Starting") 
     | table _time anno* _raw
         ] 
-    [| tstats count prestats=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s 
+    [| tstats count prestats=true where $selected_indexers$ $splunkd$ TERM(splunkd) TERM(starting) TERM(build) by _time host span=1s 
     | eval type="startup" 
-    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s 
+    | tstats count prestats=true append=true where $selected_indexers$ $splunkd$ TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID) TERM(generated) by _time host span=1s 
     | eval type=if(isNull(type),"guid change",type) 
-    | tstats count prestats=true append=true where $selected_indexers$ index=_internal sourcetype=splunkd TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s 
+    | tstats count prestats=true append=true where $selected_indexers$ $splunkd$ TERM(Shutting) TERM(down) TERM(splunkd) by _time host span=1s 
     | eval type=if(isNull(type),"shutdown",type) 
     | rex field=host "^(?&lt;host_short&gt;[^.]+)" 
     | stats count by host_short type _time 
@@ -188,7 +169,7 @@
     | eval annotation_label=type." on ".host_short, annotation_category=type 
     | sort - _time 
     | fields _time host_short anno* ] 
-    [ search index=_internal host=c0m1* log_level=info TERM(from=*) TERM(to=*) TERM(reason=*) transitioning (up OR down OR restarting) 
+    [ search $splunkd$l host=c0m1* log_level=info TERM(from=*) TERM(to=*) TERM(reason=*) transitioning (up OR down OR restarting) 
     | eval host=peer_name
     | search $selected_indexers$
     | rex field=peer_name "^(?&lt;short_name&gt;[^\.]+)" 
@@ -267,7 +248,7 @@
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
-        <query>index=_internal sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now 
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
 | eval cluster_master=host 
 | fields + site_pair cluster_master 
@@ -320,6 +301,23 @@
       <choice value="*">*</choice>
     </input>
   </fieldset>
+        <search id="freeze_base">
+          <progress>
+            <unset token="freeze_base"></unset>
+          </progress>
+          <done>
+            <set token="freeze_base">$job.sid$</set>
+            <eval token="freeze_base_url">urlencode("| loadjob ".$job.sid$)</eval>
+          </done>
+          <query>| union 
+    [| search $splunkd$ $selected_indexers$ source=*splunkd.log sourcetype=splunkd freeze completed succesfully 
+    | rex field=bid "(?&lt;idx&gt;[^~]+)"] 
+    [| search $splunkd$ $selected_indexers$ TERM(action=download) TERM(status=succeeded) NOT(DEBUG) CASE(CacheManager) 
+    | rex field=_raw "bid\|(?&lt;bid&gt;(?&lt;idx&gt;[^~]+)[^|]+)"] 
+| stats min(_time) as _time values(idx) as idx values(host) as hosts by bid</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
   <row depends="$selected_indexers$">
     <panel>
       <html>
@@ -338,15 +336,15 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
-        <search>
-          <query>
-            | loadjob $merged_finished$
-          </query>
-        </search>
         <search type="annotation">
           <query>
         | loadjob $annotations$
         </query>
+        </search>
+        <search>
+          <query>
+            | loadjob $merged_finished$
+          </query>
         </search>
         <selection>
           <set token="merged_earliest">$start$</set>
@@ -498,17 +496,17 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$            
 | bin size_mb span=log2 
 | timechart fixedrange=false limit=100 span=$drilldown_seconds_for_bin$ count by size_mb</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -525,6 +523,11 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $hot_roll_base_time_narrowed$
 | bin _time span=$drilldown_seconds_for_bin$ 
@@ -532,11 +535,6 @@
 | xyseries _time caller count</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -558,6 +556,11 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $hot_roll_base_time_narrowed$
@@ -567,11 +570,6 @@
     limit=0
     count
     by host</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -657,6 +655,11 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>| loadjob $freeze_base_time_narrowed_index_filtered$
 | timechart 
@@ -667,11 +670,6 @@
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -686,6 +684,11 @@
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
+        <search type="annotation">
+          <query>
+        | loadjob $annotations$
+        </query>
+        </search>
         <search>
           <query>
 | loadjob $merge_hot_frozen_report_time_narrowed_index_filtered$
@@ -693,11 +696,6 @@
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
-        </search>
-        <search type="annotation">
-          <query>
-        | loadjob $annotations$
-        </query>
         </search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
@@ -923,7 +921,7 @@
           <set token="selected_from_bucket">$row.from$</set>
           <set token="selected_to_bucket">$row.to$</set>
           <set token="bucket_history_search">Search history for $selected_bucket$ and $selected_from_bucket$ and $selected_to_bucket$</set>
-          <eval token="bucket_history_search_url">urlencode("(index=_internal OR index=_introspection)  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.")) OR ".$selected_to_bucket$."")</eval>
+          <eval token="bucket_history_search_url">urlencode("(($splunkd$) OR ($introspection$))  (sourcetype=splunkd OR sourcetype=splunk_resource_usage) host=".$selected_host$." ".$selected_index$." AND (".$selected_bucket$." OR (".$selected_from_bucket$." AND host=".$selected_host$.")) OR ".$selected_to_bucket$."")</eval>
         </drilldown>
       </table>
     </panel>
@@ -941,7 +939,7 @@
             <set token="display_miss_latest">$result._miss_latest_str$</set>
             <set token="display_miss_earliest">$result._miss_earliest_str$</set>
           </done>
-          <query>index=_internal sourcetype=splunkd (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
+          <query>$splunkd$ (component=HotBucketRoller OR component=HotDBManager OR component=IndexWriter) host=$selected_host$  idx=$selected_index$ $selected_from_bucket$
 | eval _miss_earliest=earliest-timestamp, _miss_latest=latest-timestamp, _miss_latest_str=tostring(_miss_latest,"duration"), _miss_earliest_str=tostring(_miss_earliest,"duration")
 | table _raw _*
 | eventstats values(_m*) as _m*</query>
