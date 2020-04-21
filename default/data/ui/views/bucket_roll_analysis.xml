@@ -97,6 +97,7 @@
   </search>
   <search id="hot_roll_base">
     <query>$splunkd$ $indexers$ source=*splunkd.log sourcetype=splunkd component=HotBucketRoller TERM(caller=*) 
+$run_search$
 | rex field=to "db_(?&lt;to_time&gt;[0-9]{10})_(?&lt;from_time&gt;[0-9]{10})" 
 | eval size_mb=size/(1024*1024) 
 | eval duration=to_time-from_time
@@ -222,6 +223,7 @@
     | rex field=bid "(?&lt;idx&gt;[^~]+)"] 
     [| search $splunkd$ $indexers$ TERM(action=download) TERM(status=succeeded) NOT(DEBUG) CASE(CacheManager) 
     | rex field=_raw "bid\|(?&lt;bid&gt;(?&lt;idx&gt;[^~]+)[^|]+)"] 
+$run_search$
 | stats min(_time) as _time values(idx) as idx values(host) as hosts by bid</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
@@ -261,29 +263,33 @@
           <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
           <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
           <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
-          <eval token="form.drilldown_span">if(isnull($form.span_min_1s$),NULL,$form.span_min_1s$)</eval>
         </condition>
       </change>
     </input>
-    <input type="multiselect" token="selected_cm_indexers">
+    <input type="dropdown" token="selected_cm_indexers">
       <label>Discover cluster and indexers</label>
-      <delimiter> OR </delimiter>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>output</fieldForValue>
       <search base="get_cm_list">
         <query/>
       </search>
       <change>
-        <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
-        <eval token="duration_str">tostring($form.duration_seconds$,"duration")</eval>
-        <eval token="form.span_min_1s">floor($form.duration_seconds$/$selected_resolution$)</eval>
-        <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
-        <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
-        <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
-        <eval token="form.drilldown_span">$form.span_min_1s$</eval>
-        <eval token="form.indexers">mvindex(split($selected_cm_indexers$,"@"),1)</eval>
-        <eval token="form.cluster_master">mvindex(split($selected_cm_indexers$,"@"),0)</eval>
+        <condition value="None">
+          <unset token="run_search"></unset>
+        </condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="duration_str">tostring($form.duration_seconds$,"duration")</eval>
+          <eval token="form.span_min_1s">floor($form.duration_seconds$/$selected_resolution$)</eval>
+          <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
+          <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
+          <eval token="form.indexers">mvindex(split($selected_cm_indexers$,"@"),1)</eval>
+          <eval token="form.cluster_master">mvindex(split($selected_cm_indexers$,"@"),0)</eval>
+        </condition>
       </change>
+      <choice value="| noop">None</choice>
     </input>
     <input type="multiselect" token="selected_annotations" depends="$form.indexers$">
       <label>Select annotation overlay</label>
@@ -316,7 +322,6 @@
         <eval token="form.span_min_10s">if($form.span_min_1s$&lt;10,10,$form.span_min_1s$)</eval>
         <eval token="form.span_min_30s">if($form.span_min_1s$&lt;31,31,$form.span_min_1s$)</eval>
         <eval token="form.span_min_60s">if($form.span_min_1s$&lt;60,60,$form.span_min_1s$)</eval>
-        <eval token="form.drilldown_span">$form.span_min_1s$</eval>
       </change>
     </input>
     <input type="text" token="span_min_60s" depends="$hide$">
@@ -343,36 +348,34 @@
       <suffix>sec</suffix>
       <initialValue>1</initialValue>
     </input>
-    <input type="text" token="drilldown_span" depends="$hide$">
-      <label>drilldown_span</label>
-      <prefix>span=</prefix>
-      <suffix>sec</suffix>
-      <initialValue>1</initialValue>
-    </input>
     <input type="text" token="duration_seconds" depends="$hide$">
       <label>duration_seconds</label>
     </input>
-
-
   </fieldset>
   <row rejects="$selected_cm_indexers$">
     <panel>
-      <input type="text" token="indexers">
+      <input type="text" token="indexers" searchWhenChanged="true">
         <label>Indexers (eg enter host=idx*)</label>
         <change>
           <condition match="len(trim($form.indexers$,&quot; &quot;))=0">
             <unset token="form.indexers"></unset>
             <unset token="indexers"></unset>
           </condition>
+          <condition>
+            <set token="run_search">| noop</set>
+          </condition>
         </change>
       </input>
-      <input type="text" token="cluster_master">
+      <input type="text" token="cluster_master" searchWhenChanged="true">
         <label>CM (e.g. c0m1*)</label>
         <prefix>host=</prefix>
         <change>
           <condition match="len(trim($form.cluster_master$,&quot; &quot;))=0">
             <unset token="form.cluster_master"></unset>
             <unset token="cluster_master"></unset>
+          </condition>
+          <condition>
+            <set token="run_search">| noop</set>
           </condition>
         </change>
       </input>
@@ -399,6 +402,10 @@
     <panel>
       <title>Master panel - select a time range to update dashboard</title>
       <chart>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="merged_finished">
           <query>
           </query>
@@ -409,14 +416,10 @@
             <unset token="running"></unset>
           </done>
         </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
-        </search>
         <selection>
           <eval token="merged_earliest">$start$</eval>
           <eval token="merged_latest">$end$</eval>
-          <eval token="drilldown_span">ceiling(($end$-$start$)/$resolution$)</eval>
+          <eval token="drilldown_span">"span=".ceiling(($end$-$start$)/$selected_resolution$)."sec"</eval>
           <eval token="merged_selected_indexers">urlencode($form.selected_indexers$)</eval>
           <eval token="merged_annotations">urlencode($form.annotations$)</eval>
         </selection>
@@ -550,14 +553,14 @@
     <panel>
       <title>Size of bucket creation</title>
       <chart>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | bin size_mb span=log2 
 | timechart fixedrange=false limit=100 $drilldown_span$ count by size_mb</query>
-        </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -574,15 +577,16 @@
     <panel>
       <title>Rolling of buckets over time by caller</title>
       <chart>
+        <title>| bin _time $drilldown_span$  | stats count by caller _time | xyseries _time caller count</title>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | bin _time $drilldown_span$ 
 | stats count by caller _time
 | xyseries _time caller count</query>
-        </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -604,6 +608,10 @@
     <panel>
       <title>Indexers creating buckets count</title>
       <chart>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="hot_roll_base_time_narrowed">
           <query>
 | timechart 
@@ -612,10 +620,6 @@
     limit=0
     count
     by host</query>
-        </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
         </search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
@@ -698,6 +702,10 @@
     <panel>
       <title>Freezing of buckets by index</title>
       <chart>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="freeze_base_time_narrowed_index_filtered">
           <query>
 | timechart 
@@ -706,10 +714,6 @@
     limit=$filter_head_indexes$
     count by idx
 | foreach * [| eval &lt;&lt;FIELD&gt;&gt;=-'&lt;&lt;FIELD&gt;&gt;']</query>
-        </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -724,16 +728,16 @@
     <panel>
       <chart>
         <title>Rate of inflation in bucket for index</title>
+        <search type="annotation" base="annotations">
+          <query>
+        </query>
+        </search>
         <search base="merge_hot_frozen_report_time_narrowed_index_filtered">
           <query>
 | bin _time $drilldown_span$
 | stats sum(eval(if(column="frozen",-1,1))) as inflation by _time idx
 | streamstats sum(inflation) as inflation by idx
 | xyseries _time idx inflation</query>
-        </search>
-        <search type="annotation" base="annotations">
-          <query>
-        </query>
         </search>
         <option name="charting.axisTitleX.visibility">visible</option>
         <option name="charting.axisTitleY.visibility">visible</option>
