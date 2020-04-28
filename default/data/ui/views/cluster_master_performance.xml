@@ -1,0 +1,1808 @@
+<form>
+  <label>Cluster master performance</label>
+  <search base="annotations_filtered" type="annotation"></search>
+  <init>
+    <set token="splunkd">(index=customer_splunkd) sourcetype=splunkd</set>
+    <set token="metrics">(index=customer_metrics) (sourcetype=metrics OR sourcetype=splunkd) CASE(Metrics)</set>
+    <set token="introspection">index=customer_introspection</set>
+    <set token="internal_throughput">index=skynet_uf</set>
+    <set token="break_search"></set>
+  </init>
+  <search id="introspection_resource_usage_host">
+    <progress>
+      <set token="host.os_name">$result._os_name$</set>
+      <set token="host.swap">$result._swap$</set>
+      <set token="host.cpu_count">$result._cpu_count$</set>
+      <set token="host.cpu_arch">$result._cpu_arch$</set>
+      <set token="host.mem">$result._mem$</set>
+      <set token="host.virtual_cpu_count">$result._virtual_cpu_count$</set>
+      <set token="host.splunk_version">$result._splunk_version$</set>
+      <set token="host.build">$result._os_build$</set>
+      <set token="host.instance_guid">$result._instance_guid$</set>
+      <set token="host.os_version">$result._os_version$</set>
+      <set token="host.os_name_ext">$result._os_name_ext$</set>
+      <set token="host.hostwide_introspection_sid"></set>
+    </progress>
+    <done>
+      <set token="host.os_name">$result._os_name$</set>
+      <set token="host.swap">$result._swap$</set>
+      <set token="host.cpu_count">$result._cpu_count$</set>
+      <set token="host.cpu_arch">$result._cpu_arch$</set>
+      <set token="host.mem">$result._mem$</set>
+      <set token="host.virtual_cpu_count">$result._virtual_cpu_count$</set>
+      <set token="host.splunk_version">$result._splunk_version$</set>
+      <set token="host.build">$result._os_build$</set>
+      <set token="host.instance_guid">$result._instance_guid$</set>
+      <set token="host.os_version">$result._os_version$</set>
+      <set token="host.os_name_ext">$result._os_name_ext$</set>
+      <set token="host.hostwide_introspection_sid"></set>
+    </done>
+    <query>| tstats
+        $selected_introspection_function_host$(data.cpu_system_pct) as host_cpu_system_pct
+        $selected_introspection_function_host$(data.cpu_user_pct) as host_cpu_user_pct
+        $selected_introspection_function_host$(data.mem_used) as host_mem_used
+        $selected_introspection_function_host$(data.normalized_load_avg_1min) as host_normalized_load_avg_1min
+        $selected_introspection_function_host$(data.swap_used) as host_swap_used
+        where component=hostwide $introspection$ host=$selected_host$
+        by data.swap data.os_name data.os_name_ext data.os_version data.mem data.cpu_count data.cpu_arch data.virtual_cpu_count data.splunk_version data.os_build data.instance_guid host _time span=1sec 
+        | rename data.* as _*
+        $show_resource_usage$
+        </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="introspection_resource_usage_per_process">
+    <query>| tstats 
+        $selected_introspection_function_per_process$(data.elapsed) as splunkd_elapsed
+        $selected_introspection_function_per_process$(data.fd_used) as splunkd_fd_used
+        $selected_introspection_function_per_process$(data.mem_used) as splunkd_mem_used
+        $selected_introspection_function_per_process$(data.normalized_pct_cpu) as splunkd_normalized_pct_cpu
+        $selected_introspection_function_per_process$(data.pct_cpu) as splunkd_pct_cpu
+        $selected_introspection_function_per_process$(data.pct_memory) as splunkd_pct_memory
+        $selected_introspection_function_per_process$(data.t_count) as splunkd_t_count
+        $selected_introspection_function_per_process$(data.written_mb) as splunkd_written_mb
+        $selected_introspection_function_per_process$(data.read_mb) as splunkd_read_mb
+        where $introspection$ component::perprocess host=$selected_host$ data.process=splunkd
+        by host data.process_type _time span=1s 
+        $show_resource_usage$ </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="rr_base">
+    <query>$splunkd$ host=$selected_host$ component=CMPeer CASE(CMPeer) NOT(bid=*) TERM(from=*) TERM(to=*) 
+  $show_timeline$
+| eval delay=_indextime-_time
+| table _time peer_name peer from to reason source delay _indextime
+| sort - _time 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=Restarting" endswith="from=Restarting AND to=Down" peer_name 
+    | eval label="restarting"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=Pending" endswith="from=Pending AND to=Up" peer_name 
+    | eval label="streaming errors"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Restarting AND to=Down" endswith="from=Up AND to=BatchAdding" peer_name 
+    | eval label="startup"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=BatchAdding" endswith="from=BatchAdding AND to=Up" peer_name 
+    | eval label="adding"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=ShuttingDown" endswith="from=ShuttingDown AND to=Stopped" peer_name
+    | eval label="offlining"
+        ]</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cmslave_adding">
+    <query>$splunkd$ sourcetype=splunkd component=CMSlave TERM(addType=*) $indexers_IN$
+$show_generations$
+| eval delay=_indextime-_time
+| rex field=_raw "SN=(?&lt;current&gt;\d+)/(?&lt;target&gt;\d+)" 
+| table _time host current target add_peer_network_ms baseGen reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms total_time_ms addType delay source</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="shutdown_performance">
+    <query>$splunkd$ $indexers_IN$ CASE(ShutdownHandler)
+$show_shutdown_performance$
+
+| streamstats current=f last(_time) as last_time by host
+| eval duration=last_time-_time
+| rex field=_raw "Shutdown complete in (?&lt;total_time&gt;\d+(.\d+)?) seconds" 
+| rex field=_raw "ShutdownHandler \- shutting down level \"ShutdownLevel_(?&lt;level&gt;[^\"]+)\""
+| table _time host total_time level duration
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="shutdown_performance">
+    <query>| search host=$selected_shutdown_host$ 
+| eval target_level="$selected_shutdown_level$"
+| table _time level target_level
+| streamstats current=false last(_time) as last_time
+| eval duration=last_time-_time
+| where target_level=level
+| eval search="$splunkd$ host=$selected_shutdown_host$ OR host=$selected_host$ earliest="._time." latest=".(_time+duration)</query>
+    <done>
+      <set token="drill_down_shutdown_period_search">$result.search$</set>
+    </done>
+  </search>
+  <search base="rr_base" id="get_indexers">
+    <query>| stats values(peer_name) as indexer_names
+| eval indexers_IN="host IN (".mvjoin(indexer_names,", ").")"
+| fields + indexers_IN indexer_names</query>
+    <done>
+      <set token="indexers_IN">$result.indexers_IN$</set>
+      <eval token="host_list">mvappend($result.indexer_names$,$selected_host$)</eval>
+    </done>
+  </search>
+  <search id="create_host_drop_down">
+    <query>| makeresults 
+| eval host=split("$host_list$",",")
+| mvexpand host
+| fields - _time</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="primaries_base">
+    <query>$splunkd$ sourcetype=splunkd host=$selected_host$  TERM(bid=*) CASE(CMPeer) (TERM(to=*) TERM(from=*)) OR TERM(from=)
+$show_primaries$    
+| table _time peer_name from to reason
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="shutdown_performance" id="shutdown_performance_time_filtered">
+    <query>| where duration $filter_shutdown_time$</query>
+  </search>
+  <search id="tstats_event_delay">
+    <query>| tstats count max(_indextime) as indextime where $splunkd$ host=$selected_host$ by source _time span=1s 
+$show_logging_performance$    
+| eval delay=indextime-_time
+| fields + _time source indextime count delay
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="per_series_thruput">
+    <query>$internal_throughput$ host=$selected_host$ source=*metrics.log* (TERM(kb=*) TERM(kbps=*) TERM(ev=*) TERM(eps=*) TERM(group=*) TERM(series=*)) OR (TERM(group=thruput) TERM(name=thruput))
+$show_logging_performance$
+| fillnull ingest_pipe 0
+| table _time host group ingest_pipe series eps ev kbps kb max_age avg_age _indextime name instantaneous_kbps instantaneous_eps</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="per_series_thruput_filtered" base="per_series_thruput">
+    <done>
+      <set token="finished_per_series_thruput">| noop</set>
+    </done>
+    <query>| search (group=per_$selected_group$_thruput OR name=thruput) ingest_pipe=$filter_pipelines$ 
+| bin _time $selected_span_min_30sec$ 
+| eval series=if(name="thruput" and group="thruput", "all_data", series)
+| stats 
+    $selected_per_series_function$(instantaneous_kbps) as instantaneous_kbps
+    $selected_per_series_function$(instantaneous_kbps) as instantaneous_eps
+    $selected_per_series_function$(eps) as eps
+    $selected_per_series_function$(kb) as kb
+    $selected_per_series_function$(ev) as ev
+    $selected_per_series_function$(kbps) as kbps
+    $selected_per_series_function$(max_age) as max_age
+    $selected_per_series_function$(avg_age) as avg_age
+    by _time series host
+| eval kbps=if(isnull(kbps), instantaneous_kbps, kbps), 
+    eps=if(isnull(kbps), instantaneous_eps, eps) 
+    </query>
+  </search>
+  <search id="cmmaster_service">
+    <query>$metrics$ CASE(Metrics) host=$selected_host$ TERM(name=cmmaster_service) TERM(group=subtask_counts) OR TERM(group=subtask_seconds)
+$show_metrics$ 
+| table _time host service count to_fix_data_safety to_fix_excess to_fix_gen to_fix_rebalance to_fix_rep_factor to_fix_search_factor to_fix_streaming to_fix_summary to_fix_sync 
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cmmaster">
+    <query>$metrics$ CASE(Metrics) host=$selected_host$ TERM(group=cmmaster) (TERM(subgroup=indexes_enumeration) OR TERM(subgroup=buckets_enumeration) OR TERM(subgroup=buckets_re_creation)) 
+$show_metrics$
+| table _time host name subgroup service_wait_count in_progress_count success_count success_time_ms count already_present_count in_progress_count success_count completion_time_ms
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cachemgr_jobs">
+    <query>$metrics$ CASE(Metrics) host=idx*.$selected_stack$.* TERM(group=jobs) TERM(name=cachemgr_down) OR TERM(name=cachemgr_up)
+    $show_cachemgr$
+| rex field=_raw max_match=1000 "\sidx_(?&lt;pair&gt;[^=]+=\d+)"
+| table _time host pair name
+| mvexpand pair
+| rex field=pair "(?&lt;index&gt;[^=]+)=(?&lt;count&gt;\d+)"
+| fields - pair
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search base="cachemgr_jobs" id="cachemgr_down_jobs">
+    <query>| where name="cachemgr_down"
+
+</query>
+  </search>
+  <search base="cachemgr_jobs" id="cachemgr_up_jobs">
+    <query> | where name="cachemgr_up"
+
+</query>
+  </search>
+  <search id="indexer_queues">
+    <query>$metrics$ TERM(group=queue) (TERM(name=typingqueue) OR TERM(name=indexqueue) OR TERM(name=parsingqueue) OR TERM(name=tcpin_cooked_pqueue) OR TERM(name=tcpin_queue) OR TERM(name=aggqueue)) host=idx*.$selected_stack$.*
+$show_cluster_ingestion$ 
+| table _time host name current_size_kb max_size_kb blocked current_size max_size
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cachemgr_bucket">
+    <query>$metrics$ CASE(Metrics) host=idx*.$selected_stack$.* TERM(group=cachemgr_bucket) 
+$show_cachemgr$
+| rex field=_raw max_match=1000 "(?&lt;pair&gt;[a-z_]+=\d+)" 
+| table _time host pair 
+| mvexpand pair 
+| rex field=pair "(?&lt;field&gt;[a-z]+)=(?&lt;count&gt;\d+)"
+| fields - pair</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cachemgr_executor_jobs">
+    <query>$metrics$ CASE(Metrics) host=idx*.$selected_stack$.* TERM(group=executor) TERM(name=cachemgr_*)
+    NOT(TERM(jobs_added=0,) TERM(jobs_finished=0,) TERM(current_size=0,) TERM(smallest_size=0,) TERM(largest_size=0) TERM(max_size=0)) 
+    $show_cachemgr$
+| rex field=_raw max_match=1000 "\s(?&lt;pair&gt;[^=]+=\d+)"
+| table _time host pair name
+| mvexpand pair
+| rex field=pair "(?&lt;field&gt;[^=]+)=(?&lt;count&gt;\d+)"
+| fields - pair
+
+| table _time host name *
+
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cluster_thruput_base">
+    <query>$metrics$ TERM(group=thruput) TERM(name=*) NOT TERM(kb=0) NOT(name=idxsummary) host=idx*.$selected_stack$.*
+$show_cluster_ingestion$
+| fillnull ingest_pipe 0 
+| table _time host name ingest_pipe instantaneous_kbps instantaneous_eps average_kbps total_k_processed kb ev load_average
+
+
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <search id="cluster_thruput" base="cluster_thruput_base">
+    <query>
+| bin _time $selected_span_min_30sec$
+| stats
+    count(eval(blocked="true")) as blocked
+    $selected_thruput_function$(instantaneous_kbps) as instantaneous_kbps
+    $selected_thruput_function$(instantaneous_eps) as instantaneous_eps
+    $selected_thruput_function$(average_kbps) as average_kbps
+    $selected_thruput_function$(total_k_processed) as total_k_processed
+    $selected_thruput_function$(kb) as kb
+    $selected_thruput_function$(ev) as ev
+    $selected_thruput_function$(load_average) as load_average
+    by _time host ingest_pipe name
+
+
+</query>
+  </search>
+  <search id="annotations_base">
+    <query>$splunkd$ host=*.$selected_stack$.splunkcloud.com 
+    (TERM(CMMaster) TERM(maintenance) (TERM(Setting) OR TERM(Disabling))) OR 
+    (TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID)) OR 
+    (TERM(Shutting) TERM(down) TERM(splunkd)) OR 
+    (rolling restart CASE(CMMaster) finished OR Starting) 
+    | table _time host _raw
+</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Period to display</label>
+      <default>
+        <earliest></earliest>
+        <latest></latest>
+      </default>
+      <change>
+        <condition match="isnotnull($time.latest$)">
+          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
+          <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
+          <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
+          <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
+          <unset token="finished_per_series_thruput"></unset>
+          <set token="series_thruput_max">0</set>
+          <eval token="series_thruput_min">now()</eval>
+        </condition>
+      </change>
+    </input>
+    <input type="dropdown" token="selected_stack">
+      <label>Select stack</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>stack</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory 
+| where stack!="null" 
+| stats count by instance_type stack region role 
+| lookup aws_instance_lookup.csv api_name as instance_type region 
+| stats
+    sum(vcpu) as total_vcpu
+    sum(memory_gib) as total_memory
+    sum(eval(price_per_hour_reserved*count)) as cost_per_hour
+    sum(eval(if(role="indexer", storage_gib*count,0))) as total_cache_gib
+    by stack 
+| sort - cost_per_hour
+| eval label=stack." @ $".round(cost_per_hour,0)."/hr"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <change>
+        <set token="form.selected_host">c0m1*.$selected_stack$.splunkcloud.com</set>
+      </change>
+    </input>
+    <input type="dropdown" token="resolution">
+      <label>Chart resolution</label>
+      <default>200</default>
+      <change>
+        <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+        <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
+        <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
+        <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
+        <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
+      </change>
+      <choice value="100">100</choice>
+      <choice value="200">200</choice>
+      <choice value="500">500</choice>
+    </input>
+    <input type="text" token="selected_host" depends="$hide_me$">
+      <label>cluster_master</label>
+      <default></default>
+    </input>
+    <input type="text" token="selected_span_min_10sec" depends="$hide_me$">
+      <label>selected_span_min_10sec</label>
+      <default></default>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+    </input>
+    <input type="text" token="selected_span_min_1sec" depends="$hide_me$">
+      <label>selected_span_min_1sec</label>
+      <default></default>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+    </input>
+    <input type="text" token="selected_span_min_30sec" depends="$hide_me$">
+      <label>selected_span_min_30sec</label>
+      <default></default>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+    </input>
+    <input type="text" token="selected_span_min_60sec" depends="$hide_me$">
+      <label>selected_span_min_60sec</label>
+      <default></default>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+    </input>
+    <input type="text" token="duration_seconds" depends="$hide_me$">
+      <label>duration_seconds</label>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select panels to display</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="radio" token="show_resource_usage">
+        <label>Resource utilization</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_resource_usage"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_timeline">
+        <label>Timeline</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| noop</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_timeline"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_logging_performance">
+        <label>Logging performance</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_logging_performance"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_shutdown_performance">
+        <label>Shutdown performance</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_shutdown_performance"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_generations">
+        <label>Generation performance</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_generations"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_primaries">
+        <label>Show primaries</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_primaries"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_metrics">
+        <label>Show CM metrics</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_metrics"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_cluster_ingestion">
+        <label>Cluster ingestion</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_cluster_ingestion"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_cachemgr">
+        <label>Show cache manager</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_cachemgr"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="dropdown" token="annotations_host_filter">
+        <label>Show annotations for host</label>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <prefix>host=</prefix>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="annotations_classified">
+          <query>| stats values(annotation_label) as labels by host | eval label=host." (".mvjoin(labels,", ").")"</query>
+        </search>
+      </input>
+      <input type="dropdown" token="annotations_category_filter">
+        <label>Show annotations for category</label>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <prefix>annotation_category="</prefix>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>annotation_category</fieldForValue>
+        <search base="annotations_classified">
+          <query>| stats count by annotation_category | eval label=label." (".count.")"</query>
+        </search>
+        <suffix>"</suffix>
+      </input>
+    </panel>
+  </row>
+  <row rejects="$selected_stack$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Please select an customer stack</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_resource_usage$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Cluster master resource usage</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_resource_usage$">
+    <panel>
+      <title>Cluster master specification</title>
+      <html>
+    <style>
+			
+			
+#info_table {
+  font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#info_table td, #info_table th {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+#info_table tr:nth-child(even){background-color: #f2f2f2;}
+
+#info_table tr:hover {background-color: #ddd;}
+
+#info_table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: #4CAF50;
+  color: white;
+}
+			</style> 
+        <h2>Hostwide introspection reports</h2>
+        <table id="info_table">
+          <tr>
+            <th>Attribute</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>Splunk Version</td>
+			    <td>$host.splunk_version$</td>
+		    </tr>
+        <tr>
+          <td>Build</td>
+			    <td>$host.build$</td>
+		    </tr>
+        <tr>
+          <td>CPU architecture</td>
+			    <td>$host.cpu_arch$</td>
+		    </tr>
+        <tr>
+          <td>Real cores</td>
+			    <td>$host.cpu_count$</td>
+		    </tr>
+        <tr>
+          <td>Memory</td>
+			    <td>$host.mem$</td>
+		    </tr>
+        <tr>
+          <td>Swap</td>
+			    <td>$host.swap$</td>
+		    </tr>
+        <tr>
+          <td>Virtual cores</td>
+			    <td>$host.virtual_cpu_count$</td>
+		    </tr>
+        <tr>
+          <td>GUID</td>
+			    <td>$host.instance_guid$</td>
+	      </tr>
+        <tr>
+          <td>Operating System</td>
+    			<td>$host.os_name$</td>
+		    </tr>
+        <tr>
+          <td>Operating System Extended</td>
+    			<td>$host.os_name_ext$</td>
+		    </tr>
+        <tr>
+          <td>Operating System</td>
+    			<td>$host.os_version$</td>
+		    </tr>
+      </table>
+    </html>
+    </panel>
+  </row>
+  <row depends="$show_resource_usage$">
+    <panel>
+      <title>Hostwide resource usage</title>
+      <input type="dropdown" token="host_attributes">
+        <label>Show metrics</label>
+        <choice value="| table _time total_mem mem_used normalized_load_avg_1min">memory</choice>
+        <choice value="| table _time max_cpu  host_cpu_system_pct+host_cpu_user_pct cpu_system_pct cpu_user_pct normalized_load_avg_1min">cpu</choice>
+        <choice value="| table _time total_swap swap_used normalized_load_avg_1min">swap</choice>
+        <default>| table _time total_mem mem_used normalized_load_avg_1min</default>
+      </input>
+      <input type="dropdown" token="selected_introspection_function_host">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="introspection_resource_usage_host">
+          <progress>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+          <query>| rename _mem as total_mem 
+| rename _swap as total_swap 
+| eval total_cpu=host_cpu_system_pct+host_cpu_user_pct
+
+| timechart $selected_span_min_10sec$
+    $selected_introspection_function_host$(total_cpu) as "host_cpu_system_pct+host_cpu_user_pct"
+    $selected_introspection_function_host$(host_cpu_system_pct) as cpu_system_pct 
+    $selected_introspection_function_host$(host_cpu_user_pct) as cpu_user_pct 
+    $selected_introspection_function_host$(host_normalized_load_avg_1min) as normalized_load_avg_1min
+    $selected_introspection_function_host$(host_swap_used) as swap_used 
+    $selected_introspection_function_host$(host_mem_used) as mem_used 
+    max(total_swap) as total_swap
+    max(total_mem) as total_mem
+| eval max_cpu=100
+    $host_attributes$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.abbreviation">auto</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">normalized_load_avg_1min</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">394</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_resource_usage$">
+    <panel>
+      <title>Splunkd resource usage</title>
+      <input type="dropdown" token="per_process_attributes">
+        <label>Show metrics</label>
+        <choice value="| table _time *normalized_pct_cpu*">CPU %</choice>
+        <choice value="| table _time *cpu* | fields - *normalized_pct_cpu*">CPU</choice>
+        <choice value="| table _time *_mem* | fields - *pct*">Memory</choice>
+        <choice value="| table _time *fd_used*">File handles</choice>
+        <choice value="| table _time *_mb*">Data</choice>
+        <default>| table _time *normalized_pct_cpu*</default>
+      </input>
+      <input type="dropdown" token="selected_introspection_function_per_process">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>sum</default>
+      </input>
+      <input type="dropdown" token="per_process_split_by">
+        <label>Split by</label>
+        <choice value="| noop">None</choice>
+        <choice value="by data.process_type">Process type</choice>
+        <default>| noop</default>
+      </input>
+      <chart>
+        <search base="introspection_resource_usage_per_process">
+          <query>| timechart $selected_span_min_10sec$
+    $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
+    $selected_introspection_function_per_process$(splunkd_fd_used) as splunkd_fd_used
+    $selected_introspection_function_per_process$(splunkd_mem_used) as splunkd_mem_used
+    $selected_introspection_function_per_process$(splunkd_normalized_pct_cpu) as splunkd_normalized_pct_cpu
+    $selected_introspection_function_per_process$(splunkd_pct_cpu) as splunkd_pct_cpu
+    $selected_introspection_function_per_process$(splunkd_pct_memory) as splunkd_pct_memory
+    $selected_introspection_function_per_process$(splunkd_t_count) as splunkd_t_count
+    $selected_introspection_function_per_process$(splunkd_written_mb) as splunkd_written_mb
+    $selected_introspection_function_per_process$(splunkd_read_mb) as splunkd_read_mb
+    $per_process_split_by$
+$per_process_attributes$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">394</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_metrics$">
+    <panel>
+      <title>Cluster master metrics for period</title>
+      <chart>
+        <title>cmmaster jobs</title>
+        <search>
+          <query>$metrics$ sourcetype=splunkd host=$selected_host$ TERM(group=jobs) TERM(name=cmmaster) 
+    $show_metrics$ 
+| timechart 
+    avg(CMBatchBucketFrozenJob) as CMBatchBucketFrozenJob
+    avg(CMBatchDiscardJob) as CMBatchDiscardJob
+    avg(CMBundleRemoveJob) as CMBundleRemoveJob
+    avg(CMChangeMasksJob) as CMChangeMasksJob
+    avg(CMPeerJob) as CMPeerJob
+    avg(CMRecreateBucketJob) as CMRecreateBucketJob
+    avg(CMRecreateIndexJob) as CMRecreateIndexJob
+    avg(CMRepJob) as CMRepJob
+    avg(CMRollHotBucketJob) as CMRollHotBucketJob
+    avg(CMSyncM2PJob) as CMSyncM2PJob
+    avg(CMTruncJob) as CMTruncJob</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">serviced</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">353</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>cmmaster_executor</title>
+      <chart>
+        <search>
+          <query>$metrics$ CASE(Metrics) host=$selected_host$ TERM(name=cmmaster_executor) NOT(TERM(jobs_added=0,) TERM(jobs_finished=0,) TERM(current_size=0,) TERM(smallest_size=0,) TERM(largest_size=0) TERM(max_size=0)) 
+$show_metrics$
+| timechart $selected_span_min_30sec$
+    avg(jobs_added) as jobs_added
+    avg(jobs_finished) as jobs_finished
+    avg(current_size) as current_size
+    avg(smallest_size) as smallest_size
+    avg(largest_size) as largest_size
+    avg(max_size) as max_size</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="height">377</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_metrics$">
+    <panel>
+      <title>Cluster master service subtask seconds</title>
+      <chart>
+        <search base="cmmaster_service">
+          <query>| where isnotnull(service)
+| timechart $selected_span_min_60sec$ 
+    avg(service) as service
+    avg(to_fix_data_safety) as to_fix_data_safety
+    avg(to_fix_excess) as to_fix_excess
+    avg(to_fix_gen) as to_fix_gen
+    avg(to_fix_rebalance) as to_fix_rebalance
+    avg(to_fix_rep_factor) as to_fix_rep_factor
+    avg(to_fix_search_factor) as to_fix_search_factor
+    avg(to_fix_streaming) as to_fix_streaming
+    avg(to_fix_summary) as to_fix_summary
+    avg(to_fix_sync) as to_fix_sync</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">358</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Cluster master service subtask count</title>
+      <chart>
+        <search base="cmmaster_service">
+          <query>| where isnotnull(count)
+| timechart $selected_span_min_60sec$ 
+    avg(count) as count
+    avg(to_fix_data_safety) as to_fix_data_safety
+    avg(to_fix_excess) as to_fix_excess
+    avg(to_fix_gen) as to_fix_gen
+    avg(to_fix_rebalance) as to_fix_rebalance
+    avg(to_fix_rep_factor) as to_fix_rep_factor
+    avg(to_fix_search_factor) as to_fix_search_factor
+    avg(to_fix_streaming) as to_fix_streaming
+    avg(to_fix_summary) as to_fix_summary
+    avg(to_fix_sync) as to_fix_sync</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">362</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_metrics$">
+    <panel>
+      <title>cmmaster_endpoints</title>
+      <chart>
+        <search>
+          <query>$metrics$ CASE(Metrics) CASE(Metrics) host=$selected_host$ TERM(name=cmmaster_endpoints) TERM(group=subtask_seconds) 
+    $show_metrics$ 
+| timechart $selected_span_min_30sec$
+avg(add_target) as add_target
+    avg(clustermasterbuckets_create) as clustermasterbuckets_create
+    avg(clustermastergeneration_edit) as clustermastergeneration_edit
+    avg(clustermasterinfo_list) as clustermasterinfo_list
+    avg(clustermasterpeers_create) as clustermasterpeers_create
+    avg(clustermasterpeers_edit) as clustermasterpeers_edit
+    avg(register_summaries_success) as register_summaries_success</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="height">341</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>cmmaster_servicejobs</title>
+      <chart>
+        <search>
+          <query>$metrics$ CASE(Metrics) CASE(Metrics) host=$selected_host$ TERM(group=cmmaster_servicejobs) NOT(TERM(serviced=0) AND TERM(current_size=0))
+$show_metrics$
+| timechart $selected_span_min_30sec$ avg(serviced) avg(current_size)</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(current_size)</option>
+        <option name="height">329</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_metrics$">
+    <panel>
+      <title>indexes_enumeration</title>
+      <table>
+        <search base="cmmaster">
+          <query>| where subgroup="indexes_enumeration"
+| fields - host subgroup name
+| transpose header_field=_time</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>buckets_enumeration</title>
+      <table>
+        <search base="cmmaster">
+          <query>| where subgroup="buckets_enumeration"
+| fields - host subgroup name
+| transpose header_field=_time</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>buckets_re_creation</title>
+      <table>
+        <search base="cmmaster">
+          <query>| where subgroup="buckets_re_creation"
+| fields - host subgroup name
+| transpose header_field=_time</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_timeline$">
+    <panel>
+      <title>Rolling restart sequence for $selected_stack$</title>
+      <viz type="timeline_app.timeline">
+        <title>Click on duration to get information about the activities of the indexers during that period</title>
+        <search base="rr_base" id="rr_durations">
+          <query>| where isnotnull(duration) 
+| eval duration_ms=duration*1000 
+| table _time peer_name label duration_ms</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">409</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="timeline_app.timeline.axisTimeFormat">SECONDS</option>
+        <option name="timeline_app.timeline.colorMode">categorical</option>
+        <option name="timeline_app.timeline.maxColor">#DA5C5C</option>
+        <option name="timeline_app.timeline.minColor">#FFE8E8</option>
+        <option name="timeline_app.timeline.numOfBins">9</option>
+        <option name="timeline_app.timeline.tooltipTimeFormat">SECONDS</option>
+        <option name="timeline_app.timeline.useColors">1</option>
+        <drilldown>
+          <set token="selected_indexer">$row.peer_name$</set>
+          <set token="selected_earliest">$earliest$</set>
+          <set token="selected_latest">$latest$</set>
+          <eval token="selected_earliest">strftime($earliest$,"%m/%d/%Y:%H:%M:%S")</eval>
+          <eval token="selected_latest">strftime($latest$,"%m/%d/%Y:%H:%M:%S")</eval>
+          <set token="selected_reason">$click.value$</set>
+          <link target="_blank">search?q=$splunkd$ earliest=$selected_earliest$ latest=$selected_latest$ host=$row.peer_name$&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_timeline$">
+    <panel>
+      <title>Drill down to periods for all indexers</title>
+      <table>
+        <search base="rr_durations">
+          <query>| eval search="(host=".peer_name." earliest="._time." latest=".(_time+duration_ms/1000).")"
+| stats values(search) as _search by label
+| eval _search="$splunkd$ ".mvjoin(_search, " OR ")."
+| eventstats min(_time) as first_message by host
+| eval normalized_time=_time-first_message
+| bin span=0.1 normalized_time
+| chart limit=0 count by normalized_time host"</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown_period_search">$row._search$</eval>
+          <link target="_blank">search?q=$drilldown_period_search$&amp;earliest=$time.earliest$&amp;latest=$time.latest$&amp;display.page.search.tab=visualizations&amp;display.page.search.mode=fast&amp;display.general.type=visualizations&amp;display.visualizations.charting.chart.stackMode=stacked</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>$link$</html>
+    </panel>
+  </row>
+  <row depends="$show_generations$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Generation performance</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_generations$">
+    <panel>
+      <title>Time breakdown for each generation</title>
+      <input type="dropdown" token="selected_add_type" searchWhenChanged="true">
+        <label>Select add type</label>
+        <choice value="*">*</choice>
+        <choice value="Initial-Add">Initial-Add</choice>
+        <choice value="ReAdd-As-Is">ReAdd-As-Is</choice>
+        <default>*</default>
+      </input>
+      <chart>
+        <search base="cmslave_adding">
+          <query>| where isnotnull(baseGen)
+| table baseGen addType reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms add_peer_network_ms total_time_ms
+| search addType=$selected_add_type$
+| sort - baseGen</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">total_time_ms</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">389</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Time breakdown for each generation - total batches=$total_batches$</title>
+      <input type="dropdown" token="splitby_generation">
+        <label>Split by</label>
+        <choice value="| table _time current | rename current as progress">No split by</choice>
+        <choice value="| xyseries _time host current">Host</choice>
+        <default>| table _time current | rename current as progress</default>
+      </input>
+      <chart>
+        <search base="cmslave_adding">
+          <query>| appendpipe 
+    [| where isnotnull(current) 
+    $splitby_generation$ 
+    | eval column="mainresults"] 
+| appendpipe 
+    [| table _time add_peer_network_ms 
+    | eval column="timeresults"] 
+| where isnotnull(column)
+| fields - current target column delay source host baseGen reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms total_time_ms addType</query>
+          <done>
+            <eval token="total_batches">$result._total_batches$</eval>
+          </done>
+          <progress>
+            <eval token="total_batches">$result._total_batches$</eval>
+          </progress>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">add_peer_network_ms</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">436</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Batch adding rates per indexer $total_addpeer_batches$</title>
+      <chart>
+        <search base="cmslave_adding">
+          <query>| stats max(target) as batches 
+    max(add_peer_network_ms) as total_time by host
+| eval batch_added_ps=batches/total_time
+| fields + _time host batch_added_ps batches
+| eventstats sum(batches) as _total_batches</query>
+          <done>
+            <set token="total_addpeer_batches">$row._total_batches$</set>
+          </done>
+          <progress>
+            <set token="total_addpeer_batches">$row._total_batches$</set>
+          </progress>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.minimumNumber">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">batches</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">479</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_shutdown_performance$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Shutdown performance metrics</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_shutdown_performance$">
+    <panel>
+      <input type="text" token="filter_shutdown_time">
+        <label>Filter durations by x seconds</label>
+        <default>&gt; 1</default>
+      </input>
+    </panel>
+  </row>
+  <row depends="$show_shutdown_performance$">
+    <panel>
+      <title>Shutdown time for indexers in stack $selected_stack$</title>
+      <chart>
+        <search base="shutdown_performance_time_filtered">
+          <query>| chart limit=0 sum(duration) as shutdown_time by host level</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.overlayFields">total_time</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">559</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <drilldown>
+          <set token="form.selected_shutdown_host">$click.value$</set>
+          <set token="form.selected_shutdown_level">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Shutdown time for levels in stack $selected_stack$</title>
+      <chart>
+        <search base="shutdown_performance_time_filtered">
+          <query>| where duration &gt; 0 
+| chart limit=0 sum(duration) as shutdown_time by level host</query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.overlayFields">total_time</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">549</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <drilldown>
+          <set token="form.selected_shutdown_level">$click.value$</set>
+          <set token="form.selected_shutdown_host">$click.name2$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$drill_down_shutdown_period_search$,$selected_shutdown_host$,$selected_shutdown_level$">
+    <panel>
+      <title>Shutdown time for indexers in stack $selected_stack$</title>
+      <input type="dropdown" token="selected_shutdown_host">
+        <label>host</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="shutdown_performance">
+          <query>| stats sum(duration) as duration by host
+| sort - duration
+| eval label=host." (".duration."secs)"</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_shutdown_level">
+        <label>Level</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>level</fieldForValue>
+        <search base="shutdown_performance">
+          <query>| stats sum(duration) as duration by level
+| sort - duration
+| eval label=level." (".duration."secs)"</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <html>
+          <h1>$drill_down_shutdown_period_search$</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_primaries$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Primaries performance</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_primaries$">
+    <panel>
+      <chart>
+        <title>Setting primaries</title>
+        <search base="primaries_base">
+          <query>
+| timechart $selected_span_min_1sec$ count by reason</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <selection>
+          <set token="primaries_latest">$end$</set>
+          <set token="primaries_earliest">$start$</set>
+          <eval token="primaries_span">ceiling(($end$-$start$)/$resolution$)</eval>
+        </selection>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">330</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Zoom on primaries</title>
+      <input type="dropdown" token="splitby_primaries">
+        <label>Split by</label>
+        <choice value="peer_name">host</choice>
+        <choice value="reason">reason</choice>
+        <default>peer_name</default>
+      </input>
+      <chart>
+        <search base="primaries_base">
+          <query>| search _time&gt;$primaries_earliest$ AND _time&lt;$primaries_latest$
+| timechart limit=0 fixedrange=false span=$primaries_span$sec count by $splitby_primaries$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_logging_performance$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Logging performance - select host</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_logging_performance$">
+    <panel>
+      <title>Data being generated by the CM</title>
+      <input type="dropdown" token="selected_x_axis_delay">
+        <label>X axis selection</label>
+        <choice value="| noop">Time of generation</choice>
+        <choice value="| eval _time=indextime">Time of indexing</choice>
+        <default>| noop</default>
+      </input>
+      <input type="dropdown" token="selected_y_axis_delay">
+        <label>Y axis selection</label>
+        <choice value="count">Count of events</choice>
+        <choice value="delay">Delay in seconds</choice>
+        <default>count</default>
+      </input>
+      <chart>
+        <search base="tstats_event_delay">
+          <query>$selected_x_axis_delay$
+| xyseries _time source $selected_y_axis_delay$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">386</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_logging_performance$">
+    <panel>
+      <title>Throughput of the indexing pipeine for the CM</title>
+      <input type="dropdown" token="selected_group">
+        <label>Select series</label>
+        <choice value="index">per_index_thruput</choice>
+        <choice value="host">per_host_thruput</choice>
+        <choice value="source">per_source_thruput</choice>
+        <choice value="sourcetype">per_sourcetype_thruput</choice>
+        <default>source</default>
+      </input>
+      <input type="dropdown" token="selected_per_series_variable">
+        <label>Select field to show</label>
+        <choice value="kb">kb</choice>
+        <choice value="eps">eps</choice>
+        <choice value="ev">ev</choice>
+        <choice value="kbps">kbps</choice>
+        <choice value="max_age">max_age</choice>
+        <choice value="avg_age">avg_age</choice>
+        <default>max_age</default>
+      </input>
+      <input type="dropdown" token="selected_per_series_function">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="filter_pipelines">
+        <label>Filter to pipeline</label>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <fieldForLabel>ingest_pipe</fieldForLabel>
+        <fieldForValue>ingest_pipe</fieldForValue>
+        <search base="per_series_thruput">
+          <query>
+          | stats count by ingest_pipe
+        </query>
+        </search>
+      </input>
+      <chart>
+        <search base="per_series_thruput_filtered">
+          <done>
+            <set token="finished_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $selected_span_min_30sec$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as $selected_per_series_variable$ by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">all_data</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">419</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_logging_performance$">
+    <panel>
+      <title>Gaps detected in data generation - total $total_silence$secs ($total_silence_str$)</title>
+      <input type="text" token="minimum_data_gap">
+        <label>Minimum expected silence</label>
+        <default>30</default>
+      </input>
+      <viz type="timeline_app.timeline">
+        <search base="tstats_event_delay">
+          <query>| sort - _time 
+| makecontinuous _time span=1sec 
+| fillnull count 0 
+| sort - _time 
+| streamstats current=false last(count) as last_count 
+| where (last_count!=0 AND count=0) OR (last_count=0 AND count!=0) 
+| streamstats current=false last(count) as last_count last(_time) as last_time 
+| eval duration_ms=1000*(last_time-_time)
+| eval period=if(last_count=0 AND count&gt;0, "data", "gap")
+| eval data=""
+| where (duration_ms&gt;($minimum_data_gap$)*1000 and period="gap") OR period="data"
+| table _time data period duration_ms
+| eventstats sum(eval(if(period="gap",duration_ms,0))) as _total_silence_ms
+
+</query>
+          <done>
+            <eval token="total_silence">$result._total_silence_ms$/1000</eval>
+            <eval token="total_silence_str">tostring($result._total_silence_ms$/1000,"duration")</eval>
+          </done>
+          <progress>
+            <eval token="total_silence">$result._total_silence_ms$/1000</eval>
+            <eval token="total_silence_str">tostring($result._total_silence_ms$/1000,"duration")</eval>
+          </progress>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">145</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="timeline_app.timeline.axisTimeFormat">SECONDS</option>
+        <option name="timeline_app.timeline.colorMode">categorical</option>
+        <option name="timeline_app.timeline.maxColor">#DA5C5C</option>
+        <option name="timeline_app.timeline.minColor">#FFE8E8</option>
+        <option name="timeline_app.timeline.numOfBins">6</option>
+        <option name="timeline_app.timeline.tooltipTimeFormat">SECONDS</option>
+        <option name="timeline_app.timeline.useColors">1</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_cluster_ingestion$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Cluster ingestion</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_cluster_ingestion$">
+    <panel>
+      <title>Indexer blocking and aggregate buffer utilization</title>
+      <input type="dropdown" token="selected_blocking_indexer">
+        <label>Select indexer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="indexer_queues">
+          <query>| stats sum(eval(if(blocked="true",1,0))) as blocking by host
+| eval label=host." (".blocking.")"
+| sort - blocking</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <chart>
+        <search base="indexer_queues">
+          <query>     
+| search host=$selected_blocking_indexer$
+| timechart $selected_span_min_30sec$ 
+    sum(current_size_kb) as current_buffer
+    sum(max_size_kb) as total_buffer
+    count(eval(name="aggqueue" AND blocked="true")) as aggqueue
+    count(eval(name="httpinputq" AND blocked="true")) as httpinputq
+    count(eval(name="indexqueue" AND blocked="true")) as indexqueue
+    count(eval(name="parsingqueue" AND blocked="true")) as parsingqueue
+    count(eval(name="tcpin_queue" AND blocked="true")) as tcpin_queue
+    count(eval(name="typingqueue" AND blocked="true")) as typingqueue
+    count(eval(name="splunktcpin" AND blocked="true")) as splunktcpin
+    count(eval(name="tcpin_cooked_pqueue" AND blocked="true")) as tcpin_cooked_pqueue</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">current_buffer,total_buffer</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">374</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cluster_ingestion$">
+    <panel>
+      <title>Indexing Cluster throughput</title>
+      <input type="dropdown" token="selected_thruput_indexer">
+        <label>Select indexer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="indexer_queues">
+          <query>| stats sum(eval(if(blocked="true",1,0))) as blocking by host
+| eval label=host." (".blocking.")"
+| sort - blocking</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_thruput">
+        <label>Select thruput metric</label>
+        <choice value="thruput">thruput</choice>
+        <fieldForLabel>name</fieldForLabel>
+        <fieldForValue>name</fieldForValue>
+        <search base="thruput">
+          <query>| stats count by name
+| where name != "thruput"</query>
+        </search>
+        <default>thruput</default>
+      </input>
+      <input type="dropdown" token="selected_thruput_variable">
+        <label>Select field to show</label>
+        <choice value="instantaneous_kbps">instantaneous_kbps</choice>
+        <choice value="instantaneous_eps">instantaneous_eps</choice>
+        <choice value="average_kbps">average_kbps</choice>
+        <choice value="total_k_processed">total_k_processed</choice>
+        <choice value="kb">kb</choice>
+        <choice value="ev">ev</choice>
+        <default>instantaneous_kbps</default>
+      </input>
+      <input type="dropdown" token="selected_thruput_function">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <input type="dropdown" token="thruput_splitby">
+        <label>Select aggregation function</label>
+        <choice value="host">host</choice>
+        <choice value="host + pipe">host_pipe</choice>
+        <default>host</default>
+      </input>
+      <chart>
+        <search base="cluster_thruput">
+          <query>
+| search host=$selected_thruput_indexer$ AND name=$selected_thruput$
+| eval host_pipe=host."+".ingest_pipe
+| timechart $selected_span_min_30sec$  limit=0 
+    avg($selected_thruput_variable$) by $thruput_splitby$ 
+| eval *=0 
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
+    *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">*</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">374</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cachemgr$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Cachemgr metrics</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_cachemgr$">
+    <panel>
+      <title>Indexer cachemgr_up jobs</title>
+      <input type="dropdown" token="selected_cachemgr_up_indexer">
+        <label>Select indexer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="cachemgr_up_jobs">
+          <query>| stats sum(count) as jobs by host
+| eval label=host." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_up_index">
+        <label>Select index (jobs)</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+        <search base="cachemgr_up_jobs">
+          <query>| stats sum(count) as jobs by index
+| eval label=index." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_up_splitby">
+        <label>Select split by</label>
+        <fieldForLabel>indexes</fieldForLabel>
+        <fieldForValue>indexes</fieldForValue>
+        <choice value="by host">host</choice>
+        <choice value="by index">index</choice>
+        <default>by host</default>
+      </input>
+      <chart>
+        <search base="cachemgr_up_jobs">
+          <query>| search host=$selected_cachemgr_up_indexer$ AND index=$selected_cachemgr_up_index$
+| timechart limit=50 sum(count) $selected_span_min_30sec$  $selected_cachemgr_up_splitby$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">375</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Indexer cachemgr_down jobs</title>
+      <input type="dropdown" token="selected_cachemgr_down_indexer">
+        <label>Select indexer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="cachemgr_down_jobs">
+          <query>| stats sum(count) as jobs by host
+| eval label=host." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_down_index">
+        <label>Select index (jobs)</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+        <search base="cachemgr_down_jobs">
+          <query>| stats sum(count) as jobs by index
+| eval label=index." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_down_splitby">
+        <label>Select split by</label>
+        <fieldForLabel>indexes</fieldForLabel>
+        <fieldForValue>indexes</fieldForValue>
+        <choice value="by host">host</choice>
+        <choice value="by index">index</choice>
+        <default>by host</default>
+      </input>
+      <chart>
+        <search base="cachemgr_down_jobs">
+          <query>| search host=$selected_cachemgr_down_indexer$ AND index=$selected_cachemgr_down_index$
+| timechart limit=50 $selected_span_min_30sec$  sum(count) $selected_cachemgr_down_splitby$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">375</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cachemgr$">
+    <panel>
+      <title>Cache manager buckets</title>
+      <input type="multiselect" token="selected_bucket_fields">
+        <label>Select split by</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>field</fieldForValue>
+        <search base="cachemgr_bucket">
+          <query>| stats sum(count) as count by field
+| eval label=field." (".count.")"
+| sort - count</query>
+        </search>
+        <default>hit,miss</default>
+        <prefix>field IN (</prefix>
+        <suffix>)</suffix>
+        <delimiter> ,</delimiter>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_bucket_splitby">
+        <label>Select split by</label>
+        <fieldForLabel>indexes</fieldForLabel>
+        <fieldForValue>indexes</fieldForValue>
+        <choice value="by host">host</choice>
+        <choice value="by field">action</choice>
+        <default>by field</default>
+      </input>
+      <chart>
+        <search base="cachemgr_bucket">
+          <query>| search $selected_bucket_fields$
+| timechart limit=0 $selected_span_min_30sec$ sum(count) $selected_cachemgr_bucket_splitby$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">349</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cachemgr$">
+    <panel>
+      <title>cmmaster_executor down jobs</title>
+      <input type="multiselect" token="cmmaster_executor_down_fields">
+        <label>Selected Cluster master</label>
+        <choice value="jobs_added">jobs_added</choice>
+        <choice value="jobs_finished">jobs_finished</choice>
+        <choice value="current_size">current_size</choice>
+        <choice value="smallest_size">smallest_size</choice>
+        <choice value="largest_size">largest_size</choice>
+        <choice value="max_size">max_size</choice>
+        <default>jobs_finished,jobs_added</default>
+        <delimiter> , </delimiter>
+        <prefix>field IN (</prefix>
+        <suffix>)</suffix>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_executor_down_splitby">
+        <label>Select split by</label>
+        <choice value="by host">host</choice>
+        <choice value="by field">field</choice>
+        <default>by host</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_executor_down_host">
+        <label>Select split by</label>
+        <search base="cachemgr_executor_jobs">
+          <query>| stats count by host</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+      <chart>
+        <title>$cmmaster_executor_down_fields$</title>
+        <search base="cachemgr_executor_jobs">
+          <query>| search name="cachemgr_down" AND $cmmaster_executor_down_fields$ AND host=$selected_cachemgr_executor_down_host$
+| timechart limit=0 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_down_splitby$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>cmmaster_executor up jobs</title>
+      <input type="multiselect" token="cmmaster_executor_up_fields">
+        <label>Selected Cluster master</label>
+        <choice value="jobs_added">jobs_added</choice>
+        <choice value="jobs_finished">jobs_finished</choice>
+        <choice value="current_size">current_size</choice>
+        <choice value="smallest_size">smallest_size</choice>
+        <choice value="largest_size">largest_size</choice>
+        <choice value="max_size">max_size</choice>
+        <default>jobs_finished,jobs_added</default>
+        <delimiter> , </delimiter>
+        <prefix>field IN (</prefix>
+        <suffix>)</suffix>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_executor_up_splitby">
+        <label>Select split by</label>
+        <choice value="by host">host</choice>
+        <choice value="by field">field</choice>
+        <default>by host</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_executor_up_host">
+        <label>Select split by</label>
+        <search base="cachemgr_executor_jobs">
+          <query>| stats count by host</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+      <chart>
+        <search base="annotations_filtered" type="annotation"></search>
+        <search base="cachemgr_executor_jobs">
+          <query>| search name="cachemgr_up" AND $cmmaster_executor_up_fields$ AND host=$selected_cachemgr_executor_up_host$
+| timechart limit=0 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_up_splitby$</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>annotations classified</title>
+        <search base="annotations_base" id="annotations_classified">
+          <query>| eval annotation_category=case(
+    searchmatch("My new GUID is AND host=c0m1*"),"New cluster master", 
+    searchmatch("rolling restart CMMaster finished"),"RR finished", 
+    searchmatch("rolling restart CMMaster starting"),"RR started", 
+    searchmatch("My GUID is AND host=c0m1*"),"Restarted CM", 
+    searchmatch("My new GUID is AND host=idx*"),"New peer", 
+    searchmatch("My GUID is AND host=idx*"),"Restarted peer", 
+    searchmatch("Shutting down splunkd AND host=com1*"),"Shutdown CM", 
+    searchmatch("Shutting down splunkd AND host=idx*"),"Shutdown peer",
+    searchmatch("Maintenance Disabling AND host=c0m1*"),"Maintenance mode off",
+    searchmatch("Maintenance Setting AND host=c0m1*"),"Maintenance mode on"),
+    annotation_label=host 
+| table _time host anno*</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>$annotations_host_filter$</title>
+      <table>
+        <title>annotations filtered</title>
+        <search base="annotations_classified" id="annotations_filtered">
+          <query>| search $annotations_host_filter$ AND $annotations_category_filter$</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
