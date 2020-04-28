@@ -68,40 +68,6 @@
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  <search id="rr_base">
-    <query>$splunkd$ host=$selected_host$ component=CMPeer CASE(CMPeer) NOT(bid=*) TERM(from=*) TERM(to=*) 
-  $show_timeline$
-| eval delay=_indextime-_time
-| table _time peer_name peer from to reason source delay _indextime
-| sort - _time 
-| appendpipe 
-    [| where isnull(duration) 
-    | transaction startswith="from=Up AND to=Restarting" endswith="from=Restarting AND to=Down" peer_name 
-    | eval label="restarting"
-        ] 
-| appendpipe 
-    [| where isnull(duration) 
-    | transaction startswith="from=Up AND to=Pending" endswith="from=Pending AND to=Up" peer_name 
-    | eval label="streaming errors"
-        ] 
-| appendpipe 
-    [| where isnull(duration) 
-    | transaction startswith="from=Restarting AND to=Down" endswith="from=Up AND to=BatchAdding" peer_name 
-    | eval label="startup"
-        ] 
-| appendpipe 
-    [| where isnull(duration) 
-    | transaction startswith="from=Up AND to=BatchAdding" endswith="from=BatchAdding AND to=Up" peer_name 
-    | eval label="adding"
-        ] 
-| appendpipe 
-    [| where isnull(duration) 
-    | transaction startswith="from=Up AND to=ShuttingDown" endswith="from=ShuttingDown AND to=Stopped" peer_name
-    | eval label="offlining"
-        ]</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
   <search id="cmslave_adding">
     <query>$splunkd$ sourcetype=splunkd component=CMSlave TERM(addType=*) $indexers_IN$
 $show_generations$
@@ -316,6 +282,40 @@ $show_cluster_ingestion$
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
+  <search id="rr_base">
+    <query>$splunkd$ host=$selected_host$ component=CMPeer CASE(CMPeer) NOT(bid=*) TERM(from=*) TERM(to=*) 
+  $show_timeline$
+| eval delay=_indextime-_time
+| table _time peer_name peer from to reason source delay _indextime
+| sort - _time 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=Restarting" endswith="from=Restarting AND to=Down" peer_name 
+    | eval label="restarting"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=Pending" endswith="from=Pending AND to=Up" peer_name 
+    | eval label="streaming errors"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Restarting AND to=Down" endswith="from=Up AND to=BatchAdding" peer_name 
+    | eval label="startup"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=BatchAdding" endswith="from=BatchAdding AND to=Up" peer_name 
+    | eval label="adding"
+        ] 
+| appendpipe 
+    [| where isnull(duration) 
+    | transaction startswith="from=Up AND to=ShuttingDown" endswith="from=ShuttingDown AND to=Stopped" peer_name
+    | eval label="offlining"
+        ]</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Period to display</label>
@@ -459,17 +459,6 @@ $show_cluster_ingestion$
           </condition>
         </change>
       </input>
-      <input type="radio" token="show_generations">
-        <label>Generation performance</label>
-        <choice value="| noop">Display</choice>
-        <choice value="| error">Hide</choice>
-        <default>| error</default>
-        <change>
-          <condition value="| error">
-            <unset token="show_generations"></unset>
-          </condition>
-        </change>
-      </input>
       <input type="radio" token="show_primaries">
         <label>Show primaries</label>
         <choice value="| noop">Display</choice>
@@ -478,6 +467,17 @@ $show_cluster_ingestion$
         <change>
           <condition value="| error">
             <unset token="show_primaries"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_generations">
+        <label>Generation performance</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_generations"></unset>
           </condition>
         </change>
       </input>
