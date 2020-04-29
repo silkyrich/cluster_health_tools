@@ -763,9 +763,8 @@ $per_process_attributes$</query>
   </row>
   <row depends="$show_metrics$">
     <panel>
-      <title>Cluster master metrics for period</title>
+      <title>cmmaster_jobs</title>
       <chart>
-        <title>cmmaster jobs</title>
         <search>
           <query>$metrics$ sourcetype=splunkd host=$selected_host$ TERM(group=jobs) TERM(name=cmmaster) 
     $show_metrics$ 
@@ -1041,6 +1040,38 @@ $show_metrics$
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
+  </row>
+  <row depends="$show_generations$">
+    <panel>
+      <title>Batch adding rates per indexer $total_addpeer_batches$</title>
+      <chart>
+        <search base="cmslave_adding">
+          <query>| stats max(target) as batches 
+    max(add_peer_network_ms) as total_time by host
+| eval batch_added_ps=batches/total_time
+| fields + _time host batch_added_ps batches
+| eventstats sum(batches) as _total_batches</query>
+          <done>
+            <set token="total_addpeer_batches">$row._total_batches$</set>
+          </done>
+          <progress>
+            <set token="total_addpeer_batches">$row._total_batches$</set>
+          </progress>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.minimumNumber">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">batches</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">479</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_generations$">
     <panel>
       <title>Time breakdown for each generation - total batches=$total_batches$</title>
       <input type="dropdown" token="splitby_generation">
@@ -1075,34 +1106,6 @@ $show_metrics$
         <option name="charting.drilldown">none</option>
         <option name="charting.legend.placement">top</option>
         <option name="height">436</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
-      <title>Batch adding rates per indexer $total_addpeer_batches$</title>
-      <chart>
-        <search base="cmslave_adding">
-          <query>| stats max(target) as batches 
-    max(add_peer_network_ms) as total_time by host
-| eval batch_added_ps=batches/total_time
-| fields + _time host batch_added_ps batches
-| eventstats sum(batches) as _total_batches</query>
-          <done>
-            <set token="total_addpeer_batches">$row._total_batches$</set>
-          </done>
-          <progress>
-            <set token="total_addpeer_batches">$row._total_batches$</set>
-          </progress>
-        </search>
-        <search base="annotations_filtered" type="annotation"></search>
-        <option name="charting.axisY.minimumNumber">0</option>
-        <option name="charting.axisY2.enabled">1</option>
-        <option name="charting.axisY2.minimumNumber">0</option>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">batches</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">all</option>
-        <option name="height">479</option>
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
@@ -1146,6 +1149,8 @@ $show_metrics$
         </drilldown>
       </chart>
     </panel>
+  </row>
+  <row depends="$show_shutdown_performance$">
     <panel>
       <title>Shutdown time for levels in stack $selected_stack$</title>
       <chart>
@@ -1232,6 +1237,8 @@ $show_metrics$
         <option name="refresh.display">progressbar</option>
       </chart>
     </panel>
+  </row>
+  <row depends="$show_primaries$">
     <panel>
       <title>Zoom on primaries</title>
       <input type="dropdown" token="splitby_primaries">
@@ -1278,7 +1285,7 @@ $show_metrics$
       <chart>
         <search base="tstats_event_delay">
           <query>$selected_x_axis_delay$
-| xyseries _time source $selected_y_axis_delay$</query>
+| timechart limit=30 $selected_span_min_30sec$ max($selected_y_axis_delay$) by source</query>
         </search>
         <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
@@ -1546,53 +1553,6 @@ $show_metrics$
   </row>
   <row depends="$show_cachemgr$">
     <panel>
-      <title>Indexer cachemgr_up jobs</title>
-      <input type="dropdown" token="selected_cachemgr_up_indexer">
-        <label>Select indexer</label>
-        <fieldForLabel>label</fieldForLabel>
-        <fieldForValue>host</fieldForValue>
-        <search base="cachemgr_up_jobs">
-          <query>| stats sum(count) as jobs by host
-| eval label=host." (".jobs.")"
-| sort - jobs</query>
-        </search>
-        <choice value="*">*</choice>
-        <default>*</default>
-      </input>
-      <input type="dropdown" token="selected_cachemgr_up_index">
-        <label>Select index (jobs)</label>
-        <fieldForLabel>label</fieldForLabel>
-        <fieldForValue>index</fieldForValue>
-        <search base="cachemgr_up_jobs">
-          <query>| stats sum(count) as jobs by index
-| eval label=index." (".jobs.")"
-| sort - jobs</query>
-        </search>
-        <choice value="*">*</choice>
-        <default>*</default>
-      </input>
-      <input type="dropdown" token="selected_cachemgr_up_splitby">
-        <label>Select split by</label>
-        <fieldForLabel>indexes</fieldForLabel>
-        <fieldForValue>indexes</fieldForValue>
-        <choice value="by host">host</choice>
-        <choice value="by index">index</choice>
-        <default>by host</default>
-      </input>
-      <chart>
-        <search base="cachemgr_up_jobs">
-          <query>| search host=$selected_cachemgr_up_indexer$ AND index=$selected_cachemgr_up_index$
-| timechart limit=50 sum(count) $selected_span_min_30sec$  $selected_cachemgr_up_splitby$</query>
-        </search>
-        <search base="annotations_filtered" type="annotation"></search>
-        <option name="charting.chart">column</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.drilldown">none</option>
-        <option name="height">375</option>
-        <option name="refresh.display">progressbar</option>
-      </chart>
-    </panel>
-    <panel>
       <title>Indexer cachemgr_down jobs</title>
       <input type="dropdown" token="selected_cachemgr_down_indexer">
         <label>Select indexer</label>
@@ -1630,6 +1590,55 @@ $show_metrics$
         <search base="cachemgr_down_jobs">
           <query>| search host=$selected_cachemgr_down_indexer$ AND index=$selected_cachemgr_down_index$
 | timechart limit=50 $selected_span_min_30sec$  sum(count) $selected_cachemgr_down_splitby$</query>
+        </search>
+        <search base="annotations_filtered" type="annotation"></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">375</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_cachemgr$">
+    <panel>
+      <title>Indexer cachemgr_up jobs</title>
+      <input type="dropdown" token="selected_cachemgr_up_indexer">
+        <label>Select indexer</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+        <search base="cachemgr_up_jobs">
+          <query>| stats sum(count) as jobs by host
+| eval label=host." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_up_index">
+        <label>Select index (jobs)</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+        <search base="cachemgr_up_jobs">
+          <query>| stats sum(count) as jobs by index
+| eval label=index." (".jobs.")"
+| sort - jobs</query>
+        </search>
+        <choice value="*">*</choice>
+        <default>*</default>
+      </input>
+      <input type="dropdown" token="selected_cachemgr_up_splitby">
+        <label>Select split by</label>
+        <fieldForLabel>indexes</fieldForLabel>
+        <fieldForValue>indexes</fieldForValue>
+        <choice value="by host">host</choice>
+        <choice value="by index">index</choice>
+        <default>by host</default>
+      </input>
+      <chart>
+        <search base="cachemgr_up_jobs">
+          <query>| search host=$selected_cachemgr_up_indexer$ AND index=$selected_cachemgr_up_index$
+| timechart limit=50 sum(count) $selected_span_min_30sec$  $selected_cachemgr_up_splitby$</query>
         </search>
         <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
@@ -1715,7 +1724,7 @@ $show_metrics$
         <title>$cmmaster_executor_down_fields$</title>
         <search base="cachemgr_executor_jobs">
           <query>| search name="cachemgr_down" AND $cmmaster_executor_down_fields$ AND host=$selected_cachemgr_executor_down_host$
-| timechart limit=0 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_down_splitby$</query>
+| timechart limit=30 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_down_splitby$</query>
         </search>
         <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
@@ -1757,7 +1766,7 @@ $show_metrics$
         <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_executor_jobs">
           <query>| search name="cachemgr_up" AND $cmmaster_executor_up_fields$ AND host=$selected_cachemgr_executor_up_host$
-| timechart limit=0 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_up_splitby$</query>
+| timechart limit=30 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_up_splitby$</query>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.nullValueMode">gaps</option>
@@ -1766,10 +1775,6 @@ $show_metrics$
       </chart>
     </panel>
   </row>
-  <row>
-    <panel>
-      <table>
-        <title>annotations classified</title>
         <search base="annotations_base" id="annotations_classified">
           <query>| eval annotation_category=case(
     searchmatch("My new GUID is AND host=c0m1*"),"New cluster master", 
@@ -1785,24 +1790,7 @@ $show_metrics$
     annotation_label=host 
 | table _time host anno*</query>
         </search>
-        <option name="count">10</option>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </table>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>$annotations_host_filter$</title>
-      <table>
-        <title>annotations filtered</title>
         <search base="annotations_classified" id="annotations_filtered">
           <query>| search $annotations_host_filter$ AND $annotations_category_filter$</query>
         </search>
-        <option name="count">10</option>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </table>
-    </panel>
-  </row>
 </form>
