@@ -1,0 +1,173 @@
+<form>
+  <label>Find Cluster Master events</label>
+  <init>
+    <set token="splunkd">(index=_internal) sourcetype=splunkd</set>
+  </init>
+  <search id="rr_table">
+    <query>$splunkd$ rolling restart CASE(CMMaster) finished OR Starting 
+| eval state=if(searchmatch("finished"),"finished", "starting") 
+| table _time host state
+| sort - _time 
+| streamstats current=f last(state) as last_state last(_time) as last_time by host
+| where state="starting" and last_state="finished"</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time range to scan</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="filter_stacks">
+      <label>Filter stacks (wildcard)</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="selected_stack">
+      <label>Select stack</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>stack</fieldForValue>
+      <search>
+        <query>| inputlookup aws_inventory
+| search FQDN=*.$filter_stacks$.*
+| where stack!="null" 
+| stats count by instance_type stack region role 
+| lookup aws_instance_lookup.csv api_name as instance_type region 
+| stats
+    sum(vcpu) as total_vcpu
+    sum(memory_gib) as total_memory
+    sum(eval(price_per_hour_reserved*count)) as cost_per_hour
+    sum(eval(if(role="indexer", storage_gib*count,0))) as total_cache_gib
+    by stack 
+| sort - cost_per_hour
+| eval label=stack." @ $".round(cost_per_hour,0)."/hr"</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <choice value="*">*</choice>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="dropdown" token="resolution">
+      <label>Chart resolution</label>
+      <default>200</default>
+      <choice value="100">100</choice>
+      <choice value="200">200</choice>
+      <choice value="500">500</choice>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Drilldown into rolling restarts</title>
+      <input type="dropdown" token="rr_padding_before">
+        <label>Drilldown before padding</label>
+        <choice value="0">exact</choice>
+        <choice value="0.1">10%</choice>
+        <choice value="0.25">25%</choice>
+        <choice value=".5">50%</choice>
+        <choice value="1">100%</choice>
+        <choice value="2">200%</choice>
+        <initialValue>0.1</initialValue>
+      </input>
+      <input type="dropdown" token="rr_padding_after">
+        <label>Drilldown after padding</label>
+        <choice value="0">exact</choice>
+        <choice value="0.1">10%</choice>
+        <choice value="0.25">25%</choice>
+        <choice value=".5">50%</choice>
+        <choice value="1">100%</choice>
+        <choice value="2">200%</choice>
+        <default>.5</default>
+      </input>
+      <table>
+        <search base="rr_table">
+          <query>|  eval 
+    duration=last_time-_time, 
+    started_str=strftime(_time,"%c"),
+    ended_str=strftime(_time+duration,"%c"),
+    earliest=_time-duration*0.1, 
+    latest=_time+duration+duration*.5,
+    drilldown_earliest_str=strftime(earliest,"%c"),
+    drilldown_latest_str=strftime(latest,"%c"),
+    duration_str=tostring(duration,"duration"),
+    duration_mins=round(duration/60) 
+| rex field=host "^[^\.]+\.(?&lt;stack&gt;[^\.]+)\." 
+| sort - duration_mins 
+| join stack type=left
+    [| inputlookup aws_inventory 
+    | where stack!="null" 
+    | stats count by instance_type stack region role 
+    | lookup aws_instance_lookup.csv api_name as instance_type region 
+    | stats
+        sum(vcpu) as total_vcpu
+        sum(memory_gib) as total_memory
+        sum(eval(price_per_hour_reserved*count)) as cost_per_hour
+        sum(eval(if(role="indexer", storage_gib*count,0))) as total_cache_gib
+        by stack 
+    | sort - cost_per_hour] 
+| join host type=left
+    [| tstats values(data.splunk_version) as version where index=customer_introspection  earliest=-602mins latest=-600mins by host ] 
+| table host stack started_str ended_str duration_str duration duration_mins drilldown_earliest_str drilldown_latest_str earliest latest 
+| rename earliest as _earliest
+| rename latest as _latest
+| rename duration as duration_seconds</query>
+        </search>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <set token="drilldown_host">$row.host$</set>
+          <set token="drilldown_stack">$row.stack$</set>
+          <set token="drilldown_earliest">$row._earliest$</set>
+          <set token="drilldown_latest">$row._latest$</set>
+          <eval token="drilldown_duration">$drilldown_latest$-$drilldown_earliest$</eval>
+          <eval token="selected_span_min_1sec">ceiling($drilldown_duration$/$resolution$)</eval>
+          <set token="selected_span_min_1sec_str">ceiling($drilldown_duration$/$resolution$))</set>
+          <eval token="selected_span_min_10sec">if($selected_span_min_1sec$&lt;10,10,$selected_span_min_1sec$)</eval>
+          <eval token="selected_span_min_30sec">if($selected_span_min_1sec$&lt;31,31,$selected_span_min_1sec$)</eval>
+          <eval token="selected_span_min_60sec">if($selected_span_min_1sec$&lt;60,60,$selected_span_min_1sec$)</eval>
+          <link target="_blank">cluster_master_activities?form.resolution=$resolution$&amp;form.duration_seconds=$drilldown_duration$&amp;form.selected_span_min_1sec=$selected_span_min_1sec$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_span_min_30sec=$selected_span_min_30sec$&amp;form.selected_span_min_60sec=$selected_span_min_60sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$</link>
+        </drilldown>
+        </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+    drilldown_host=$drilldown_host$ <p/>
+    duration_str=$duration_str$     <p/> 
+    drilldown_duration=$drilldown_duration$ <p/>
+    drilldown_earliest=$drilldown_earliest$<p/>
+    drilldown_latest=$drilldown_latest$<p/>
+    selected_span_min_1sec=$selected_span_min_1sec$<p/>
+    selected_span_min_1sec=$selected_span_min_1sec_str$<p/>
+    cluster_master_activities?form.resolution=$resolution$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$&amp;selected_span_min_1sec=$selected_span_min_1sec$&amp;selected_span_min_30sec=$selected_span_min_30sec$&amp;selected_span_min_60sec=$selected_span_min_60sec$<p/>
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Cluster master restart events</title>
+      <table>
+        <title>Restarting components</title>
+        <search>
+          <query>$splunkd$ (TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID)) OR (TERM(Shutting) TERM(down) TERM(splunkd)) host=c0m1*.$selected_stack$.*
+| eval state=case(searchmatch("Shutting"),"shutdown", searchmatch("newly"), "New host", true(), "Restarted")
+| table _time host state
+| transaction startswith="state=shutdown" endswith="state=restarted" host</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
