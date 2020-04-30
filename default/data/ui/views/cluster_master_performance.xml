@@ -340,18 +340,6 @@ $show_cluster_ingestion$
         <earliest>-4h@m</earliest>
         <latest>now</latest>
       </default>
-      <change>
-        <condition match="isnotnull($time.latest$)">
-          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
-          <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
-          <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
-          <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
-          <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
-          <unset token="finished_per_series_thruput"></unset>
-          <set token="series_thruput_max">0</set>
-          <eval token="series_thruput_min">now()</eval>
-        </condition>
-      </change>
     </input>
     <input type="dropdown" token="selected_stack">
       <label>Select stack</label>
@@ -382,11 +370,13 @@ $show_cluster_ingestion$
       <label>Chart resolution</label>
       <default>200</default>
       <change>
+             <condition match="isnotnull($resolution$)">
         <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
         <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
         <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
         <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
         <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
+        </condition>
       </change>
       <choice value="100">100</choice>
       <choice value="200">200</choice>
@@ -398,25 +388,25 @@ $show_cluster_ingestion$
     </input>
     <input type="text" token="selected_span_min_10sec" depends="$hide_me$">
       <label>selected_span_min_10sec</label>
-      <default></default>
+      <default>10</default>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
     </input>
     <input type="text" token="selected_span_min_1sec" depends="$hide_me$">
       <label>selected_span_min_1sec</label>
-      <default></default>
+      <default>1</default>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
     </input>
     <input type="text" token="selected_span_min_30sec" depends="$hide_me$">
       <label>selected_span_min_30sec</label>
-      <default></default>
+      <default>30</default>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
     </input>
     <input type="text" token="selected_span_min_60sec" depends="$hide_me$">
       <label>selected_span_min_60sec</label>
-      <default></default>
+      <default>60</default>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
     </input>
@@ -683,7 +673,6 @@ $show_cluster_ingestion$
         <default>avg</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="introspection_resource_usage_host">
           <progress>
             <eval token="show_hostwide_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
@@ -707,6 +696,7 @@ $show_cluster_ingestion$
 | eval max_cpu=100
     $host_attributes$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.abbreviation">auto</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
@@ -755,7 +745,6 @@ $show_cluster_ingestion$
         <default>| noop</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="introspection_resource_usage_per_process">
           <query>| timechart $selected_span_min_10sec$
     $selected_introspection_function_per_process$(splunkd_elapsed) as splunkd_elapsed
@@ -770,6 +759,7 @@ $show_cluster_ingestion$
     $per_process_split_by$
 $per_process_attributes$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -783,7 +773,6 @@ $per_process_attributes$</query>
     <panel>
       <title>cmmaster_jobs</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search>
           <query>$metrics$ sourcetype=splunkd host=$selected_host$ TERM(group=jobs) TERM(name=cmmaster) 
     $show_metrics$ 
@@ -802,6 +791,7 @@ $per_process_attributes$</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">line</option>
         <option name="charting.chart.overlayFields">serviced</option>
@@ -813,7 +803,6 @@ $per_process_attributes$</query>
     <panel>
       <title>cmmaster_executor</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search>
           <query>$metrics$ CASE(Metrics) host=$selected_host$ TERM(name=cmmaster_executor) NOT(TERM(jobs_added=0,) TERM(jobs_finished=0,) TERM(current_size=0,) TERM(smallest_size=0,) TERM(largest_size=0) TERM(max_size=0)) 
 $show_metrics$
@@ -827,6 +816,7 @@ $show_metrics$
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.nullValueMode">gaps</option>
         <option name="height">377</option>
@@ -838,7 +828,6 @@ $show_metrics$
     <panel>
       <title>Cluster master service subtask seconds</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cmmaster_service">
           <query>| where isnotnull(service)
 | timechart $selected_span_min_60sec$ 
@@ -853,6 +842,7 @@ $show_metrics$
     avg(to_fix_summary) as to_fix_summary
     avg(to_fix_sync) as to_fix_sync</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="height">358</option>
@@ -862,7 +852,6 @@ $show_metrics$
     <panel>
       <title>Cluster master service subtask count</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cmmaster_service">
           <query>| where isnotnull(count)
 | timechart $selected_span_min_60sec$ 
@@ -877,6 +866,7 @@ $show_metrics$
     avg(to_fix_summary) as to_fix_summary
     avg(to_fix_sync) as to_fix_sync</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
         <option name="height">362</option>
@@ -888,7 +878,6 @@ $show_metrics$
     <panel>
       <title>cmmaster_endpoints</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search>
           <query>$metrics$ CASE(Metrics) CASE(Metrics) host=$selected_host$ TERM(name=cmmaster_endpoints) TERM(group=subtask_seconds) 
     $show_metrics$ 
@@ -903,6 +892,7 @@ avg(add_target) as add_target
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY.scale">linear</option>
         <option name="charting.chart">line</option>
         <option name="height">341</option>
@@ -912,7 +902,6 @@ avg(add_target) as add_target
     <panel>
       <title>cmmaster_servicejobs</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search>
           <query>$metrics$ CASE(Metrics) CASE(Metrics) host=$selected_host$ TERM(group=cmmaster_servicejobs) NOT(TERM(serviced=0) AND TERM(current_size=0))
 $show_metrics$
@@ -920,6 +909,7 @@ $show_metrics$
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">avg(current_size)</option>
         <option name="height">329</option>
@@ -968,7 +958,7 @@ $show_metrics$
   </row>
   <row depends="$show_timeline$">
     <panel>
-      <title>Rolling restart sequence for $selected_stack$</title>
+      <title>Rolling restart sequence for $selected_stack$ $selected_reason$</title>
       <viz type="timeline_app.timeline">
         <title>Click on duration to get information about the activities of the indexers during that period</title>
         <search base="rr_base" id="rr_durations">
@@ -992,7 +982,7 @@ $show_metrics$
           <set token="selected_latest">$latest$</set>
           <eval token="selected_earliest">strftime($earliest$,"%m/%d/%Y:%H:%M:%S")</eval>
           <eval token="selected_latest">strftime($latest$,"%m/%d/%Y:%H:%M:%S")</eval>
-          <set token="selected_reason">$click.value$</set>
+          <set token="selected_reason">$row.label$</set>
           <link target="_blank">search?q=$splunkd$ earliest=$selected_earliest$ latest=$selected_latest$ host=$row.peer_name$&amp;earliest=$earliest$&amp;latest=$latest$</link>
         </drilldown>
       </viz>
@@ -1042,13 +1032,13 @@ $show_metrics$
         <default>*</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cmslave_adding">
           <query>| where isnotnull(baseGen)
 | table baseGen addType reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms add_peer_network_ms total_time_ms
 | search addType=$selected_add_type$
 | sort - baseGen</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">total_time_ms</option>
         <option name="charting.chart.stackMode">stacked</option>
@@ -1063,7 +1053,6 @@ $show_metrics$
     <panel>
       <title>Batch adding rates per indexer $total_addpeer_batches$</title>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cmslave_adding">
           <query>| stats max(target) as batches 
     max(add_peer_network_ms) as total_time by host
@@ -1077,6 +1066,7 @@ $show_metrics$
             <set token="total_addpeer_batches">$row._total_batches$</set>
           </progress>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY.minimumNumber">0</option>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.axisY2.minimumNumber">0</option>
@@ -1099,7 +1089,6 @@ $show_metrics$
         <default>| table _time current | rename current as progress</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cmslave_adding">
           <query>| appendpipe 
     [| where isnotnull(current) 
@@ -1117,6 +1106,7 @@ $show_metrics$
             <eval token="total_batches">$result._total_batches$</eval>
           </progress>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">add_peer_network_ms</option>
@@ -1238,11 +1228,11 @@ $show_metrics$
     <panel>
       <chart>
         <title>Setting primaries</title>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="primaries_base">
           <query>
 | timechart $selected_span_min_1sec$ count by reason</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <selection>
           <set token="primaries_latest">$end$</set>
           <set token="primaries_earliest">$start$</set>
@@ -1266,11 +1256,11 @@ $show_metrics$
         <default>peer_name</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="primaries_base">
           <query>| search _time&gt;$primaries_earliest$ AND _time&lt;$primaries_latest$
 | timechart limit=0 fixedrange=false span=$primaries_span$sec count by $splitby_primaries$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -1301,11 +1291,11 @@ $show_metrics$
         <default>count</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="tstats_event_delay">
           <query>$selected_x_axis_delay$
 | timechart limit=30 $selected_span_min_30sec$ max($selected_y_axis_delay$) by source</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">all</option>
@@ -1365,7 +1355,6 @@ $show_metrics$
         </search>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="per_series_thruput_filtered">
           <done>
             <set token="finished_per_series_thruput">| noop</set>
@@ -1374,6 +1363,7 @@ $show_metrics$
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">all_data</option>
@@ -1454,7 +1444,6 @@ $show_metrics$
         <default>*</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="indexer_queues">
           <query>     
 | search host=$selected_blocking_indexer$
@@ -1470,6 +1459,7 @@ $show_metrics$
     count(eval(name="splunktcpin" AND blocked="true")) as splunktcpin
     count(eval(name="tcpin_cooked_pqueue" AND blocked="true")) as tcpin_cooked_pqueue</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.enabled">1</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">current_buffer,total_buffer</option>
@@ -1540,7 +1530,6 @@ $show_metrics$
         <default>host</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cluster_thruput">
           <query>
 | search host=$selected_thruput_indexer$ AND name=$selected_thruput$
@@ -1552,6 +1541,7 @@ $show_metrics$
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2),
     *='*'+if(isnotnull('&lt;&lt;FIELD&gt;&gt;'),'&lt;&lt;FIELD&gt;&gt;',0)]</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.axisY2.enabled">0</option>
         <option name="charting.chart">column</option>
         <option name="charting.chart.overlayFields">*</option>
@@ -1605,11 +1595,11 @@ $show_metrics$
         <default>by host</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_down_jobs">
           <query>| search host=$selected_cachemgr_down_indexer$ AND index=$selected_cachemgr_down_index$
 | timechart limit=50 $selected_span_min_30sec$  sum(count) $selected_cachemgr_down_splitby$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -1654,11 +1644,11 @@ $show_metrics$
         <default>by host</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_up_jobs">
           <query>| search host=$selected_cachemgr_up_indexer$ AND index=$selected_cachemgr_up_index$
 | timechart limit=50 sum(count) $selected_span_min_30sec$  $selected_cachemgr_up_splitby$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -1693,11 +1683,11 @@ $show_metrics$
         <default>by field</default>
       </input>
       <chart>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_bucket">
           <query>| search $selected_bucket_fields$
 | timechart limit=0 $selected_span_min_30sec$ sum(count) $selected_cachemgr_bucket_splitby$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
@@ -1740,11 +1730,11 @@ $show_metrics$
       </input>
       <chart>
         <title>$cmmaster_executor_down_fields$</title>
-        <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_executor_jobs">
           <query>| search name="cachemgr_down" AND $cmmaster_executor_down_fields$ AND host=$selected_cachemgr_executor_down_host$
 | timechart limit=30 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_down_splitby$</query>
         </search>
+        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="refresh.display">progressbar</option>
       </chart>
@@ -1781,11 +1771,11 @@ $show_metrics$
         <fieldForValue>host</fieldForValue>
       </input>
       <chart>
+        <search base="annotations_filtered" type="annotation"></search>
         <search base="cachemgr_executor_jobs">
           <query>| search name="cachemgr_up" AND $cmmaster_executor_up_fields$ AND host=$selected_cachemgr_executor_up_host$
 | timechart limit=30 $selected_span_min_30sec$ avg(count) $selected_cachemgr_executor_up_splitby$</query>
         </search>
-        <search base="annotations_filtered" type="annotation"></search>
         <option name="charting.chart">column</option>
         <option name="charting.chart.nullValueMode">gaps</option>
         <option name="charting.drilldown">all</option>
