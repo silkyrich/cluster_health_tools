@@ -274,16 +274,7 @@
     role=if(searchmatch("host=idx*"),"indexer","cluster master")
 | rex field=host "^[^\.]+\.(?&lt;stack&gt;[^\.]+)\."     
 | table _time host stack role state
-| join stack 
-    [| inputlookup aws_inventory 
-    | where stack!="null" 
-    | stats count by instance_type stack region role cloudworksenv
-    | lookup aws_instance_lookup.csv api_name as instance_type region 
-    | stats
-        sum(eval(price_per_hour_reserved*count)) as cost_per_hour
-        by stack cloudworksenv
-    | eval cost_per_hour=round(cost_per_hour,1)
-    | sort - cost_per_hour ]</query>
+</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
