@@ -1,11 +1,10 @@
 <form>
-  <label>Fleetwide Cluster master activites</label>
+  <label>Cluster master activites (Splunk Cloud only)</label>
   <init>
     <set token="splunkd">index=_internal sourcetype=splunkd</set>
-    <set token="crash">index=_internal sourcetype=splunkd</set>
+    <set token="crash">index=_internal sourcetype=splunkd_crash_log</set>
     <set token="introspection">index=_introspection component::hostwide</set>
   </init>
-  
   <search base="cm_events" id="cm_versions">
     <query>| eval search="(host=".host." earliest=".(_time-30)." latest=".(_time+30).")"
 | stats values(search) as search
@@ -264,7 +263,7 @@
     ($splunkd$ host=idx*.$selected_stack$.* 
     (CASE(ServerConfig) CASE(My) CASE(is) CASE(GUID)) newly)
     OR 
-    ($crash$ sourcetype=splunkd_crash_log host=c0m1*.$selected_stack$.* OR host=idx*.$selected_stack$.*
+    ($crash$ host=c0m1*.$selected_stack$.* OR host=idx*.$selected_stack$.*
      build CASE(Received) TERM(fatal) signal splunkd NOT(TERM(renamed:))) 
 | eval state=case(
     searchmatch("Newly"),"new", 
@@ -290,24 +289,6 @@
         </search>
         <option name="count">10</option>
         <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </table>
-    </panel>
-  </row>
-  <row depends="$hide_me$">
-    <panel>
-      <title>cm_events with versions</title>
-      <table>
-        <search base="cm_events_transaction" id="cm_events_transaction_with_versions">
-          <query>| break search for now
-| eval join_time=_time 
-| bin span=1min join_time 
-| join join_time host type=left 
-    [ search $introspection$ component::hostwide $hosts_to_search$ 
-    | eval join_time=_time 
-    | bin join_time span=1min 
-    | table _time host join_time data.splunk_version ]</query>
-        </search>
         <option name="refresh.display">progressbar</option>
       </table>
     </panel>
