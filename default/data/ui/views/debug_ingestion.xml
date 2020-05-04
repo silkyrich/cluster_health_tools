@@ -1549,9 +1549,9 @@ $per_process_attributes$</query>
       </html>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_host$">
     <panel>
-      <title>Health of metrics firing</title>
+      <title>Frequency of metrics execution</title>
       <input type="dropdown" token="delay_metric">
         <label>Show delay metric</label>
         <choice value="| where count != 1 AND count != max_count | table _time max_delay min_delay">Event delay</choice>
@@ -1575,9 +1575,9 @@ $per_process_attributes$</query>
       </chart>
     </panel>
   </row>
-  <row>
+  <row depends="$selected_host$">
     <panel>
-      <title>Health of splunkd.log monitoring</title>
+      <title>Delay of splunkd.log</title>
       <input type="dropdown" token="delay_metric_2">
         <label>Show delay metric</label>
         <choice value="sum(count)">count</choice>
