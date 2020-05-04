@@ -128,7 +128,7 @@
           <eval token="selected_span_min_10sec">if($selected_span_min_1sec$&lt;10,10,$selected_span_min_1sec$)</eval>
           <eval token="selected_span_min_30sec">if($selected_span_min_1sec$&lt;31,31,$selected_span_min_1sec$)</eval>
           <eval token="selected_span_min_60sec">if($selected_span_min_1sec$&lt;60,60,$selected_span_min_1sec$)</eval>
-          <link target="_blank">cluster_master_activities?form.resolution=$resolution$&amp;form.duration_seconds=$drilldown_duration$&amp;form.selected_span_min_1sec=$selected_span_min_1sec$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_span_min_30sec=$selected_span_min_30sec$&amp;form.selected_span_min_60sec=$selected_span_min_60sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$</link>
+          <link target="_blank">cluster_master_performance?form.resolution=$resolution$&amp;form.duration_seconds=$drilldown_duration$&amp;form.selected_span_min_1sec=$selected_span_min_1sec$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_span_min_30sec=$selected_span_min_30sec$&amp;form.selected_span_min_60sec=$selected_span_min_60sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$</link>
         </drilldown>
   ]]>
   </html>
@@ -190,7 +190,7 @@
           <eval token="selected_span_min_10sec">if($selected_span_min_1sec$&lt;10,10,$selected_span_min_1sec$)</eval>
           <eval token="selected_span_min_30sec">if($selected_span_min_1sec$&lt;31,31,$selected_span_min_1sec$)</eval>
           <eval token="selected_span_min_60sec">if($selected_span_min_1sec$&lt;60,60,$selected_span_min_1sec$)</eval>
-          <link target="_blank">cluster_master_activities?form.resolution=$resolution$&amp;form.duration_seconds=$drilldown_duration$&amp;form.selected_span_min_1sec=$selected_span_min_1sec$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_span_min_30sec=$selected_span_min_30sec$&amp;form.selected_span_min_60sec=$selected_span_min_60sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$</link>
+          <link target="_blank">cluster_master_performance?form.resolution=$resolution$&amp;form.duration_seconds=$drilldown_duration$&amp;form.selected_span_min_1sec=$selected_span_min_1sec$&amp;form.selected_span_min_10sec=$selected_span_min_10sec$&amp;form.selected_span_min_30sec=$selected_span_min_30sec$&amp;form.selected_span_min_60sec=$selected_span_min_60sec$&amp;form.selected_stack=$drilldown_stack$&amp;form.selected_host=$drilldown_host$&amp;form.time.earliest=$drilldown_earliest$&amp;form.time.latest=$drilldown_latest$</link>
         </drilldown>
       </table>
     </panel>
