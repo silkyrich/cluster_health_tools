@@ -1,10 +1,11 @@
 <form>
-  <label>Cluster master performance</label>
+  <label>Cluster master performance local (Splunk Cloud only)</label>
   <init>
-    <set token="splunkd">(index=customer_splunkd) sourcetype=splunkd</set>
-    <set token="metrics">(index=customer_metrics) (sourcetype=metrics OR sourcetype=splunkd) CASE(Metrics)</set>
-    <set token="introspection">index=customer_introspection</set>
-    <set token="internal_throughput">index=skynet_uf</set>
+    <set token="crash">(index=_internal) sourcetype=splunkd_crash_log</set>
+    <set token="splunkd">(index=_internal) sourcetype=splunkd</set>
+    <set token="metrics">(index=_internal) (sourcetype=metrics OR sourcetype=splunkd) CASE(Metrics)</set>
+    <set token="introspection">index=_introspection</set>
+    <set token="internal_throughput">index=_internal</set>
     <set token="break_search"></set>
   </init>
   <search id="introspection_resource_usage_host">
@@ -64,15 +65,6 @@
         where $introspection$ component::perprocess host=$selected_host$ data.process=splunkd
         by host data.process_type _time span=1s 
         $show_resource_usage$ </query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
-  <search id="cmslave_adding">
-    <query>$splunkd$ sourcetype=splunkd component=CMSlave TERM(addType=*) $indexers_IN$
-$show_generations$
-| eval delay=_indextime-_time
-| rex field=_raw "SN=(?&lt;current&gt;\d+)/(?&lt;target&gt;\d+)" 
-| table _time host current target add_peer_network_ms baseGen reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms total_time_ms addType delay source</query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
@@ -270,17 +262,6 @@ $show_cluster_ingestion$
 
 </query>
   </search>
-  <search id="annotations_base">
-    <query>$splunkd$ host=*.$selected_stack$.splunkcloud.com 
-    (TERM(CMMaster) TERM(maintenance) (TERM(Setting) OR TERM(Disabling))) OR 
-    (TERM(ServerConfig) TERM(My) TERM(is) TERM(GUID)) OR 
-    (TERM(Shutting) TERM(down) TERM(splunkd)) OR 
-    (rolling restart CASE(CMMaster) finished OR Starting) 
-    | table _time host _raw
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-  </search>
   <search id="rr_base">
     <query>$splunkd$ host=$selected_host$ component=CMPeer CASE(CMPeer) NOT(bid=*) TERM(from=*) TERM(to=*) 
   $show_timeline$
@@ -315,24 +296,6 @@ $show_cluster_ingestion$
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
   </search>
-  <search base="annotations_base" id="annotations_classified">
-    <query>| eval annotation_category=case(
-    searchmatch("My new GUID is AND host=c0m1*"),"New cluster master", 
-    searchmatch("rolling restart CMMaster finished"),"RR finished", 
-    searchmatch("rolling restart CMMaster starting"),"RR started", 
-    searchmatch("My GUID is AND host=c0m1*"),"Restarted CM", 
-    searchmatch("My new GUID is AND host=idx*"),"New peer", 
-    searchmatch("My GUID is AND host=idx*"),"Restarted peer", 
-    searchmatch("Shutting down splunkd AND host=com1*"),"Shutdown CM", 
-    searchmatch("Shutting down splunkd AND host=idx*"),"Shutdown peer",
-    searchmatch("Maintenance Disabling AND host=c0m1*"),"Maintenance mode off",
-    searchmatch("Maintenance Setting AND host=c0m1*"),"Maintenance mode on"),
-    annotation_label=host 
-| table _time host anno*</query>
-  </search>
-  <search base="annotations_classified" id="annotations_filtered">
-    <query>| search $annotations_host_filter$ AND $annotations_category_filter$</query>
-  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Period to display</label>
@@ -363,19 +326,19 @@ $show_cluster_ingestion$
         <latest>now</latest>
       </search>
       <change>
-        <set token="form.selected_host">c0m1*.$selected_stack$.splunkcloud.com</set>
+        <set token="form.selected_host">c0m1*.$selected_stack$.*</set>
       </change>
     </input>
     <input type="dropdown" token="resolution">
       <label>Chart resolution</label>
       <default>200</default>
       <change>
-             <condition match="isnotnull($resolution$)">
-        <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
-        <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
-        <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
-        <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
-        <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
+        <condition match="isnotnull($resolution$)">
+          <eval token="form.duration_seconds">ceiling(relative_time(now(), $time.latest$)-relative_time(now(), $time.earliest$))</eval>
+          <eval token="form.selected_span_min_1sec">floor($form.duration_seconds$/$resolution$)</eval>
+          <eval token="form.selected_span_min_10sec">if($form.selected_span_min_1sec$&lt;10,10,$form.selected_span_min_1sec$)</eval>
+          <eval token="form.selected_span_min_30sec">if($form.selected_span_min_1sec$&lt;31,31,$form.selected_span_min_1sec$)</eval>
+          <eval token="form.selected_span_min_60sec">if($form.selected_span_min_1sec$&lt;60,60,$form.selected_span_min_1sec$)</eval>
         </condition>
       </change>
       <choice value="100">100</choice>
@@ -519,6 +482,17 @@ $show_cluster_ingestion$
         <change>
           <condition value="| error">
             <unset token="show_cachemgr"></unset>
+          </condition>
+        </change>
+      </input>
+      <input type="radio" token="show_annotations">
+        <label>Show annotations</label>
+        <choice value="| noop">Display</choice>
+        <choice value="| error">Hide</choice>
+        <default>| error</default>
+        <change>
+          <condition value="| error">
+            <unset token="show_annotations"></unset>
           </condition>
         </change>
       </input>
@@ -958,7 +932,7 @@ $show_metrics$
   </row>
   <row depends="$show_timeline$">
     <panel>
-      <title>Rolling restart sequence for $selected_stack$ $selected_reason$</title>
+      <title>Adding sequence for $selected_stack$</title>
       <viz type="timeline_app.timeline">
         <title>Click on duration to get information about the activities of the indexers during that period</title>
         <search base="rr_base" id="rr_durations">
@@ -1019,6 +993,22 @@ $show_metrics$
       <html>
         <h1 style="text-align:center">Generation performance</h1>
       </html>
+    </panel>
+  </row>
+  <row depends="$show_generations$">
+    <panel>
+      <title>BASE search</title>
+      <table>
+        <search id="cmslave_adding">
+          <query>$splunkd$ sourcetype=splunkd component=CMSlave TERM(addType=*) $indexers_IN$
+$show_generations$
+| eval delay=_indextime-_time
+| rex field=_raw "SN=(?&lt;current&gt;\d+)/(?&lt;target&gt;\d+)" 
+| table _time host current target add_peer_network_ms baseGen reset_masks_ms generate_csv_ms add_peer_sleep_ms indexing_ready_network_ms indexing_ready_sleep_ms total_time_ms addType delay source</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+      </table>
     </panel>
   </row>
   <row depends="$show_generations$">
@@ -1781,6 +1771,67 @@ $show_metrics$
         <option name="charting.drilldown">all</option>
         <option name="refresh.display">progressbar</option>
       </chart>
+    </panel>
+  </row>
+  <row depends="$show_annotations$">
+    <panel>
+      <html>
+        <h1 style="text-align:center">Annotation searches</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$show_annotations$">
+    <panel>
+      <title>Base search for annotations</title>
+      <table>
+        <search id="annotations_base">
+          <query>($splunkd$ host=*.$selected_stack$.* 
+    (CASE(ServerConfig) CASE(My) CASE(is) CASE(GUID)) OR 
+    (CASE(Shutting) down splunkd) OR 
+    (rolling restart CASE(CMMaster) finished OR Starting))
+    OR 
+    ($splunkd$ host=*.$selected_stack$.* 
+    (CASE(ServerConfig) CASE(My) CASE(is) CASE(GUID)) CASE(Newly))
+    OR 
+    ($crash$  host=c0m1*.$selected_stack$.* OR host=idx*.$selected_stack$.*  build CASE(Received) TERM(fatal) signal splunkd NOT(TERM(renamed:))) 
+| table _time host _raw</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_annotations$">
+    <panel>
+      <title>Annotations classfied</title>
+      <table>
+        <search base="annotations_base" id="annotations_classified">
+          <query>| eval annotation_category=case(
+    searchmatch("My new GUID is AND host=c0m1*"),"New cluster master", 
+    searchmatch("rolling restart CMMaster finished"),"RR finished", 
+    searchmatch("rolling restart CMMaster starting"),"RR started", 
+    searchmatch("My GUID is AND host=c0m1*"),"Restarted CM", 
+    searchmatch("My new GUID is AND host=idx*"),"New peer", 
+    searchmatch("My GUID is AND host=idx*"),"Restarted peer", 
+    searchmatch("Shutting down splunkd AND host=com1*"),"Shutdown CM", 
+    searchmatch("Shutting down splunkd AND host=idx*"),"Shutdown peer",
+    searchmatch("Maintenance Disabling AND host=c0m1*"),"Maintenance mode off",
+    searchmatch("Maintenance Setting AND host=c0m1*"),"Maintenance mode on"),
+    annotation_label=host 
+| table _time host anno*</query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_annotations$">
+    <panel>
+      <title>Annotations filtered</title>
+      <table>
+        <search base="annotations_classified" id="annotations_filtered">
+          <query>| search $annotations_host_filter$ AND $annotations_category_filter$</query>
+        </search>
+      </table>
     </panel>
   </row>
 </form>
