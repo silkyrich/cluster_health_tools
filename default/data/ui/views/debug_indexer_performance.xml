@@ -60,21 +60,6 @@ $overlay_option$</query>
     <earliest>0</earliest>
     <latest></latest>
   </search>
-  <search id="event_delay">
-    <query>
-      
-      
-      
-      $_internal$ NOT source=remote_searches.log $selected_targets$ (latest=$time.latest$ earliest=$time.earliest$) OR (_index_latest=$selection_latest$ _index_earliest=$selection_earliest$)
-| eval _time=floor(_time), indexing_delay=_indextime-_time 
-| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
-| eval _time=_indextime     
-          | table *
-</query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <sampleRatio>$sample_ratio$</sampleRatio>
-  </search>
   <search id="blocking">
     <query>$_internal$ $selected_targets$ TERM(blocked=true) sourcetype=splunkd 
 | rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
@@ -84,6 +69,15 @@ $overlay_option$</query>
     <latest>$selection_latest$</latest>
     <sampleRatio>1</sampleRatio>
   </search>
+  <search id="event_delay">
+    <query>| tstats max(_indextime) as indextime where $_internal$ source=*splunkd.log* $selected_targets$ (latest=$time.latest$ earliest=$time.earliest$) by _time host span=1s
+| eval _time=floor(_time), indexing_delay=indextime-_time 
+| rex field=host "^(?&lt;short_name&gt;[^\.]+)" 
+| table _time indextime short_name indexing_delay</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+    <sampleRatio>10</sampleRatio>
+  </search>
   <fieldset submitButton="false">
     <input type="multiselect" token="form.selected_targets">
       <label>1. Select CM, site or hosts</label>
@@ -91,29 +85,31 @@ $overlay_option$</query>
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search id="cluster_membership">
-        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now 
+        <query>$_internal$ sourcetype=splunkd CMMaster status=success site* earliest=-4hr latest=now source=*splunkd.log*
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
-| eval cluster_master=host 
-| fields + site_pair cluster_master 
-| fields - _* 
-| dedup site_pair 
-| mvexpand site_pair 
-| dedup site_pair 
-| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
-| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
+|  rex field=_raw "peer_name=(?&lt;single_site&gt;[^\s]+)"
+|  eval site_pair=if(isnull(site_pair),"site,".single_site,site_pair)
+| eval cluster_master=host
+| fields + site_pair cluster_master
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site[^,]*),\"?(?&lt;indexer&gt;.*)"
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)"
 | eval search="host=".indexer, host_count=1
-| appendpipe 
-    [| stats values(indexer) as indexers by site_id short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+| appendpipe
+    [| stats values(indexer) as indexers by site_id short_name_cm
+    | eval host_count=mvcount(indexers),
+        search="host IN  (".mvjoin(mvfilter(indexers!=""), ", ").")"
     | eval label=site_id." (".host_count." idxs @ ".short_name_cm
-        ] 
-| appendpipe 
-    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+        ]
+| appendpipe
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm
+    | eval host_count=mvcount(indexers),
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")"
     | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
-| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)"
 | eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
 | stats max(host_count) as count by label search
 | sort 0 - count</query>
@@ -290,21 +286,17 @@ $overlay_option$</query>
   </row>
   <row>
     <panel>
-      <input type="dropdown" token="selected_log_file">
-        <label>Select internal log file</label>
-        <choice value="*metrics.log">metrics.log</choice>
-        <choice value="*scheduler.log">scheduler.log</choice>
-        <choice value="*splunkd.log">splunkd.log</choice>
-        <choice value="*splunkd_access.log">splunkd_access.log</choice>
-        <choice value="*">*</choice>
-        <default>*</default>
+      <input type="dropdown" token="time_or_indextime">
+        <label>Select x-axis</label>
+        <choice value="| noop">_time</choice>
+        <choice value="| eval _time=indextime">_indextime</choice>
+        <default>| noop</default>
       </input>
       <chart>
         <title>Indexing delay of the indexers internal logs, should be about 2-5 seconds when healthy</title>
         <search base="event_delay">
-          <query>
-| search source=$selected_log_file$ 
-| timechart fixedrange=false limit=0 span=$seconds_for_bin_1$
+          <query>$time_or_indextime$
+| timechart limit=0 span=$seconds_for_bin_1$
     max(indexing_delay) by short_name</query>
         </search>
         <search base="annotation" type="annotation"></search>
