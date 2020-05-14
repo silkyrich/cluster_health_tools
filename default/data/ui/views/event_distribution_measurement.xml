@@ -16,29 +16,31 @@
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
-        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now 
+        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now source=*splunkd.log*
 | rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
-| eval cluster_master=host 
-| fields + site_pair cluster_master 
-| fields - _* 
-| dedup site_pair 
-| mvexpand site_pair 
-| dedup site_pair 
-| rex field=site_pair "^(?&lt;site_id&gt;site\d+),\"?(?&lt;indexer&gt;.*)" 
-| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)" 
-| eval search="splunk_server=".indexer, host_count=1
-| appendpipe 
-    [| stats values(indexer) as indexers by site_id short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="splunk_server IN  (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+|  rex field=_raw "peer_name=(?&lt;single_site&gt;[^\s]+)"
+|  eval site_pair=if(isnull(site_pair),"site,".single_site,site_pair)
+| eval cluster_master=host
+| fields + site_pair cluster_master
+| fields - _*
+| dedup site_pair
+| mvexpand site_pair
+| dedup site_pair
+| rex field=site_pair "^(?&lt;site_id&gt;site[^,]*),\"?(?&lt;indexer&gt;.*)"
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)"
+| eval search="host=".indexer, host_count=1
+| appendpipe
+    [| stats values(indexer) as indexers by site_id short_name_cm
+    | eval host_count=mvcount(indexers),
+        search="host IN  (".mvjoin(mvfilter(indexers!=""), ", ").")"
     | eval label=site_id." (".host_count." idxs @ ".short_name_cm
-        ] 
-| appendpipe 
-    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm 
-    | eval host_count=mvcount(indexers), 
-        search="splunk_server IN (".mvjoin(mvfilter(indexers!=""), ", ").")" 
+        ]
+| appendpipe
+    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm
+    | eval host_count=mvcount(indexers),
+        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")"
     | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
-| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)" 
+| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)"
 | eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
 | stats max(host_count) as count by label search
 | sort 0 - count</query>
@@ -178,7 +180,6 @@
         <search base="baseSearch">
           <query>| stats count by index | eval label=index." (".count.")"</query>
         </search>
-
         <choice value="*">*</choice>
         <prefix>(</prefix>
         <suffix>)</suffix>
@@ -262,5 +263,4 @@
       </chart>
     </panel>
   </row>
-
 </form>
