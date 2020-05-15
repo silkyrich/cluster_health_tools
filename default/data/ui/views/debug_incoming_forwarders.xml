@@ -1,5 +1,5 @@
 <form>
-  <label>Debug Incomming forwarders</label>
+  <label>Debug Incoming forwarders</label>
   <init>
     <set token="seconds_for_bin">62</set>
     <set token="metrics">(index=core_splunk_internal OR index=_internal) Metrics (sourcetype=splunkd OR sourcetype=metrics)</set>
@@ -527,7 +527,7 @@ Select ranges in the chart and the table below will be filtered. For instance if
       <title>Drill down to intermediate forwarders</title>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_incoming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$hosts_drilldown$">Reopen this dashboard with selected hosts as targets</a>
         </h2>
       </html>
     </panel>
