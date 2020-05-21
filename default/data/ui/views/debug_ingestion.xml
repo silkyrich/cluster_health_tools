@@ -2,12 +2,28 @@
   <label>Debug Ingestion</label>
   <description>Another groovy debug dashboard from Richard Morgan</description>
   <init>
-    <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd</set>
-    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) METRICS</set>
+    <set token="splunkd">(index=_internal OR index=core_splunk_internal) sourcetype=splunkd source=*splunkd.log*</set>
+    <set token="metrics">(index=_internal OR index=core_splunk_internal) (sourcetype=metrics OR sourcetype=splunkd) source=*metrics.log*</set>
     <set token="introspection">index=_introspection</set>
     <set token="series_thruput_max">0</set>
     <eval token="series_thruput_min">now()</eval>
   </init>
+  <search id="per_regex_series_thruput">
+    <query>
+      $metrics$ TERM(group=per_host_regex_cpu) OR TERM(group=per_source_regex_cpu) OR TERM(group=per_sourcetype_regex_cpu) OR TERM(group=per_index_regex_cpu) host=$selected_host$
+| fillnull ingest_pipe 0
+| table _time host group ingest_pipe series cpu cpupe ev bytes bytes ev 
+    </query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+              <progress>
+            <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </progress>
+          <done>
+            <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+          </done>
+    
+  </search>
   <search id="annotation_restarts">
     <query>
 | multisearch 
@@ -276,6 +292,18 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="tcp_incomming.destPort">$result._destPort$</set>
       <set token="tcp_incomming.sourcePort">$result._sourcePort$</set>
     </progress>
+  </search>
+  <search id="per_regex_series_thruput_filtered" base="per_regex_series_thruput">
+    <done>
+      <set token="finished_regex_per_series_thruput">| noop</set>
+    </done>
+    <query>| search group=$selected_regex_group$ ingest_pipe=$filter_pipelines$ 
+| bin _time $span_min_30s$ 
+| stats $selected_regex_per_series_function$(cpu) as cpu
+    $selected_regex_per_series_function$(cpupe) as cpupe
+    $selected_regex_per_series_function$(bytes) as bytes
+    $selected_regex_per_series_function$(ev) as ev
+    by _time series host</query>
   </search>
   <search base="tcp_in_hostname">
     <query>| stats values(host) as hosts
@@ -569,6 +597,13 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <label>duration_seconds</label>
     </input>
   </fieldset>
+  <row>
+    <panel>
+      <table>
+        <search base="regex_metrics"></search>
+      </table>
+    </panel>
+  </row>
   <row rejects="$selected_host$">
     <panel>
       <title></title>
@@ -1087,7 +1122,7 @@ $per_process_attributes$</query>
           <done>
             <set token="finished_per_series_thruput">| noop</set>
           </done>
-          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as kb by series
+          <query>| timechart $span_min_30s$ limit=30 $selected_per_series_function$($selected_per_series_variable$) as $selected_per_series_variable$ by series
 | foreach * 
     [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
         </search>
@@ -1255,6 +1290,68 @@ $per_process_attributes$</query>
           <link target="_blank">search?earliest=$time.earliest$&amp;latest=$time.latest$&amp;q=$row._url$</link>
         </drilldown>
       </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$" rejects="$show_regex_panel$">
+    <panel>
+      <title>Regex performance ...</title>
+      <html>
+        <h1 style="text-align:center">Please set regex_cpu_profiling = TRUE in limits.conf to enable the logging for this panel</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$selected_host$,$show_regex_panel$">
+    <panel>
+      <title>Regex performance for $selected_group$ on $filter_pipelines$ on $selected_host$</title>
+      <input type="dropdown" token="selected_regex_group">
+        <label>Select series</label>
+        <choice value="per_index_regex_cpu">index</choice>
+        <choice value="per_host_regex_cpu">host</choice>
+        <choice value="per_source_regex_cpu">source</choice>
+        <choice value="per_sourcetype_regex_cpu">sourcetype</choice>
+        <default>per_sourcetype_regex_cpu</default>
+      </input>
+      <input type="dropdown" token="selected_regex_per_series_variable">
+        <label>Select field to show</label>
+        <choice value="cpu">cpu</choice>
+        <choice value="cpupe">cpupe</choice>
+        <choice value="ev">ev</choice>
+        <choice value="bytes">bytes</choice>
+        <default>cpu</default>
+      </input>
+      <input type="dropdown" token="selected_regex_per_series_function">
+        <label>Select aggregation function</label>
+        <choice value="avg">average</choice>
+        <choice value="median">median</choice>
+        <choice value="mean">mean</choice>
+        <choice value="stdev">standard dev</choice>
+        <choice value="per_second">per_second</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <choice value="p99">p99</choice>
+        <choice value="max">max</choice>
+        <choice value="min">min</choice>
+        <choice value="sum">sum</choice>
+        <choice value="range">range</choice>
+        <choice value="var">variance</choice>
+        <default>avg</default>
+      </input>
+      <chart>
+        <search base="per_regex_series_thruput_filtered">
+          <done>
+            <set token="finished_regex_per_series_thruput">| noop</set>
+          </done>
+          <query>| timechart $span_min_30s$ limit=30 $selected_regex_per_series_function$($selected_regex_per_series_variable$) as $selected_regex_per_series_variable$ by series
+| foreach * 
+    [| eval &lt;&lt;FIELD&gt;&gt;=round('&lt;&lt;FIELD&gt;&gt;',2)]</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">419</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
     </panel>
   </row>
   <row depends="$selected_host$">
@@ -1469,7 +1566,9 @@ $per_process_attributes$</query>
           <query>| eval label=name."-".ingest_pipe
 | timechart $span_min_10s$ $tcp_out_buff_aggregate$($tcp_out_buff_attribute$) by label</query>
         </search>
-	      <search base="tcpout_buffer_filtered_annotation" type="annotation"><query></query></search>
+        <search base="tcpout_buffer_filtered_annotation" type="annotation">
+          <query/>
+        </search>
         <option name="charting.chart">line</option>
         <option name="refresh.display">progressbar</option>
       </chart>
