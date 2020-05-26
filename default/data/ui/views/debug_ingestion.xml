@@ -16,13 +16,12 @@
     </query>
     <earliest>$time.earliest$</earliest>
     <latest>$time.latest$</latest>
-              <progress>
-            <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </progress>
-          <done>
-            <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
-          </done>
-    
+    <progress>
+      <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+    </progress>
+    <done>
+      <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
+    </done>
   </search>
   <search id="annotation_restarts">
     <query>
@@ -277,20 +276,20 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
 | table *
 </query>
     <progress>
-      <set token="tcp_incomming.build">$result._build$</set>
-      <set token="tcp_incomming.version">$result._version$</set>
-      <set token="tcp_incomming.os">$result._os$</set>
-      <set token="tcp_incomming.arch">$result._arch$</set>
-      <set token="tcp_incomming.hostname">$result._hostname$</set>
-      <set token="tcp_incomming.guid">$result._guid$</set>
-      <set token="tcp_incomming.fwdType">$result._fwdType$</set>
-      <set token="tcp_incomming.ssl">$result._ssl$</set>
-      <set token="tcp_incomming.ack">$result._ack$</set>
-      <set token="tcp_incomming.connectionType">$result._connectionType$</set>
-      <set token="tcp_incomming.sourceHost">$result._sourceHost$</set>
-      <set token="tcp_incomming.sourceIp">$result._sourceIp$</set>
-      <set token="tcp_incomming.destPort">$result._destPort$</set>
-      <set token="tcp_incomming.sourcePort">$result._sourcePort$</set>
+      <eval token="tcp_incoming.build">mvjoin($result._build$,",")</eval>
+      <eval token="tcp_incoming.version">mvjoin($result._version$,",")</eval>
+      <eval token="tcp_incoming.os">mvjoin($result._os$,",")</eval>
+      <eval token="tcp_incoming.arch">mvjoin($result._arch$,",")</eval>
+      <eval token="tcp_incoming.hostname">mvjoin($result._hostname$,",")</eval>
+      <eval token="tcp_incoming.guid">mvjoin($result._guid$,",")</eval>
+      <eval token="tcp_incoming.fwdType">mvjoin($result._fwdType$,",")</eval>
+      <eval token="tcp_incoming.ssl">mvjoin($result._ssl$,",")</eval>
+      <eval token="tcp_incoming.ack">mvjoin($result._ack$,",")</eval>
+      <eval token="tcp_incoming.connectionType">mvjoin($result._connectionType$,",")</eval>
+      <eval token="tcp_incoming.sourceHost">mvjoin($result._sourceHost$,",")</eval>
+      <eval token="tcp_incoming.sourceIp">mvjoin($result._sourceIp$,",")</eval>
+      <eval token="tcp_incoming.destPort">mvjoin($result._destPort$,",")</eval>
+      <eval token="tcp_incoming.sourcePort">mvjoin($result._sourcePort$,",")</eval>
     </progress>
   </search>
   <search id="per_regex_series_thruput_filtered" base="per_regex_series_thruput">
@@ -315,20 +314,37 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="targets_drill_up">$result.hosts$</set>
     </progress>
   </search>
-  <search id="introspection_resource_usage_host">
+  
+  <search base="introspection_resource_usage_host">
+    <query>
+| stats
+values(_swap) as _swap
+values(_os_name) as _os_name
+values(_os_name_ext) as _os_name_ext
+values(_os_version) as _os_version
+values(_mem) as _mem
+values(_cpu_count) as _cpu_count
+values(_cpu_arch) as _cpu_arch
+values(_virtual_cpu_count) as _virtual_cpu_count
+values(_splunk_version) as _splunk_version
+values(_os_build) as _os_build
+values(_instance_guid) as _instance_guid      
+      
+    </query>
     <progress>
-      <set token="host.os_name">$result._os_name$</set>
-      <set token="host.swap">$result._swap$</set>
-      <set token="host.cpu_count">$result._cpu_count$</set>
-      <set token="host.cpu_arch">$result._cpu_arch$</set>
-      <set token="host.mem">$result._mem$</set>
-      <set token="host.virtual_cpu_count">$result._virtual_cpu_count$</set>
-      <set token="host.splunk_version">$result._splunk_version$</set>
-      <set token="host.build">$result._os_build$</set>
-      <set token="host.instance_guid">$result._instance_guid$</set>
-      <set token="host.os_version">$result._os_version$</set>
-      <set token="host.os_name_ext">$result._os_name_ext$</set>
-      <set token="host.hostwide_introspection_sid"></set>
+      <eval token="host.os_name">mvjoin($result._os_name$,",")</eval>
+      <eval token="host.swap">mvjoin($result._swap$,",")</eval>
+      <eval token="host.cpu_count">mvjoin($result._cpu_count$,",")</eval>
+      <eval token="host.cpu_arch">mvjoin($result._cpu_arch$,",")</eval>
+      <eval token="host.mem">mvjoin($result._mem$,",")</eval>
+      <eval token="host.virtual_cpu_count">mvjoin($result._virtual_cpu_count$,",")</eval>
+      <eval token="host.splunk_version">mvjoin($result._splunk_version$,",")</eval>
+      <eval token="host.build">mvjoin($result._os_build$,",")</eval>
+      <eval token="host.instance_guid">mvjoin($result._instance_guid$,",")</eval>
+      <eval token="host.os_version">mvjoin($result._os_version$,",")</eval>
+      <eval token="host.os_name_ext">mvjoin($result._os_name_ext$,",")</eval>
+      <eval token="host.hostwide_introspection_sid">$job.sid$</eval>
+      <eval token="multiple_host_warning">if(mvcount(guid)>1,"show",NULL)</eval>
     </progress>
     <done>
       <set token="host.os_name">$result._os_name$</set>
@@ -344,6 +360,8 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="host.os_name_ext">$result._os_name_ext$</set>
       <set token="host.hostwide_introspection_sid"></set>
     </done>
+  </search>
+  <search id="introspection_resource_usage_host">
     <query>| tstats
         $selected_introspection_function_host$(data.cpu_system_pct) as host_cpu_system_pct
         $selected_introspection_function_host$(data.cpu_user_pct) as host_cpu_user_pct
@@ -406,7 +424,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
     <query>| tstats 
     min(_indextime) as min_index_time 
     max(_indextime) as max_index_time 
-    count as event_count where $splunkd$ sourcetype=splunkd host=$selected_host$ 
+    count as event_count where $metrics$ sourcetype=splunkd host=$selected_host$ 
     TERM(name=thruput) (TERM(group=thruput) NOT(TERM(ingest_pipe*)) OR TERM(ingest_pipe=0)) by _time source $span_min_1s$ 
 | eval min_delay=min_index_time-_time 
 | eval max_delay=max_index_time-_time-$form.span_min_1s$
@@ -525,20 +543,20 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
         <unset token="host.os_version">$result._os_version$</unset>
         <unset token="host.os_name_ext">$result._os_name_ext$</unset>
         <unset token="host.hostwide_introspection_sid"></unset>
-        <unset token="tcp_incomming.build">$result._build$</unset>
-        <unset token="tcp_incomming.version">$result._version$</unset>
-        <unset token="tcp_incomming.os">$result._os$</unset>
-        <unset token="tcp_incomming.arch">$result._arch$</unset>
-        <unset token="tcp_incomming.hostname">$result._hostname$</unset>
-        <unset token="tcp_incomming.guid">$result._guid$</unset>
-        <unset token="tcp_incomming.fwdType">$result._fwdType$</unset>
-        <unset token="tcp_incomming.ssl">$result._ssl$</unset>
-        <unset token="tcp_incomming.ack">$result._ack$</unset>
-        <unset token="tcp_incomming.connectionType">$result._connectionType$</unset>
-        <unset token="tcp_incomming.sourceHost">$result._sourceHost$</unset>
-        <unset token="tcp_incomming.sourceIp">$result._sourceIp$</unset>
-        <unset token="tcp_incomming.destPort">$result._destPort$</unset>
-        <unset token="tcp_incomming.sourcePort">$result._sourcePort$</unset>
+        <unset token="tcp_incoming.build">$result._build$</unset>
+        <unset token="tcp_incoming.version">$result._version$</unset>
+        <unset token="tcp_incoming.os">$result._os$</unset>
+        <unset token="tcp_incoming.arch">$result._arch$</unset>
+        <unset token="tcp_incoming.hostname">$result._hostname$</unset>
+        <unset token="tcp_incoming.guid">$result._guid$</unset>
+        <unset token="tcp_incoming.fwdType">$result._fwdType$</unset>
+        <unset token="tcp_incoming.ssl">$result._ssl$</unset>
+        <unset token="tcp_incoming.ack">$result._ack$</unset>
+        <unset token="tcp_incoming.connectionType">$result._connectionType$</unset>
+        <unset token="tcp_incoming.sourceHost">$result._sourceHost$</unset>
+        <unset token="tcp_incoming.sourceIp">$result._sourceIp$</unset>
+        <unset token="tcp_incoming.destPort">$result._destPort$</unset>
+        <unset token="tcp_incoming.sourcePort">$result._sourcePort$</unset>
       </change>
     </input>
     <input type="dropdown" token="filter_pipelines">
@@ -597,13 +615,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <label>duration_seconds</label>
     </input>
   </fieldset>
-  <row>
-    <panel>
-      <table>
-        <search base="regex_metrics"></search>
-      </table>
-    </panel>
-  </row>
   <row rejects="$selected_host$">
     <panel>
       <title></title>
@@ -612,6 +623,9 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       </html>
     </panel>
   </row>
+  <row depends="$multiple_host_warning$"><panel><html><h1 style="text-align:center">WARNING MULTIPLE HOST DETECTED, DASHBOARD RESULTS CANNOT BE TRUSTED</h1></html></panel></row>
+  
+  
   <row depends="$selected_host$">
     <panel depends="$show_hostwide_panel$">
       <html>
@@ -704,51 +718,51 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
           </tr>
         <tr>
           <td>Splunk version</td>
-			    <td>$tcp_incomming.version$</td>
+			    <td>$tcp_incoming.version$</td>
 		    </tr>
         <tr>
           <td>Build</td>
-			    <td>$tcp_incomming.build$</td>
+			    <td>$tcp_incoming.build$</td>
 		    </tr>
         <tr>
           <td>CPU architecture</td>
-			    <td>$tcp_incomming.arch$</td>
+			    <td>$tcp_incoming.arch$</td>
 		    </tr>
         <tr>
           <td>Forwarder type</td>
-			    <td>$tcp_incomming.fwdType$</td>
+			    <td>$tcp_incoming.fwdType$</td>
 		    </tr>
         <tr>
           <td>ACK</td>
-			    <td>$tcp_incomming.ack$</td>
+			    <td>$tcp_incoming.ack$</td>
 	      </tr>
         <tr>
           <td>SSL configured</td>
-			    <td>$tcp_incomming.ssl$</td>
+			    <td>$tcp_incoming.ssl$</td>
 		    </tr>
         <tr>
           <td>GUID</td>
-			    <td>$tcp_incomming.guid$</td>
+			    <td>$tcp_incoming.guid$</td>
 	      </tr>
         <tr>
           <td>Connection type</td>
-    			<td>$tcp_incomming.connectionType$</td>
+    			<td>$tcp_incoming.connectionType$</td>
 		    </tr>
         <tr>
           <td>Source host</td>
-    			<td>$tcp_incomming.sourceHost$</td>
+    			<td>$tcp_incoming.sourceHost$</td>
 		    </tr>
         <tr>
           <td>Source IP</td>
-    			<td>$tcp_incomming.sourceIp$</td>
+    			<td>$tcp_incoming.sourceIp$</td>
 		    </tr>
         <tr>
           <td>Source Port</td>
-    			<td>$tcp_incomming.sourcePort$</td>
+    			<td>$tcp_incoming.sourcePort$</td>
 		    </tr>
         <tr>
           <td>Destination Port</td>
-    			<td>$tcp_incomming.destPort$</td>
+    			<td>$tcp_incoming.destPort$</td>
 		    </tr>
       </table>
 </html>
@@ -1145,7 +1159,7 @@ $per_process_attributes$</query>
     <panel>
       <title>Forwarders connecting to ...</title>
       <html>
-        <h1 style="text-align:center">No incomming forwarders detected</h1>
+        <h1 style="text-align:center">No incoming forwarders detected</h1>
       </html>
     </panel>
   </row>
@@ -1643,7 +1657,7 @@ $per_process_attributes$</query>
       <title>Drill up to view the ingestion for the targets recieving data from this host</title>
       <html>
         <h2 style="text-align:center">
-        <a target="_blank" rel="noopener noreferrer" href="debug_incomming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$targets_drill_up$">Debug ingestion for  upstream targets</a>
+        <a target="_blank" rel="noopener noreferrer" href="debug_incoming_forwarders?form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$&amp;form.selected_targets=$targets_drill_up$">Debug ingestion for  upstream targets</a>
         </h2>
       </html>
     </panel>
@@ -1686,7 +1700,7 @@ $per_process_attributes$</query>
         <default>avg(delay) as delay</default>
       </input>
       <chart>
-        <title>Multiple files and delay is bad</title>
+        <title>Multiple files and delay is a sign of excessive logging or a throughput (congestion) issue</title>
         <search base="event_delay_2">
           <query>| timechart $span_min_1s$ $delay_metric_2$ by source</query>
         </search>
