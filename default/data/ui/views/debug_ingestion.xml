@@ -290,6 +290,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <eval token="tcp_incoming.sourceIp">mvjoin($result._sourceIp$,",")</eval>
       <eval token="tcp_incoming.destPort">mvjoin($result._destPort$,",")</eval>
       <eval token="tcp_incoming.sourcePort">mvjoin($result._sourcePort$,",")</eval>
+      <eval token="multiple_host_warning">if(mvcount($result._guid$)>1,"show",NULL)</eval>
     </progress>
   </search>
   <search id="per_regex_series_thruput_filtered" base="per_regex_series_thruput">
@@ -344,7 +345,7 @@ values(_instance_guid) as _instance_guid
       <eval token="host.os_version">mvjoin($result._os_version$,",")</eval>
       <eval token="host.os_name_ext">mvjoin($result._os_name_ext$,",")</eval>
       <eval token="host.hostwide_introspection_sid">$job.sid$</eval>
-      <eval token="multiple_host_warning">if(mvcount(guid)>1,"show",NULL)</eval>
+      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)>1,"show",NULL)</eval>
     </progress>
     <done>
       <set token="host.os_name">$result._os_name$</set>
@@ -359,6 +360,7 @@ values(_instance_guid) as _instance_guid
       <set token="host.os_version">$result._os_version$</set>
       <set token="host.os_name_ext">$result._os_name_ext$</set>
       <set token="host.hostwide_introspection_sid"></set>
+      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)>1,"show",NULL)</eval>
     </done>
   </search>
   <search id="introspection_resource_usage_host">
@@ -623,7 +625,7 @@ values(_instance_guid) as _instance_guid
       </html>
     </panel>
   </row>
-  <row depends="$multiple_host_warning$"><panel><html><h1 style="text-align:center">WARNING MULTIPLE HOST DETECTED, DASHBOARD RESULTS CANNOT BE TRUSTED</h1></html></panel></row>
+  <row depends="$multiple_host_warning$"><panel><html><h1 style="text-align:center;color:red">WARNING MULTIPLE GUIDS DETECTED FOR SINGLE HOSTNAME - DASHBOARD RESULTS CANNOT BE TRUSTED</h1></html></panel></row>
   
   
   <row depends="$selected_host$">
