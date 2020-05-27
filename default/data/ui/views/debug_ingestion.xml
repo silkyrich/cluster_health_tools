@@ -23,32 +23,6 @@
       <eval token="show_regex_panel">if($job.resultCount$=0,NULL,"| noop")</eval>
     </done>
   </search>
-  <search id="annotation_restarts">
-    <query>
-| multisearch 
-    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO component=loader splunkd starting build punct::--_::._+____-___\(_\). 
-    | eval column="started" 
-    | fields + _time host column] 
-    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO ServerConfig my newly generated GUID is punct::--_::._+____-______---- 
-    | eval column="new" 
-    | fields + _time host column ] 
-    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd INFO Shutdownhandler Shutting down splunkd punct::--_::._+____-___ 
-    | eval column="shutdown" 
-    | fields + _time host column ] 
-    [ search $splunkd$ host=$selected_host$  sourcetype=splunkd_crash_log build NOT Process NOT renamed CLOCK_MONOTONIC 
-    | eval column="crash" 
-    | fields + _time host column ] 
-| transaction startswith=(column="crash" OR column="shutdown" OR column="new") endswith=(column="started") by host 
-| eval column=mvjoin(column," -&gt; "), 
-    _time=_time+duration 
-| where column!="started" 
-| eval annotation_label=host, annotation_category=column
-| table _time ann*      
-      </query>
-    <earliest>$time.earliest$</earliest>
-    <latest>$time.latest$</latest>
-    <sampleRatio>1</sampleRatio>
-  </search>
   <search id="connecting_forwarders">
     <query>$metrics$ TERM(group=tcpin_connections) host=$selected_host$ earliest=$selection_per_series_earliest$ latest=$selection_per_series_latest$
 | fillnull ingest_pipe 0
@@ -290,7 +264,7 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <eval token="tcp_incoming.sourceIp">mvjoin($result._sourceIp$,",")</eval>
       <eval token="tcp_incoming.destPort">mvjoin($result._destPort$,",")</eval>
       <eval token="tcp_incoming.sourcePort">mvjoin($result._sourcePort$,",")</eval>
-      <eval token="multiple_host_warning">if(mvcount($result._guid$)>1,"show",NULL)</eval>
+      <eval token="multiple_host_warning">if(mvcount($result._guid$)&gt;1,"show",NULL)</eval>
     </progress>
   </search>
   <search id="per_regex_series_thruput_filtered" base="per_regex_series_thruput">
@@ -315,7 +289,6 @@ $metrics$ host=$selected_host$ TERM(group=map) TERM(name=pipelineinputchannel)
       <set token="targets_drill_up">$result.hosts$</set>
     </progress>
   </search>
-  
   <search base="introspection_resource_usage_host">
     <query>
 | stats
@@ -345,7 +318,7 @@ values(_instance_guid) as _instance_guid
       <eval token="host.os_version">mvjoin($result._os_version$,",")</eval>
       <eval token="host.os_name_ext">mvjoin($result._os_name_ext$,",")</eval>
       <eval token="host.hostwide_introspection_sid">$job.sid$</eval>
-      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)>1,"show",NULL)</eval>
+      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)&gt;1,"show",NULL)</eval>
     </progress>
     <done>
       <set token="host.os_name">$result._os_name$</set>
@@ -360,7 +333,7 @@ values(_instance_guid) as _instance_guid
       <set token="host.os_version">$result._os_version$</set>
       <set token="host.os_name_ext">$result._os_name_ext$</set>
       <set token="host.hostwide_introspection_sid"></set>
-      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)>1,"show",NULL)</eval>
+      <eval token="multiple_host_warning">if(mvcount($result._instance_guid$)&gt;1,"show",NULL)</eval>
     </done>
   </search>
   <search id="introspection_resource_usage_host">
@@ -617,6 +590,50 @@ values(_instance_guid) as _instance_guid
       <label>duration_seconds</label>
     </input>
   </fieldset>
+  <row depends="$hide_me$">
+    <panel>
+      <table>
+        <search id="annotation_restarts">
+          <query>host=$selected_host$ $splunkd$ source=*splunkd.log* 
+    (CASE(ServerConfig) CASE(My) CASE(GUID))
+    OR (CASE(IndexerService) CASE(Number) of threads CASE(IndexInitExecutor))
+    OR (component=CMSlave CASE(CMSlave) TERM(event=addPeer) (TERM(Batch=1/*) OR (TERM(status=success) TERM(addType=*))))
+    OR (CASE(IndexProcessor) CASE(initClustering) CASE(Registering) with the cluster TERM(master...)) 
+    OR (loader CASE(Splunkd) starting build) 
+    OR (CASE(ShutdownHandler) complete seconds) 
+    OR (CASE(CMSlave) master sends new restart TERM(timeout=*) TERM(threshold=*)) OR (CASE(CMSlave) indexing ready loop TERM(status=success))
+    OR (CASE(CMSlave) TERM(event=SummaryRegistration) Summaries have been registered completely on slave) 
+    OR 
+    (CASE(PipelineComponent) CASE(CallbackRunnerThread) is unusually busy) 
+| rex field=_raw "IndexInitExecutor is set to (?&lt;indexInitExecutor_threads&gt;\d+)?" 
+| rex field=_raw "Batch=1/(?&lt;num_batches&gt;\d+)" 
+| rex field=_raw "Splunkd starting \(build (?&lt;build_id&gt;[0-9a-f]+)\)" 
+| rex field=_raw "GUID is (?&lt;guid&gt;[0-9A-F\-]+)" 
+| rex field=_raw "ShutdownHandler - Shutdown complete in (?&lt;shutdown_time&gt;\d+(?:\.\d+)?) seconds"     
+| rex field=_raw "CMSlave - master sends new restart timeout=(?&lt;timeout&gt;\d+) threshold=(?&lt;threshold&gt;\d+(?:\.\d+)?)" 
+| rex field=_raw " CallbackRunnerThread is unusually busy,  this may cause service delays: (?&lt;callbackrunner_error&gt;[^{]+)"
+| eval annotation_label=case(
+    searchmatch("SummaryRegistration"),"Summaries registered",
+    searchmatch("indexing ready loop"),"Indexing ready",
+    searchmatch("starting build"),"Started build ".build_id,
+    searchmatch("initClustering"),"Joining cluster",
+    isnotnull(callbackrunner_error),"CallbackRunnerThread delayed ".callbackrunner_error,
+    isnotnull(threshold),"Restart requested",
+    isnotnull(shutdown_time),"shutdown complete in ".shutdown_time."secs",
+    isnotnull(guid),if(searchmatch("newly"),"New host with","Restarted host with ").guid,
+    isnotnull(num_batches),"Adding ".num_batches." batches",
+    isnotnull(executor_threads),"indexInitExecutor_threads".indexInitExecutor_threads,
+    isnotnull(status),"Batch adding finished ".addType." in ".total_time_ms."ms"
+    ), annotation_category=component
+| table _time ann* _raw</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
   <row rejects="$selected_host$">
     <panel>
       <title></title>
@@ -625,9 +642,13 @@ values(_instance_guid) as _instance_guid
       </html>
     </panel>
   </row>
-  <row depends="$multiple_host_warning$"><panel><html><h1 style="text-align:center;color:red">WARNING MULTIPLE GUIDS DETECTED FOR SINGLE HOSTNAME - DASHBOARD RESULTS CANNOT BE TRUSTED</h1></html></panel></row>
-  
-  
+  <row depends="$multiple_host_warning$">
+    <panel>
+      <html>
+        <h1 style="text-align:center;color:red">WARNING MULTIPLE GUIDS DETECTED FOR SINGLE HOSTNAME - DASHBOARD RESULTS CANNOT BE TRUSTED</h1>
+      </html>
+    </panel>
+  </row>
   <row depends="$selected_host$">
     <panel depends="$show_hostwide_panel$">
       <html>
