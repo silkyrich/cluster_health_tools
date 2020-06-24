@@ -1084,7 +1084,7 @@ $per_process_attributes$</query>
       </input>
       <chart>
         <search base="annotation_blocking_filtered" type="annotation">
-          <query/>
+          <query>| noop</query>
         </search>
         <search base="queue">
           <query>| search ingest_pipe=$filter_pipelines$ 
