@@ -1,0 +1,348 @@
+<form>
+  <init>
+    <set token="run_again">| noop</set>
+    <set token="debug">| noop</set>
+  </init>
+  <label>Search performance evaluator</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="my_search">
+      <label>Enter search string</label>
+      <default>| noop</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+      <h1 style="text-align:center">$search$</h1>
+      <h2 style="text-align:center">Run duration = $runDuration$ seconds</h2>
+    </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+    <style>
+			
+			
+#info_table {
+  font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#info_table td, #info_table th {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+#info_table tr:nth-child(even){background-color: #f2f2f2;}
+
+#info_table tr:hover {background-color: #ddd;}
+
+#info_table th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: #4CAF50;
+  color: white;
+}
+			</style> 
+        <h1>Search specification</h1>
+        <table id="info_table">
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>SPL</td>
+			    <td>The search entered by the user</td>
+			    <td>$search$</td>
+		    </tr>
+        <tr>
+          <td>Optimized SPL</td>
+			    <td>The search post optimization</td>
+			    <td>$optimizedSearch$</td>
+		    </tr>
+        <tr>
+          <td>Keywords</td>
+			    <td>The keywords found in SPL</td>
+			    <td>$keywords$</td>
+		    </tr>
+        <tr>
+          <td>LISPY</td>
+			    <td>The query on TSIDX</td>
+			    <td>$lispy$</td>
+		    </tr>
+      </table>
+    </html>
+    </panel>
+    <panel>
+      <html>
+        <h1>Time range specification</h1>
+        <table id="info_table">
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>Relative earliest</td>
+			    <td>The "from" time range</td>
+			    <td>$earliest_time$</td>
+		    </tr>
+        <tr>
+          <td>Relative latest</td>
+			    <td>The "to" time range</td>
+			    <td>$latest_time$</td>
+		    </tr>
+        <tr>
+          <td>EPOCH earliest</td>
+			    <td>The "from" time range</td>
+			    <td>$searchEarliestTime$</td>
+		    </tr>
+        <tr>
+          <td>EPOCH latest</td>
+			    <td>The "to" time range</td>
+			    <td>$searchLatestTime$</td>
+		    </tr>	
+        <tr>
+          <td>Duration of search</td>
+			    <td>Duration in seconds</td>
+			    <td>$duration_seconds$</td>
+		    </tr>			    
+        <tr>
+          <td>Duration of search</td>
+			    <td>Duration in human terms</td>
+			    <td>$duration_str$</td>
+		    </tr>			    
+      </table>
+    
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Bucket elimintation performance</h1>
+        <table id="info_table">
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>consideredBuckets</td>
+			    <td>The number of candiate buckets (index+timerange)</td>
+			    <td>$searchTotalBucketsCount$</td>
+		    </tr>
+        <tr>
+          <td>eliminatedBuckets</td>
+			    <td>The number of buckets eliminated via bloomfilters and metadata</td>
+			    <td>$searchTotalEliminatedBucketsCount$</td>
+		    </tr>
+        <tr>
+          <td>eliminatedBuckets as pct</td>
+			    <td>The number of buckets eliminated as percentage</td>
+			    <td>$searchTotalEliminatedBucketsCount_pct$ %</td>
+		    </tr>
+      </table>
+
+  </html>
+    </panel>
+    <panel>
+      <html>
+        <h1>Post Elimintation, bucket searching performance</h1>
+        <table id="info_table">
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Value</th>
+          </tr>
+        <tr>
+          <td>scanCount</td>
+			    <td>How many events were evalulated</td>
+			    <td>$scanCount$</td>
+		    </tr>
+        <tr>
+          <td>eventCount</td>
+			    <td>How many events were returned</td>
+			    <td>$eventCount$</td>
+		    </tr>
+        <tr>
+          <td>dropCount</td>
+			    <td>How many events were filtered out by schema on the fly</td>
+			    <td>$dropCount$</td>
+		    </tr>
+        <tr>
+          <td>dropPercentage</td>
+			    <td>What percentage of events were dropped by schema on the fly</td>
+			    <td>$dropPerc$ %</td>
+		    </tr>
+
+      </table>
+
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events returned by search</title>
+      <event>
+        <title>Edit this search to get performance breakdown</title>
+        <search id="base">
+          <done>
+            <set token="sid">$job.sid$</set>
+            <eval token="sid_loose">replace($job.sid$,"_"," ")</eval>
+          </done>
+          <query>$my_search$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="list.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </event>
+    </panel>
+    <panel>
+      <table>
+        <search base="base">
+          <query>| noop</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Job inspector for search</title>
+      <table>
+        <search>
+          <query>| rest /services/search/jobs/$sid$</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <done>
+            <eval token="search">$result.search$</eval>
+            <set token="indexEarliestTime">$result.indexEarliestTime$</set>
+            <set token="indexLatestTime">$result.indexLatestTime$</set>
+            <eval token="searchEarliestTime">round($result.searchEarliestTime$)</eval>
+            <eval token="searchLatestTime">round($result.searchLatestTime$)</eval>
+            <eval token="duration_seconds">$searchLatestTime$-$searchEarliestTime$</eval>
+            <eval token="duration_str">tostring($searchLatestTime$-$searchEarliestTime$,"duration")</eval>
+            <set token="keywords">$result.keywords$</set>
+            <eval token="optimizedSearch">substr($result.optimizedSearch$, 10, len($result.optimizedSearch$))</eval>
+            <set token="searchTotalEliminatedBucketsCount">$result.searchTotalEliminatedBucketsCount$</set>
+            <set token="searchTotalBucketsCount">$result.searchTotalBucketsCount$</set>
+            <eval token="searchTotalEliminatedBucketsCount_pct">round(100*$searchTotalEliminatedBucketsCount$/$searchTotalBucketsCount$,2)</eval>
+            <set token="scanCount">$result.scanCount$</set>
+            <set token="eventCount">$result.eventCount$</set>
+            <eval token="dropCount">$result.scanCount$-$result.eventCount$</eval>
+            <eval token="dropPerc">round(100*($result.scanCount$-$result.eventCount$)/$result.scanCount$,2)</eval>
+            <set token="earliest_time">$result.request.earliest_time$</set>
+            <set token="latest_time">$result.request.latest_time$</set>
+            <eval token="false_postivies_perc">100*round($eventCount$/$scanCount$,4)</eval>
+            <set token="eliminated_buckets_equation">round(100*$searchTotalEliminatedBucketsCount$/$searchTotalBucketsCount$,2)</set>
+            <eval token="eliminated_buckets_result">round(100*$searchTotalEliminatedBucketsCount$/$searchTotalBucketsCount$,2)</eval>
+            <eval token="runDuration">round($result.runDuration$,2)</eval>
+            <eval token="total_slices">round($result.performance.command.search.rawdata.invocations$,2)</eval>
+          </done>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="debug">
+    <panel>
+      <title>Get LISPY from search log</title>
+      <table>
+        <search>
+          <query>| rest /services/search/jobs/$sid$/search.log
+| rex field=value "base lispy:(?&lt;lispy&gt;.*)"
+| fields + lispy</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <done>
+            <set token="lispy">$result.lispy$</set>
+          </done>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <search>
+          <query>| makeresults
+| eval start_time=tonumber(replace("$sid$",".*_(\d+)\.\d+.*","\1"),10)-2</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <done>
+            <set token="sid_started">$result.start_time$</set>
+            <eval token="sid_ended">$sid_started$+$runDuration$+20</eval>
+          </done>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Audit.log information for the search</title>
+      <table>
+        <search id="base_audit">
+          <done>
+            <eval token="run_again">if($job.eventCount$ = 0,random(),$run_again$)</eval>
+          </done>
+          <query>index=_audit NOT TERM(ignore_me=) TERM(action=search) TERM(info=completed) earliest=$sid_started$ latest=now $sid$
+| eval ignore_me=null()
+| rex field=_raw "search_id='(?&lt;sid&gt;[^']+)'"
+| where sid="$sid$"
+| table search_id target_index total_run_time
+    event_count
+    result_count
+    available_count
+    scan_count
+    drop_count
+    exec_time
+    api_et
+    api_lt
+    search_et
+    search_lt
+    is_realtime
+    search_startup_time
+    searched_buckets
+    eliminated_buckets
+    considered_events
+    total_slices
+    decompressed_slices
+    duration.command.search.index
+    invocations.command.search.index.bucketcache.hit
+    duration.command.search.index.bucketcache.hit
+    invocations.command.search.index.bucketcache.miss
+    duration.command.search.index.bucketcache.miss
+    invocations.command.search.index.bucketcache.error
+    duration.command.search.rawdata
+    invocations.command.search.rawdata.bucketcache.hit
+    duration.command.search.rawdata.bucketcache.hit
+    invocations.command.search.rawdata.bucketcache.miss
+    duration.command.search.rawdata.bucketcache.miss
+    invocations.command.search.rawdata.bucketcache.error 
+     | eval run_again="$run_again$"
+| transpose header_field=search_id column_name=search_id</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
