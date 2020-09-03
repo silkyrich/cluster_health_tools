@@ -6,7 +6,7 @@
   <label>Search performance evaluator</label>
   <fieldset submitButton="false">
     <input type="time" token="time">
-      <label></label>
+      <label>Select timerange for search</label>
       <default>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
@@ -131,7 +131,7 @@
   <row>
     <panel>
       <html>
-        <h1>Bucket elimintation performance</h1>
+        <h1>Bucket elimination performance</h1>
         <table id="info_table">
           <tr>
             <th>Name</th>
@@ -140,7 +140,7 @@
           </tr>
         <tr>
           <td>consideredBuckets</td>
-			    <td>The number of candiate buckets (index+timerange)</td>
+			    <td>The number of candidate buckets (index+timerange)</td>
 			    <td>$searchTotalBucketsCount$</td>
 		    </tr>
         <tr>
@@ -159,7 +159,7 @@
     </panel>
     <panel>
       <html>
-        <h1>Post Elimintation, bucket searching performance</h1>
+        <h1>Post elimination, bucket searching performance</h1>
         <table id="info_table">
           <tr>
             <th>Name</th>
@@ -168,7 +168,7 @@
           </tr>
         <tr>
           <td>scanCount</td>
-			    <td>How many events were evalulated</td>
+			    <td>How many events were evaluated</td>
 			    <td>$scanCount$</td>
 		    </tr>
         <tr>
@@ -322,18 +322,19 @@
     considered_events
     total_slices
     decompressed_slices
-    duration.command.search.index
-    invocations.command.search.index.bucketcache.hit
-    duration.command.search.index.bucketcache.hit
-    invocations.command.search.index.bucketcache.miss
-    duration.command.search.index.bucketcache.miss
-    invocations.command.search.index.bucketcache.error
-    duration.command.search.rawdata
-    invocations.command.search.rawdata.bucketcache.hit
-    duration.command.search.rawdata.bucketcache.hit
-    invocations.command.search.rawdata.bucketcache.miss
-    duration.command.search.rawdata.bucketcache.miss
-    invocations.command.search.rawdata.bucketcache.error 
+    duration_command_search_index 
+    invocations_command_search_index_bucketcache_hit 
+    duration_command_search_index_bucketcache_hit 
+    invocations_command_search_index_bucketcache_miss 
+    duration_command_search_index_bucketcache_miss 
+    invocations_command_search_index_bucketcache_error 
+    duration_command_search_rawdata 
+    invocations_command_search_rawdata_bucketcache_hit 
+    duration_command_search_rawdata_bucketcache_hit 
+    invocations_command_search_rawdata_bucketcache_miss 
+    duration_command_search_rawdata_bucketcache_miss 
+    invocations_command_search_rawdata_bucketcache_error 
+     | eval run_again="$run_again$"
      | eval run_again="$run_again$"
 | transpose header_field=search_id column_name=search_id</query>
           <earliest>$time.earliest$</earliest>
