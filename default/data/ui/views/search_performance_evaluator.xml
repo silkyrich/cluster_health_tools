@@ -21,7 +21,8 @@
     <panel>
       <html>
       <h1 style="text-align:center">$search$</h1>
-      <h2 style="text-align:center">Run duration = $runDuration$ seconds</h2>
+      <h2 style="text-align:center">$optimizedSearch$</h2>
+      <h3 style="text-align:center">Run duration = $runDuration$ seconds</h3>
     </html>
     </panel>
   </row>
