@@ -19,10 +19,12 @@
   </fieldset>
   <row>
     <panel>
+      <title>Entered search, optimized search, remote search, run duration</title>
       <html>
       <h1 style="text-align:center">$search$</h1>
       <h2 style="text-align:center">$optimizedSearch$</h2>
-      <h3 style="text-align:center">Run duration = $runDuration$ seconds</h3>
+      <h3 style="text-align:center">$remoteSearch$</h3>
+      <h1 style="text-align:center">$runDuration$ seconds</h1>
     </html>
     </panel>
   </row>
@@ -237,7 +239,8 @@
             <eval token="duration_seconds">$searchLatestTime$-$searchEarliestTime$</eval>
             <eval token="duration_str">tostring($searchLatestTime$-$searchEarliestTime$,"duration")</eval>
             <set token="keywords">$result.keywords$</set>
-            <eval token="optimizedSearch">substr($result.optimizedSearch$, 10, len($result.optimizedSearch$))</eval>
+            <eval token="optimizedSearch">$result.optimizedSearch$</eval>
+            <eval token="remoteSearch">$result.remoteSearch$</eval>
             <set token="searchTotalEliminatedBucketsCount">$result.searchTotalEliminatedBucketsCount$</set>
             <set token="searchTotalBucketsCount">$result.searchTotalBucketsCount$</set>
             <eval token="searchTotalEliminatedBucketsCount_pct">round(100*$searchTotalEliminatedBucketsCount$/$searchTotalBucketsCount$,2)</eval>
