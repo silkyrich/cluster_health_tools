@@ -479,6 +479,13 @@ values(_instance_guid) as _instance_guid
     annotation_category=name
 | table _time anno*</query>
   </search>
+  <search id="annotation_cannot_send_data">
+    <query>| tstats count where $splunkd$ host=$selected_host$ Could not send data to output queue by _time span=1s
+| eval annotation_label="Could not send data to output queue"
+| table _time anno*</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
   <fieldset submitButton="false">
     <input type="time" token="time">
       <label>Select forwarder</label>
@@ -568,17 +575,17 @@ values(_instance_guid) as _instance_guid
       <suffix>sec</suffix>
       <initialValue>60</initialValue>
     </input>
-    <input type="text" token="span_min_10s" depends="$hide$">
-      <label>span_min_10s</label>
-      <prefix>span=</prefix>
-      <suffix>sec</suffix>
-      <initialValue>10</initialValue>
-    </input>
     <input type="text" token="span_min_30s" depends="$hide$">
       <label>span_min_30s</label>
       <prefix>span=</prefix>
       <suffix>sec</suffix>
       <initialValue>30</initialValue>
+    </input>
+    <input type="text" token="span_min_10s" depends="$hide$">
+      <label>span_min_10s</label>
+      <prefix>span=</prefix>
+      <suffix>sec</suffix>
+      <initialValue>10</initialValue>
     </input>
     <input type="text" token="span_min_1s" depends="$hide$">
       <label>span_min_1s</label>
@@ -1727,6 +1734,7 @@ $per_process_attributes$</query>
         <search base="event_delay_2">
           <query>| timechart $span_min_1s$ $delay_metric_2$ by source</query>
         </search>
+        <search base="annotation_cannot_send_data" type="annotation"></search>
         <option name="charting.chart">line</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">all</option>
