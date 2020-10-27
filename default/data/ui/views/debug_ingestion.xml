@@ -1613,7 +1613,7 @@ $per_process_attributes$</query>
         <search base="tcpout_buffer_filtered_annotation" type="annotation">
           <query>
 | noop
-		  <\query>
+		  </query>
         </search>
         <option name="charting.chart">line</option>
         <option name="refresh.display">progressbar</option>
