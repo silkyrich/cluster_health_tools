@@ -148,34 +148,20 @@ evt_fv_fp_kBps
       <fieldForLabel>label</fieldForLabel>
       <fieldForValue>search</fieldForValue>
       <search>
-        <query>$splunkd$ CMMaster status=success site* earliest=-4hr latest=now source=*splunkd.log*
-| rex field=_raw max_match=64 "(?&lt;site_pair&gt;site\d+,\"?[^\",]+)"
-|  rex field=_raw "peer_name=(?&lt;single_site&gt;[^\s]+)"
-|  eval site_pair=if(isnull(site_pair),"site,".single_site,site_pair)
-| eval cluster_master=host
-| fields + site_pair cluster_master
-| fields - _*
-| dedup site_pair
-| mvexpand site_pair
-| dedup site_pair
-| rex field=site_pair "^(?&lt;site_id&gt;site[^,]*),\"?(?&lt;indexer&gt;.*)"
-| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)"
-| eval search="host=".indexer, host_count=1
-| appendpipe
-    [| stats values(indexer) as indexers by site_id short_name_cm
-    | eval host_count=mvcount(indexers),
-        search="host IN  (".mvjoin(mvfilter(indexers!=""), ", ").")"
-    | eval label=site_id." (".host_count." idxs @ ".short_name_cm
-        ]
-| appendpipe
-    [| stats values(indexer) as indexers dc(site_id) as site_count by short_name_cm
-    | eval host_count=mvcount(indexers),
-        search="host IN (".mvjoin(mvfilter(indexers!=""), ", ").")"
-    | eval label=short_name_cm." (".host_count." idx ".site_count." sites)" ]
-| rex field=indexer "^(?&lt;short_name_idx&gt;[^\.]+)"
-| eval label=if(isnull(label), short_name_idx." (".site_id."@".short_name_cm.")", label)
-| stats max(host_count) as count by label search
-| sort 0 - count</query>
+        <query>index=_internal INFO TERM(instance_roles=*) (cluster_master OR indexer) sourcetype=splunkd TERM(group=instance)
+| fields host instance_roles index_cluster_label
+| eval
+    cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
+    indexer=if(like(instance_roles,"%indexer%"),1,0) 
+| stats 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer by index_cluster_label
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)"    
+| eval
+    label=short_name_cm." (".index_cluster_label.")",
+    search="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"
+| where isnotnull(label)
+| table label search</query>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </search>
@@ -579,10 +565,10 @@ Select ranges in the chart and the table below will be filtered. For instance if
       </input>
       <chart>
         <title>Is channel creation healthy for each forwarder? The excessive channel creation can cause throughput problems on the indexers</title>
-        <search base="annotation" type="annotation"></search>
         <search base="single_forwarder_base">
           <query>| timechart limit=0 span=$seconds_for_bin$sec max($selected_metric$) by hostname</query>
         </search>
+        <search base="annotation" type="annotation"></search>
         <option name="charting.axisTitleX.visibility">collapsed</option>
         <option name="charting.chart">line</option>
         <option name="charting.drilldown">none</option>
