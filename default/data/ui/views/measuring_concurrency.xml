@@ -1,5 +1,12 @@
 <form>
   <label>Measuring concurrency</label>
+  
+  <init>
+    <set token="index_splunkd">index=_internal</set>
+    <set token="index_introspection">index=_introspection</set>
+    <set token="index_metrics">index=_internal</set>
+    <set token="index_remote">index=_internal</set>
+  </init>  
   <fieldset submitButton="false"></fieldset>
   <row>
     <panel>
@@ -119,7 +126,22 @@ log_level: INFO
         <choice value="1000">break my browser (1000)</choice>
         <default>250</default>
       </input>
-      <input type="text" token="selected_host">
+      <input type="dropdown" token="selected_stack">
+        <label>Select stack</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>stack</fieldForValue>
+        <search>
+          <query>| inputlookup aws_inventory where role="indexer" OR role="search-head" 
+| chart count by stack role
+| eval total=indexer+'search-head'
+| sort - total
+| head 800
+| eval label=stack." (".'search-head'."sh ".indexer."idx)"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </input>
+      <input type="dropdown" token="selected_host">
         <label>Enter host</label>
         <fieldForLabel>FQDN</fieldForLabel>
         <fieldForValue>FQDN</fieldForValue>
@@ -197,7 +219,7 @@ log_level: INFO
       <title>metrics.log - group=search_concurrency - every 30 secs</title>
       <chart>
         <search>
-          <query>index=customer_metrics TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$
+          <query>$index_merics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$
 | eval user=if(searchmatch("system total"),"system_total",user)
 | timechart $selected_span_30s$ $selected_limit$ avg(active_hist_searches) by user</query>
           <earliest>$time.earliest$</earliest>
@@ -245,7 +267,7 @@ log_level: INFO
       <chart>
         <search>
           <query>| tstats prestats=true fillnull_value="system_total" avg(PREFIX(active_hist_searches=)) as active_hist_searches
-    where index=customer_metrics TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ by _time $selected_span_30s$ PREFIX(user=) 
+    where $index_merics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ by _time $selected_span_30s$ PREFIX(user=) 
 | rename user= as user 
 | timechart $selected_span_30s$ $selected_limit$ avg(PREFIX(active_hist_searches=)) by user</query>
           <earliest>$time.earliest$</earliest>
@@ -267,7 +289,7 @@ log_level: INFO
       <title>resource_usage.log - component=PerProcess - every 10 secs</title>
       <chart>
         <search>
-          <query>index=customer_introspection component=PerProcess host=$selected_host$ data.search_props.sid=*
+          <query>$index_introspection$ component=PerProcess host=$selected_host$ data.search_props.sid=*
 | timechart $selected_limit$ $selected_span_10s$ count by data.search_props.user</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -284,7 +306,7 @@ log_level: INFO
       <title>tstats with PREFIX version</title>
       <chart>
         <search>
-          <query>| tstats count where index=customer_introspection component=PerProcess host=$selected_host$ data.search_props.sid=* by _time $selected_span_10s$ data.search_props.user
+          <query>| tstats count where $index_introspection$ component=PerProcess host=$selected_host$ data.search_props.sid=* by _time $selected_span_10s$ data.search_props.user
 | timechart $selected_limit$ $selected_span_10s$ sum(count) by data.search_props.user</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -303,7 +325,7 @@ log_level: INFO
       <title>metrics.log - group=search_pool - every 30 secs</title>
       <chart>
         <search>
-          <query>index=customer_metrics TERM(group=search_pool) TERM(active=*) host=$selected_host$
+          <query>$index_merics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$
 | timechart  $selected_span_30s$ avg(active) as active</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -319,7 +341,7 @@ log_level: INFO
       <title>tstats with PREFIX version</title>
       <chart>
         <search>
-          <query>| tstats prestats=true avg(PREFIX(active=)) as active where index=customer_metrics TERM(group=search_pool) TERM(active=*) host=$selected_host$ by _time $selected_span_30s$
+          <query>| tstats prestats=true avg(PREFIX(active=)) as active where $index_merics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$ by _time $selected_span_30s$
 | timechart $selected_span_30s$ avg(PREFIX(active=)) as active</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -337,7 +359,7 @@ log_level: INFO
       <title>remote_searches.log - continuous execution</title>
       <chart>
         <search>
-          <query>index=customer_remote host=$selected_host$ TERM(active_searches=*) 
+          <query>$index_remote$ host=$selected_host$ TERM(active_searches=*) 
 | timechart $selected_limit$ $selected_span_10s$ 
     max(active_searches) by server</query>
           <earliest>$time.earliest$</earliest>
@@ -356,7 +378,7 @@ log_level: INFO
       <chart>
         <search>
           <query>| tstats max(PREFIX(active_searches=)) as active_searches
-    where index=customer_remote host=$selected_host$ TERM(active_searches=*)
+    where $index_remote$ host=$selected_host$ TERM(active_searches=*)
     by _time $selected_span_10s$ PREFIX(server=)
 | rename server= as server 
 | timechart $selected_limit$ $selected_span_10s$ 
@@ -378,7 +400,7 @@ log_level: INFO
       <title>What was user cpu during the period?</title>
       <chart>
         <search>
-          <query>index=customer_introspection host=$selected_host$ component::hostwide
+          <query>$index_introspection$ host=$selected_host$ component::hostwide
 | timechart $selected_span_10s$ avg(data.cpu_user_pct) avg(data.cpu_system_pct)</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -397,7 +419,7 @@ log_level: INFO
           <query>| tstats 
     avg(data.cpu_user_pct)
     avg(data.cpu_system_pct)
-    where index=customer_introspection host=$selected_host$ component::hostwide by _time $selected_span_10s$</query>
+    where $index_introspection$ host=$selected_host$ component::hostwide by _time $selected_span_10s$</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
