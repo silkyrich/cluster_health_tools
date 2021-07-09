@@ -2,14 +2,14 @@
   <label>Tracing Back Indexer Search Load to search-heads, applications and users</label>
   <description>For any stack in Splunk Cloud where does the search load orginate? If we want to reduce load through optimization it is important that we understand where that load is being generated and by who</description>
   <init>
-    <set token="index_splunkd">index=customer_splunkd</set>
-    <set token="index_introspection">index=customer_introspection</set>
-    <set token="index_metrics">index=customer_metrics</set>
+    <set token="index_splunkd">index=_internal</set>
+    <set token="index_introspection">index=_introspection</set>
+    <set token="index_metrics">index=_internal</set>
   </init>
   <fieldset submitButton="false">
     <input type="text" token="selected_stack">
       <label>Select stack</label>
-      <default>skynet-c*</default>
+      <default>*</default>
       <prefix>host=idx*.</prefix>
       <suffix>.*</suffix>
     </input>
@@ -153,7 +153,7 @@
         <title>Clicking on a row will select search head + app in the details section</title>
         <search id="search_head_base">
           <query>| tstats prestats=t sum(data.pct_cpu) as sum_cpu 
-    where index=customer_introspection $selected_stack$ 
+    where $index_introspection$ $selected_stack$ 
     by data.search_props.search_head data.search_props.app 
 | rename 
     data.search_props.search_head as search_head, 
@@ -164,8 +164,6 @@
 | eval _pct_usage=round(100*(_sum_cpu/_total_cpu),0),
     pct_usage=_pct_usage."%" 
 | sort - pct_usage 
-| lookup aws_inventory FQDN AS search_head output instance_type 
-| lookup aws_instance_types instance_type output instance_type_name CPU memGB 
 | table search_head app _pct_usage pct_usage instance_type CPU memGB _sum_cpu _total_cpu</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
@@ -298,9 +296,10 @@
     <panel>
       <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
       <table>
+        <title>| tstats sum(data.pct_cpu) as sum_cpu      where $index_introspection$     $selected_user$      $selected_stack$ $selected_search_head$      data.pct_cpu=*      $selected_app$      NOT TERM(data.search_props.label) NOT(data.search_props.provenance=scheduler)      by _time $selected_span_10s$ data.search_props.provenance | eventstats sum(sum_cpu) as total by data.search_props.provenance</title>
         <search id="adhoc_base">
           <query>| tstats sum(data.pct_cpu) as sum_cpu 
-    where $customer_introspection$
+    where $index_introspection$
     $selected_user$ 
     $selected_stack$ $selected_search_head$ 
     data.pct_cpu=* 
