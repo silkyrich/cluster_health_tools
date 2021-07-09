@@ -7,6 +7,46 @@
     <set token="index_metrics">index=_internal</set>
   </init>
   <fieldset submitButton="false">
+    <input type="dropdown" token="selected_indexers">
+      <label>1. Select CM, site or hosts</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>search</fieldForValue>
+      <search>
+        <query>index=_internal INFO TERM(instance_roles=*) (cluster_master OR indexer) sourcetype=splunkd TERM(group=instance)
+| fields host instance_roles index_cluster_label
+| eval
+    cluster_master=if(like(instance_roles,"%cluster_master%"),1,0),
+    indexer=if(like(instance_roles,"%indexer%"),1,0) 
+| stats 
+    values(eval(if(cluster_master=1,host,""))) as cluster_master 
+    values(eval(if(indexer=1,host,""))) as indexer by index_cluster_label
+| rex field=cluster_master "^(?&lt;short_name_cm&gt;[^\.]+)"    
+| eval
+    label=short_name_cm." (".index_cluster_label.")",
+    search="host IN (".mvjoin(mvfilter(indexer!=""), ", ").")"
+| where isnotnull(label)
+| table label search</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <change>
+        <condition value="None"></condition>
+        <condition>
+          <eval token="form.selected_targets">$selected_indexers$</eval>
+        </condition>
+      </change>
+      <choice value="None">None</choice>
+      <default>None</default>
+    </input>
+    <input type="text" token="selected_targets" searchWhenChanged="true" id="indices_list_input">
+      <label>Selected targets</label>
+      <change>
+        <condition match="len(trim($form.selected_targets$,&quot; &quot;))=0">
+          <unset token="form.selected_targets"></unset>
+          <unset token="selected_targets"></unset>
+        </condition>
+      </change>
+    </input>
     <input type="text" token="selected_stack">
       <label>Select stack</label>
       <default>*</default>
@@ -106,7 +146,7 @@
   </row>
   <row>
     <panel>
-      <title>Search load for indexers matching $selected_stack$ is originating from the following apps</title>
+      <title>Search load for indexers matching is originating from the following apps</title>
       <chart>
         <title>Clicking on a slice will select app in the details section below</title>
         <search base="search_head_base">
@@ -126,7 +166,7 @@
       </chart>
     </panel>
     <panel>
-      <title>Search load for indexers matching $selected_stack$ is originating from the following search heads</title>
+      <title>Search load for indexers is originating from the following search heads</title>
       <chart>
         <title>Clicking on a slice will select the search head in the details section below</title>
         <search base="search_head_base">
@@ -148,12 +188,12 @@
   </row>
   <row>
     <panel>
-      <title>Search load for indexers matching $selected_stack$ is can be allocated to these search head and app pairings</title>
+      <title>Search load for indexers can be allocated to these search head and app pairings</title>
       <table>
         <title>Clicking on a row will select search head + app in the details section</title>
         <search id="search_head_base">
           <query>| tstats prestats=t sum(data.pct_cpu) as sum_cpu 
-    where $index_introspection$ $selected_stack$ 
+    where $index_introspection$ $selected_indexers$ 
     by data.search_props.search_head data.search_props.app 
 | rename 
     data.search_props.search_head as search_head, 
@@ -164,7 +204,7 @@
 | eval _pct_usage=round(100*(_sum_cpu/_total_cpu),0),
     pct_usage=_pct_usage."%" 
 | sort - pct_usage 
-| table search_head app _pct_usage pct_usage instance_type CPU memGB _sum_cpu _total_cpu</query>
+| table search_head app _pct_usage pct_usage  _sum_cpu _total_cpu</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
@@ -242,7 +282,7 @@
           <query>| tstats prestats=true sum(data.pct_cpu)
     where $index_introspection$ 
     $selected_user$ 
-    $selected_stack$ $selected_search_head$ 
+    $selected_indexers$ $selected_search_head$ 
     data.pct_cpu=* 
     $selected_app$ 
     by _time $selected_span_10s$ data.search_props.provenance
@@ -296,12 +336,11 @@
     <panel>
       <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
       <table>
-        <title>| tstats sum(data.pct_cpu) as sum_cpu      where $index_introspection$     $selected_user$      $selected_stack$ $selected_search_head$      data.pct_cpu=*      $selected_app$      NOT TERM(data.search_props.label) NOT(data.search_props.provenance=scheduler)      by _time $selected_span_10s$ data.search_props.provenance | eventstats sum(sum_cpu) as total by data.search_props.provenance</title>
         <search id="adhoc_base">
           <query>| tstats sum(data.pct_cpu) as sum_cpu 
     where $index_introspection$
     $selected_user$ 
-    $selected_stack$ $selected_search_head$ 
+    $selected_indexers$ $selected_search_head$ 
     data.pct_cpu=* 
     $selected_app$ 
     NOT TERM(data.search_props.label) NOT(data.search_props.provenance=scheduler) 
@@ -312,7 +351,6 @@
         </search>
         <option name="count">10</option>
         <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
       </table>
     </panel>
   </row>
@@ -356,9 +394,9 @@
       <table>
         <search id="scheduler_base">
           <query>| tstats sum(data.pct_cpu) as sum_cpu 
-    where $index_introspection$ data.pct_cpu=* $selected_stack$ $selected_search_head$ $selected_user$ $selected_app$ by _time span=5min data.search_props.label</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+    where $index_introspection$ data.pct_cpu=* $selected_indexers$ $selected_search_head$ $selected_user$ $selected_app$ by _time span=5min data.search_props.label</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="count">10</option>
         <option name="drilldown">none</option>
@@ -409,10 +447,10 @@
       <table>
         <search id="user_base">
           <query>| tstats sum(data.pct_cpu) as sum_cpu 
-    where $index_introspection$ $selected_user$ $selected_stack$ $selected_search_head$ data.pct_cpu=* data.search_props.provenance=* * by _time $selected_span_10s$ data.search_props.user
+    where $index_introspection$ $selected_user$ $selected_indexers$ $selected_search_head$ data.pct_cpu=* data.search_props.provenance=* * by _time $selected_span_10s$ data.search_props.user
 | rename data.search_props.user as user</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="count">10</option>
         <option name="drilldown">cell</option>
