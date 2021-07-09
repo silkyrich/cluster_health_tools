@@ -1,0 +1,412 @@
+<form>
+  <label>Measuring concurrency</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <html>
+<h1 id="measuring-search-concurrency-via-logs">
+<a class="anchor" href="#measuring-search-concurrency-via-logs"></a>Measuring search concurrency via logs
+</h1>
+<p>Search concurrency is measured per host in several places. This dashboard looks at the various log messages that can be used to measure search concurrency and how they compare in accuracy and performance.</p>
+<p>This analysis concludes that SH concurrency and IDX concurrency are best measure using different sources and raises questions about the meaning of certain messages.</p>
+<h2 id="what-is-search-concurrency">
+<a class="anchor" href="#what-is-search-concurrency"></a>What is search concurrency?
+</h2>
+<p>A &quot;search&quot; in Splunk is implemented as a process, we keep a pool of processes ready to go and then &quot;attach&quot; to it the search requirements. Unlike a &quot;program&quot;, as a &quot;search process&quot; is not interactive and executes constantly until the search job is done. At which point we return the search process to the pool. Every 100 executions or so we kill the process and create a new one, this limits the damage of minor memory leaks.</p>
+<p>Search concurrency is a measure of the number of searches being executed in parallel on a host at a point in time. It is not the same as search throughput, which would be the number of searches executing and completing between two points in time. The more CPUs a host has the more concurrent search processes can be run, also more search processes require more RAM.</p>
+<p>Search concurrency is the best measure of search load. I can have 3 searches that take an hour to execute and 1000's of searches that complete in a second or less, in this instance it is the three long running searches that will have the greatest impact on search concurrency.</p>
+<h2 id="search-concurrency-varies-across-tier-and-roles">
+<a class="anchor" href="#search-concurrency-varies-across-tier-and-roles"></a>Search concurrency varies across tier and roles
+</h2>
+<p>Search concurrency is different per role and tier. A stack might have multiple search heads and each will have its own concurrency based on the number of scheduled reports and active users. However the indexers that receive their search requests simultaneously on each host. If one of the indexes is running slowly it will run a higher concurrency compared to its peers and will slow the net search throughput of the cluster. Therefore we need to measure concurrency of each search head separately for each SH but it is normally sufficient to only sample only a single indexer in a cluster.</p>
+<h2 id="searches-behave-differently-between-map-indexers-and-reduce-search-head">
+<a class="anchor" href="#searches-behave-differently-between-map-indexers-and-reduce-search-head"></a>Searches behave differently between map (indexers) and reduce (search head)
+</h2>
+<p>A search on an indexer is almost always a child of a search being executed on a search head as they follow the map reduce paradigm. Searches on an indexer will constantly process data until completion, the only time it waits is for buckets to be downloaded. However searches on the search head will idling waiting on the indexers to return data, and once the indexers have entirely finished they may continue on the search performing a sort, transaction or streamstats command.</p>
+<h2 id="log-sources-that-report-search-concurrency">
+<a class="anchor" href="#log-sources-that-report-search-concurrency"></a>Log sources that report search concurrency
+</h2>
+<p>There are several places that report search concurrency. Each has its own advantages and disadvantages as described below. Each is showcased in the panels below with both a SPL and tstats version. To see the specifics of the searches that extract the data please inspect the searches embedded in the panel.</p>
+<h3 id="metricslog-groupsearch-concurrency-every-30-secs">
+<a class="anchor" href="#metricslog-groupsearch-concurrency-every-30-secs"></a>metrics.log - group=search_concurrency - every 30 secs
+</h3>
+<p><em>Great for search heads, but not suitable for indexers</em>.</p>
+<p>This source breaks down the searches by user, which is very useful to understand who is using computation. The messages are very simple and we can use tstats with prefix to process the results at scale.</p>
+<pre><code>06-17-2021 13:32:14.672 +0000 INFO  Metrics - group=search_concurrency, user=mpearson, active_hist_searches=8, active_realtime_searches=0
+</code></pre>
+<p>In addition to reporting per user, it also conveniently prints out the system total with the following message</p>
+<pre><code>06-17-2021 13:32:45.672 +0000 INFO  Metrics - group=search_concurrency, system total, active_hist_searches=10, active_realtime_searches=0
+</code></pre>
+<p>This simplicity and frequency would make it ideal for extracting search concurrency cheaply over long time ranges. Unfortunately this reporting appears to be broken when we execute it on indexers, therefore it can only be executed on search heads. https://jira.splunk.com/browse/SPL-207379.</p>
+<h3 id="resource-usagelog-componentperprocess-every-10-secs">
+<a class="anchor" href="#resource-usagelog-componentperprocess-every-10-secs"></a>resource_usage.log - component=PerProcess - every 10 secs
+</h3>
+<p><em>Highly detailed and flexible, computationally expensive, works well on both SH's and indexers.</em></p>
+<p>This source reports on each search process individually and has some fantastic attributes to break down search utilization on:</p>
+<pre><code>{ 
+component: PerProcess
+data: { 
+    elapsed: 17.6200
+    fd_used: 59
+    mem_used: 108.969
+    page_faults: 0
+    pct_memory: 0.15
+    pid: 31546
+    ppid: 27253
+    process: splunkd
+    process_type: search
+    read_mb: 0.117
+    search_props: { 
+        app: search
+        delta_scan_count: 19498700
+        mode: historical batch
+        role: head
+        scan_count: 19498700
+        sid: 1623937728.26409_13467426-22ED-4D24-911F-9CE8532952EE
+        type: ad-hoc
+        user: internal_monitoring
+    }
+    status: W
+    t_count: 19
+    workload_pool: standard_perf
+    workload_pool_cpu_shares: 358
+    workload_pool_mem_limit: 44751.199
+    workload_pool_type: Search
+    written_mb: 3.223
+}
+datetime: 06-17-2021 13:48:56.180 +0000
+log_level: INFO
+}
+</code></pre>
+<p>This log message is much more complex and we need to aggregate the individual messages to compute the search concurrency. The nature of parsing JSON and high frequency means it is very expensive to extract and process these events. Fortunately the structure has INDEXED_EXTRACTION = json configured and we are able to process the events in tstats. Unfortunately the need to process multiple rows and with three times the number of messages this remains an expensive but high resolution method to extract search concurrency.</p>
+<h3 id="remote-searcheslog-groupsearch-pool-continuous-execution">
+<a class="anchor" href="#remote-searcheslog-groupsearch-pool-continuous-execution"></a>remote_searches.log - group=search_pool - continuous execution
+</h3>
+<p><em>Super high resolution on indexers, not suitable for search heads</em></p>
+<p>When a host receives a search request we print out the search concurrency at that time.</p>
+<pre><code>06-17-2021 14:23:13.084 +0000 INFO  StreamedSearch - Streamed search connection terminated: search_id=remote_c0m1-i-0a8730ff7616dba35.skynet-search.splunkcloud.com_scheduler__admin_c2t5bmV0LXJlc3Q__RMD5c3418c8b76d037b9_at_1623939780_8076, server=c0m1-i-0a8730ff7616dba35.skynet-search.splunkcloud.com, active_searches=0, elapsedTime=0.006, search='prerest  splunk_server=&quot;sh*&quot; timeout=60 &quot;/services/shcluster/captain/info?count=0&quot;', savedsearch_name=&quot;splunk_rest_shcluster_status&quot;, drop_count=0, scan_count=0, eliminated_buckets=0, considered_events=0, decompressed_slices=0, events_count=0, total_slices=0, considered_buckets=0, search_rawdata_bucketcache_error=0, search_rawdata_bucketcache_miss=0, search_index_bucketcache_error=0, search_index_bucketcache_hit=0, search_index_bucketcache_miss=0, search_rawdata_bucketcache_hit=0, search_rawdata_bucketcache_miss_wait=0.000, search_index_bucketcache_miss_wait=0.000
+</code></pre>
+<p>This source can be very high resolution as on large stacks we might be receiving many searches per second, but if there are no search requests we won't get a message. This means it is an effective way to measure indexers, but is not appropriate for search heads as they typically get no remote searches requests. The above message was taken from a SH and it is the cluster master executing a REST call.</p>
+<p>If want to use this as a source on indexers we could blend this with another source so we always get a sample very 30 seconds if there was no call. However if there is no call, there are likely no searches - so there is little point in plugging the gap when it exists.</p>
+<h3 id="metricslog-groupsearch-pool-every-30-secs">
+<a class="anchor" href="#metricslog-groupsearch-pool-every-30-secs"></a>metrics.log - group=search_pool - every 30 secs
+</h3>
+<p><em>Cannot be relied upon due to intermittent event generation</em></p>
+<p>This message is reporting on the search pool mentioned above. It aims to state how many search processes are in the pool, the health of the pool etc.</p>
+<pre><code>06-17-2021 14:39:56.774 +0000 INFO  Metrics - group=search_pool, name=launcher_0, active=4, idle=1, processes_created=3, processes_reused_same_user=1, processes_reused_different_user=0, processes_reaped_with_old_config=5, processes_reaped_with_old_bundle=0, processes_reaped_ran_too_many_searches=0, processes_reaped_ran_too_long=0, processes_reaped_accumulated_time=0, processes_reaped_after_control=0, processes_reaped_surplus=0, dutycycle_launching=0.000, dutycycle_reaping=0.000, dutycycle_control=0.000, periodic_reaper_wakeups=5
+</code></pre>
+<p>This source contains the active searches at any point. It would be perfect for our purposes of measuring search concurrency if it was always present. For some reason it frequently stops being generated.</p>
+<p>https://jira.splunk.com/browse/SPL-207309</p>
+
+</html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Select a host and a time range so see the different sources in action</title>
+      <input type="time" token="time">
+        <label>Select timerange</label>
+        <default>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+      <input type="dropdown" token="selected_resolution">
+        <label>Chart resolution</label>
+        <choice value="100">low (100)</choice>
+        <choice value="250">medium (250)</choice>
+        <choice value="500">high (500)</choice>
+        <choice value="1000">break my browser (1000)</choice>
+        <default>250</default>
+      </input>
+      <input type="text" token="selected_host">
+        <label>Enter host</label>
+        <fieldForLabel>FQDN</fieldForLabel>
+        <fieldForValue>FQDN</fieldForValue>
+        <search>
+          <query>| inputlookup aws_inventory where stack="$selected_stack$" role="indexer" OR role="search-head" 
+| table FQDN</query>
+        </search>
+      </input>
+      <input type="text" token="selected_limit">
+        <label>Enter limit</label>
+        <default>50</default>
+        <prefix>limit=</prefix>
+      </input>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_hosts$,$selected_stack$,$support$">
+    <panel>
+      <title></title>
+      <input type="text" token="selected_span_1s" searchWhenChanged="true">
+        <label>selected_span_1s</label>
+        <default>1</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_10s">
+        <label>selected_span_10s</label>
+        <default>10</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_30s">
+        <label>selected_span_30s</label>
+        <default>30</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_60s">
+        <label>selected_span_60s</label>
+        <default>60</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+    </panel>
+    <panel>
+      <title>Compute timespan</title>
+      <table>
+        <search>
+          <done>
+            <set token="form.selected_span_1s">$result.span_1s$</set>
+            <set token="form.selected_span_10s">$result.span_10s$</set>
+            <set token="form.selected_span_30s">$result.span_30s$</set>
+            <set token="form.selected_span_60s">$result.span_60s$</set>
+          </done>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    duration_seconds=info_max_time-info_min_time,
+    resolution=$selected_resolution$,
+    span_1s=if(duration_seconds/resolution&lt;1,1,round(duration_seconds/resolution,0)),
+    span_10s=if(duration_seconds/resolution&lt;10,10,round(duration_seconds/resolution,0)),
+    span_30s=if(duration_seconds/resolution&lt;30,30,round(duration_seconds/resolution,0)),
+    span_60s=if(duration_seconds/resolution&lt;60,60,round(duration_seconds/resolution,0))   
+| fields span_*</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>metrics.log - group=search_concurrency - every 30 secs</title>
+      <chart>
+        <search>
+          <query>index=customer_metrics TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$
+| eval user=if(searchmatch("system total"),"system_total",user)
+| timechart $selected_span_30s$ $selected_limit$ avg(active_hist_searches) by user</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.overlayFields">system_total</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">364</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>tstats with PREFIX version</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=true fillnull_value="system_total" avg(PREFIX(active_hist_searches=)) as active_hist_searches
+    where index=customer_metrics TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ by _time $selected_span_30s$ PREFIX(user=) 
+| rename user= as user 
+| timechart $selected_span_30s$ $selected_limit$ avg(PREFIX(active_hist_searches=)) by user</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">system_total</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">368</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>resource_usage.log - component=PerProcess - every 10 secs</title>
+      <chart>
+        <search>
+          <query>index=customer_introspection component=PerProcess host=$selected_host$ data.search_props.sid=*
+| timechart $selected_limit$ $selected_span_10s$ count by data.search_props.user</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">500</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>tstats with PREFIX version</title>
+      <chart>
+        <search>
+          <query>| tstats count where index=customer_introspection component=PerProcess host=$selected_host$ data.search_props.sid=* by _time $selected_span_10s$ data.search_props.user
+| timechart $selected_limit$ $selected_span_10s$ sum(count) by data.search_props.user</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">495</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>metrics.log - group=search_pool - every 30 secs</title>
+      <chart>
+        <search>
+          <query>index=customer_metrics TERM(group=search_pool) TERM(active=*) host=$selected_host$
+| timechart  $selected_span_30s$ avg(active) as active</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">237</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>tstats with PREFIX version</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=true avg(PREFIX(active=)) as active where index=customer_metrics TERM(group=search_pool) TERM(active=*) host=$selected_host$ by _time $selected_span_30s$
+| timechart $selected_span_30s$ avg(PREFIX(active=)) as active</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">238</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>remote_searches.log - continuous execution</title>
+      <chart>
+        <search>
+          <query>index=customer_remote host=$selected_host$ TERM(active_searches=*) 
+| timechart $selected_limit$ $selected_span_10s$ 
+    max(active_searches) by server</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">368</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>tstats with PREFIX version</title>
+      <chart>
+        <search>
+          <query>| tstats max(PREFIX(active_searches=)) as active_searches
+    where index=customer_remote host=$selected_host$ TERM(active_searches=*)
+    by _time $selected_span_10s$ PREFIX(server=)
+| rename server= as server 
+| timechart $selected_limit$ $selected_span_10s$ 
+    max(active_searches) by server</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="height">370</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>What was user cpu during the period?</title>
+      <chart>
+        <search>
+          <query>index=customer_introspection host=$selected_host$ component::hostwide
+| timechart $selected_span_10s$ avg(data.cpu_user_pct) avg(data.cpu_system_pct)</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>tstats version</title>
+      <chart>
+        <search>
+          <query>| tstats 
+    avg(data.cpu_user_pct)
+    avg(data.cpu_system_pct)
+    where index=customer_introspection host=$selected_host$ component::hostwide by _time $selected_span_10s$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
