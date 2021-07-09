@@ -1,0 +1,882 @@
+<form>
+  <label>Search head resource utilisation</label>
+  <init>
+    <set token="index_splunkd">index=customer_splunkd</set>
+    <set token="index_introspection">index=customer_introspection</set>
+    <set token="index_metrics">index=customer_metrics</set>
+  </init> 
+  
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="selected_host">
+      <label>Host</label>
+
+    </input>
+    <input type="dropdown" token="selected_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">low (100)</choice>
+      <choice value="250">medium (250)</choice>
+      <choice value="500">high (500)</choice>
+      <choice value="1000">break my browser (1000)</choice>
+      <default>250</default>
+    </input>
+  </fieldset>
+  <row rejects="$selected_host$">
+    <panel>
+      <html>
+        <h1>Please enter explicit search head name</h1>
+      </html>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_host$">
+    <panel>
+      <title></title>
+      <input type="text" token="selected_span_1s" searchWhenChanged="true">
+        <label>selected_span_1s</label>
+        <default>1</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_10s">
+        <label>selected_span_10s</label>
+        <default>10</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_31s">
+        <label>selected_span_31s</label>
+        <default>31</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_60s">
+        <label>selected_span_60s</label>
+        <default>60</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+    </panel>
+    <panel>
+      <title>Compute timespan</title>
+      <table>
+        <search>
+          <done>
+            <set token="form.selected_span_1s">$result.span_1s$</set>
+            <set token="form.selected_span_10s">$result.span_10s$</set>
+            <set token="form.selected_span_31s">$result.span_31s$</set>
+            <set token="form.selected_span_60s">$result.span_60s$</set>
+          </done>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    duration_seconds=info_max_time-info_min_time,
+    resolution=$selected_resolution$,
+    span_1s=if(duration_seconds/resolution&lt;1,1,round(duration_seconds/resolution,0)),
+    span_10s=if(duration_seconds/resolution&lt;10,10,round(duration_seconds/resolution,0)),
+    span_31s=if(duration_seconds/resolution&lt;31,31,round(duration_seconds/resolution,0)),
+    span_60s=if(duration_seconds/resolution&lt;60,60,round(duration_seconds/resolution,0))   
+| fields span_*</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <single>
+        <search>
+          <query>| makeresults 
+| eval host="host=$selected_host$" 
+| rex field=host "((?&lt;id&gt;[^.]*)\.(?&lt;stack&gt;[^.]*).splunkcloud.com)" 
+| lookup licensed_ingestion StackName as stack
+| table Account_Name__c Id
+| rename Id as _id</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Click to drilldown to SFDC</option>
+        <drilldown>
+          <link target="_blank">https://splunk.my.salesforce.com/$row._id$</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| makeresults 
+| eval host="host=$selected_host$" 
+| rex field=host "((?&lt;id&gt;[^.]*)\.(?&lt;stack&gt;[^.]*).splunkcloud.com)" 
+| lookup licensed_ingestion StackName as stack
+| table stack cloud_stack_id
+| rename cloud_stack_id as _cloud_stack_id</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Drilldown to SFDC stack</option>
+        <drilldown>
+          <link target="_blank">https://splunk.my.salesforce.com/$row._cloud_stack_id$</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| makeresults 
+| eval host="host=$selected_host$" 
+| rex field=host "((?&lt;id&gt;[^.]*)\.(?&lt;stack&gt;[^.]*).splunkcloud.com)" 
+| lookup aws_inventory stack
+| addinfo 
+| eval _time=info_min_time 
+| lookup splunk_version_history stack 
+| stats values(version)</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Splunk version</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| makeresults 
+| eval host="host=$selected_host$" 
+| rex field=host "((?&lt;id&gt;[^.]*)\.(?&lt;stack&gt;[^.]*).splunkcloud.com)" 
+| lookup licensed_ingestion StackName as stack
+| table Cloud_Service_Provider__c</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Cloud Provider</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| makeresults 
+| eval host="host=$selected_host$" 
+| rex field=host "((?&lt;id&gt;[^.]*)\.(?&lt;stack&gt;[^.]*).splunkcloud.com)" 
+| lookup licensed_ingestion StackName as stack
+| table cloud_retention_days</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Retention days</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="user_and_system_wide">
+          <query>| stats dc(user)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">63</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Unique users in selected time range</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table instance_type_name</query>
+        </search>
+        <option name="height">71</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">instance_type_name</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table CPU</query>
+        </search>
+        <option name="height">83</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">vCPUs</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table searches_per_cpu</query>
+        </search>
+        <option name="height">79</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">searches_per_cpu</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table base_max_searches</query>
+        </search>
+        <option name="height">79</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">base_max_searches</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table max_hist_searches</query>
+        </search>
+        <option name="height">74</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">max_hist_searches</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table cpu_overcommit_ratio</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">77</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">cpu_overcommit_ratio</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table auto_summary_perc</query>
+        </search>
+        <option name="height">74</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">auto_summary_perc</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table max_auto_summary</query>
+        </search>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">max_auto_summary</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table max_rt_searches</query>
+        </search>
+        <option name="height">73</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">max_rt_searches</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search base="configuration">
+          <query>| table max_searches</query>
+        </search>
+        <option name="height">82</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">max_searches</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_host$">
+    <panel>
+      <title>Configuration</title>
+      <table>
+        <search id="configuration">
+          <query>index=customer_btool host=sh* TERM(base_max_searches) OR TERM(auto_summary_perc) sourcetype="splunk:config:btool:limits" host=$selected_host$
+    earliest=-24hr latest=now 
+| stats 
+    values(base_max_searches) as base_max_searches
+    values(max_searches_per_cpu) as max_searches_per_cpu
+    values(max_rt_search_multiplier) as max_rt_search_multiplier
+    values(max_searches_perc) as max_searches_perc
+    values(auto_summary_perc) as auto_summary_perc
+    by host stack 
+| lookup aws_inventory FQDN as host output instance_type 
+| lookup aws_instance_types instance_type output CPU instance_type_name
+| table instance_type host stack instance_type_name CPU 
+| sort + CPU 
+| eval base_max_searches=6,
+    searches_per_cpu=1,
+    max_rt_search_multiplier=1,
+    max_searches_perc=50,
+    auto_summary_perc=50,
+    max_hist_searches=CPU*searches_per_cpu + base_max_searches,
+    max_rt_searches=max_rt_search_multiplier*max_hist_searches,
+    max_searches=(max_searches_perc/100)*max_hist_searches,
+    max_auto_summary=(auto_summary_perc/100)*max_searches,
+    cpu_overcommit_ratio=max_hist_searches/CPU</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">50</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Limits reached</title>
+      <chart>
+        <title>Queued job component=DispatchManager</title>
+        <search base="dispatch_manager_reasons">
+          <query>| stats count by reason</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$debug$">
+      <table>
+        <title>Search Messages</title>
+        <search id="messages_base">
+          <query>index=customer_internal host=$selected_host$ sourcetype=splunk_search_messages
+| table _time orig_component sid app message message_key</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  <panel depends="$selected_host$">
+
+      <title>Messages to users</title>
+      <input type="dropdown" token="selected_messages_splitby">
+        <label>Split by</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>attribute</fieldForValue>
+        <search base="messages_base">
+          <query>| stats dc(*) as * 
+| transpose 0 
+| rename "row 1" as count, 
+    column as attribute
+| sort + count
+| eval label=attribute." (".count.")"</query>
+        </search>
+        <default>orig_component</default>
+      </input>
+      <chart>
+        <title>Click on column to select messages on RHS</title>
+        <search base="messages_base">
+          <query>| chart limit=100 count by  $selected_messages_splitby$ 
+| sort - count</query>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_messages_filter">$click.value$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  <panel depends="$selected_host$">
+
+      <input type="text" token="selected_messages_filter">
+        <label>Search $selected_messages_splitby$</label>
+        <default>*</default>
+      </input>
+      <table>
+        <title>Search Messages</title>
+        <search base="messages_base">
+          <query>| search $selected_messages_splitby$="$selected_messages_filter$"
+| table _time app orig_component message_key message sid</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>CPU utilisation distribution for selected time range</title>
+      <chart>
+        <search base="cpu_base_by_time">
+          <query>| xyseries  data.cpu_idle_pct  mins_past_hour count</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>CPU utilisation distribution for selected time range</title>
+      <chart>
+        <search base="cpu_base_by_time">
+          <query>| chart limit=0 values(count) by mins_past_hour data.cpu_idle_pct</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel depends="$debug$">
+      <title>CPU utilisation base</title>
+      <table>
+        <search id="cpu_base_by_time">
+          <query>| tstats prestats=true
+    count
+    where $index_introspection$ component::hostwide host=$selected_host$ by data.cpu_idle_pct _time span=10s
+| bin data.cpu_idle_pct span=1
+| eval mins_past_hour=strftime(_time,"%M")
+| bin mins_past_hour span=3
+| stats count by data.cpu_idle_pct mins_past_hour</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>CPU utilisation probability measurements</title>
+      <chart>
+        <search id="cpu_utilization_score">
+          <query>| tstats 
+    avg(data.cpu_idle_pct)
+    p25(data.cpu_idle_pct)
+    p10(data.cpu_idle_pct)
+    p5(data.cpu_idle_pct)
+    p1(data.cpu_idle_pct)
+    p0.5(data.cpu_idle_pct) 
+    p0.1(data.cpu_idle_pct) 
+    p0.05(data.cpu_idle_pct) 
+    p0.01(data.cpu_idle_pct) 
+    where $index_introspection$ component::hostwide host=$selected_host$ by host</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Instance type recommendation according to double p0.01 peak CPU</title>
+      <single>
+        <search base="cpu_utilization_score">
+          <query>| lookup aws_inventory FQDN AS host output instance_type 
+| lookup aws_instance_types instance_type 
+| eval idle_cpus=CPU*('p0.01(data.cpu_idle_pct)'/100),
+    active_cpus=CPU-idle_cpus,
+    required_vcpu=ceiling(active_cpus*2),
+    target_vcpu=case(required_vcpu&lt;2,2,
+    required_vcpu&lt;=4,4,
+    required_vcpu&lt;=8,8,
+    required_vcpu&lt;=16,16,
+    required_vcpu&lt;=32,32,
+    required_vcpu&lt;=64,64),
+    suggested_instance=case(target_vcpu&lt;=8,"c5.2xlarge",
+    target_vcpu&lt;=16,"c5.4xlarge",
+    target_vcpu&lt;=36,"c5.9xlarge",
+    target_vcpu&lt;=48,"c5.12xlarge",
+    target_vcpu&lt;=72,"c5.18xlarge",
+    target_vcpu&lt;=96,"c5.24xlarge")
+| table suggested_instance</query>
+        </search>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>base: search_queue_metrics</title>
+      <chart>
+        <search base="search_queue_metrics">
+          <query>| timechart avg(*) $selected_span_31s$</query>
+        </search>
+        <search base="annotations" type="annotation"></search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">591</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel depends="$debug$">
+      <title>base: search_queue_metrics</title>
+      <table>
+        <search id="search_queue_metrics">
+          <query>$index_metrics$ host=$selected_host$ TERM(group=search_concurrency) TERM(name=search_queue_metrics) NOT (TERM(enqueue_seaches_count=0) TERM(avg_time_spent_in_queue=0.000) TERM(max_time_spent_in_queue=0) TERM(current_queue_size=0) TERM(largest_queue_size=0) TERM(queue_size=0))
+| table _time host stack enqueue_seaches_count avg_time_spent_in_queue max_time_spent_in_queue current_queue_size largest_queue_size queue_size</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Search concurrency</title>
+      <chart>
+        <search base="user_and_system_wide">
+          <query>| where isnull(user)
+| timechart 
+    avg(active_hist_searches) as active_hist_searches
+    avg(active_realtime_searches) as active_realtime_searches
+    $selected_span_60s$</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">linear</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">active_hist_searches</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>active_hist_searches by user</title>
+      <chart>
+        <search base="annotations" type="annotation"></search>
+        <search base="user_and_system_wide">
+          <query>| where isnotnull(user)
+| timechart limit=50 $selected_span_31s$ avg(active_hist_searches) by user</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">*</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel depends="$debug$">
+      <title>base: user_and_system_wide</title>
+      <table>
+        <search id="user_and_system_wide">
+          <query>$index_metrics$ host=$selected_host$ TERM(group=search_concurrency) (TERM(user=*)) OR (system total)
+| table _time host user active_hist_searches active_realtime_searches</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>base: searchscheduler</title>
+      <chart>
+        <search base="annotations" type="annotation"></search>
+        <search base="searchscheduler">
+          <query>| fields - host stack group
+| timechart $selected_span_60s$ avg(completed) avg(skipped) avg(skipped_dma_ra) avg(delayed) avg(dispatched)</query>
+        </search>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">380</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>base: searchscheduler</title>
+      <chart>
+        <search base="annotations" type="annotation"></search>
+        <search base="searchscheduler">
+          <query>| timechart $selected_span_60s$ avg(window_max_lag) avg(windown_total_lag) avg(total_lag) avg(max_lag)</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(total_lag)</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">380</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>base: searchscheduler</title>
+      <chart>
+        <search base="searchscheduler">
+          <query>| timechart $selected_span_60s$ avg(actions_triggered)</query>
+        </search>
+        <search base="annotations" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(total_lag)</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">380</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>base: searchscheduler</title>
+      <chart>
+        <search base="searchscheduler">
+          <query>| fields - host stack group
+| timechart $selected_span_60s$ sum(total_runtime)</query>
+        </search>
+        <search base="annotations" type="annotation"></search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(total_lag)</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">380</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>base: searchscheduler</title>
+      <chart>
+        <search base="searchscheduler">
+          <query>| fields - host stack group
+| timechart $selected_span_60s$ avg(eligible)</query>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">avg(total_lag)</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">380</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel depends="$debug$">
+      <title>base: searchscheduler</title>
+      <table>
+        <search id="searchscheduler">
+          <query>$index_metrics$ host=$selected_host$ TERM(group=searchscheduler)
+| table _time host stack group name actions_triggered actions_triggered alert_cycle_max alert_cycle_total alert_cycles completed delayed delegated delegated_scheduled delegated_waiting dispatched eligible load_search_cycle_max load_search_cycle_total max_lag max_running max_runtime schedule_search_cycle_max schedule_search_cycle_total scheduler_cycle_max scheduler_cycle_total scheduler_cycles shc_max_hist_searches shc_max_rt_searches shc_max_sched_auto_summary shc_max_sched_hist_searches shc_max_sched_rt_searches skipped skipped_dma_ra total_lag total_runtime window_max_lag window_total_lag</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>Break down of search types</title>
+      <chart>
+        <search base="introspection_per_process">
+          <query>| timechart $selected_span_31s$ avg(searches) by data.search_props.type</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Break down of search types</title>
+      <chart>
+        <search base="introspection_per_process">
+          <query>| timechart $selected_span_31s$ avg(searches) by data.workload_pool</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel depends="$debug$">
+      <title>base: introspection_per_process</title>
+      <table>
+        <search id="introspection_per_process">
+          <query>| tstats 
+    count as searches
+    where 
+    $index_introspection$ 
+    component::perprocess 
+    host=$selected_host$ 
+    data.process_type=search 
+    by _time host data.search_props.type data.workload_pool data.workload_pool_type data.workload_pool_cpu_shares data.workload_pool_mem_limit 
+    $selected_span_10s$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+    <panel>
+      <title>$index_metrics$ TERM(group=search_pool) TERM(name=launcher_*)</title>
+      <input type="dropdown" token="selected_search_pool_field">
+        <label>Select field</label>
+        <choice value="active">active</choice>
+        <choice value="idle">idle</choice>
+        <choice value="processes_created">processes_created</choice>
+        <choice value="processes_reused_same_user">processes_reused_same_user</choice>
+        <choice value="processes_reused_different_user">processes_reused_different_user</choice>
+        <choice value="processes_reaped_with_old_config">processes_reaped_with_old_config</choice>
+        <choice value="processes_reaped_with_old_bundle">processes_reaped_with_old_bundle</choice>
+        <choice value="processes_reaped_ran_too_many_searches">processes_reaped_ran_too_many_searches</choice>
+        <choice value="processes_reaped_ran_too_long">processes_reaped_ran_too_long</choice>
+        <choice value="processes_reaped_accumulated_time">processes_reaped_accumulated_time</choice>
+        <choice value="processes_reaped_after_control">processes_reaped_after_control</choice>
+        <choice value="processes_reaped_surplus">processes_reaped_surplus</choice>
+        <choice value="dutycycle_launching">dutycycle_launching</choice>
+        <choice value="dutycycle_reaping">dutycycle_reaping</choice>
+        <choice value="dutycycle_control">dutycycle_control</choice>
+        <choice value="periodic_reaper_wakeups">periodic_reaper_wakeups</choice>
+        <default>active</default>
+      </input>
+      <input type="dropdown" token="selected_search_pool_aggregator">
+        <label>Select aggregator</label>
+        <choice value="sum">sum</choice>
+        <choice value="avg">avg</choice>
+        <choice value="stdev">stdev</choice>
+        <choice value="p90">p90</choice>
+        <choice value="p95">p95</choice>
+        <default>sum</default>
+      </input>
+      <chart>
+        <search base="search_launcher_metrics">
+          <query>| timechart limit=0 $selected_span_31s$ $selected_search_pool_aggregator$($selected_search_pool_field$) as $selected_search_pool_field$  by name</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">425</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel depends="$debug$">
+      <table>
+        <search id="search_launcher_metrics">
+          <query>$index_metrics$ host=$selected_host$ TERM(group=search_pool) TERM(name=launcher_*)
+| table _time stack host name active idle processes_created processes_reused_same_user processes_reused_different_user processes_reaped_with_old_config processes_reaped_with_old_bundle processes_reaped_ran_too_many_searches processes_reaped_ran_too_long processes_reaped_accumulated_time processes_reaped_after_control processes_reaped_surplus dutycycle_launching dutycycle_reaping dutycycle_control periodic_reaper_wakeups</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_host$">
+    <panel>
+      <title>Annotations</title>
+      <table>
+        <title>Queued job component=DispatchManager</title>
+        <search id="dispatch_manager_reasons">
+          <query>$index_splunkd$ host=$selected_host$ TERM(reason=*) Queued job component=DispatchManager
+| table user reason provenance id</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_host$">
+    <panel>
+      <title>Annotations filtered</title>
+      <table>
+        <title>Queued job component=DispatchManager</title>
+        <search id="annotations" base="dispatch_manager_reasons">
+          <query>
+| where isnotnull(provenance)
+| eval annotation_label=reason, annotation_category=provenance
+| table _time ann*</query>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_host$">
+
+    <panel>
+      <table>
+        <search>
+          <query>$index_splunkd$ host=$selected_host$ SearchInfoLogger base_lispy AND base_lispy!=""
+| rex field=base_lispy max_match=0 "index::(?&lt;indexes_searched&gt;[^\s]+)"
+| rex field=base_lispy max_match=0 "sourcetype::(?&lt;sourcetypes_searched&gt;[^\s]+)"
+| stats dc(sid) by indexes_searched sourcetypes_searched</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
