@@ -1,0 +1,455 @@
+<form>
+  <label>Tracing Back Indexer Search Load to search-heads, applications and users</label>
+  <description>For any stack in Splunk Cloud where does the search load orginate? If we want to reduce load through optimization it is important that we understand where that load is being generated and by who</description>
+  <init>
+    <set token="index_splunkd">index=customer_splunkd</set>
+    <set token="index_introspection">index=customer_introspection</set>
+    <set token="index_metrics">index=customer_metrics</set>
+  </init>
+  <fieldset submitButton="false">
+    <input type="text" token="selected_stack">
+      <label>Select stack</label>
+      <default>skynet-c*</default>
+      <prefix>host=idx*.</prefix>
+      <suffix>.*</suffix>
+    </input>
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="selected_resolution">
+      <label>Chart resolution</label>
+      <choice value="100">low (100)</choice>
+      <choice value="250">medium (250)</choice>
+      <choice value="500">high (500)</choice>
+      <choice value="1000">break my browser (1000)</choice>
+      <default>250</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+  <h1 id="introduction">Introduction</h1>
+<p>Before attempting any optimization it is essential that you measure where load is coming from. In general, it is better to shave 2% of something that consumes 50% of load, then 10% of something that consumes 5% of the load, but without data informing your choices it is common to get this the wrong way around.</p>
+<p>The introspection data for PerProcess generated on the indexers has some fantastic resource data in it that (CPU, memory etc) which bundles information about the province of that search, which search head issued it, the user that created it and the app it is being executed from.</p>
+<p>This dashboard looks at the PerProcess events and sums up all the CPU utilization and maps it back to the search head, user and app. This data is multi-dimensional and the dashboard allows you to explore it with various filters.</p>
+<h1 id="how-to-use">How to use</h1>
+<p>By default, this dashboard is pointed at indexers matching the <code>skynet-c*</code> host name pattern, which is the bulk of skynet. This stack is unusual in that it has been broken up into multiple stacks to improve stability and performance.</p>
+<p>The top two pie charts show in net which apps, and which search head has created the most CPU load on the indexing cluster. At the time of writing the RZ search head is responsible for more than 65% of all CPU load on the indexing tier. </p>
+<p>This demonstrates that if we wish to reduce the computational load on the indexers we should first look at the searches being performed by this search head. We can look at the activities on the search head by clicking on the pie segment for it and this will populate the text input fields which will narrow the other panel to just this search head. Alternatively, you can select both the SH and the application by clicking on the top row in table.</p>
+<p>Having selected a search head, app or both the remaining sections look at adhoc search load (user searches, dashboards etc) and scheduler load (datamodels, summaries etc). </p>
+<p>The scheduled section shows that the RZ search head is running Enterprise Securities and its data model searches that are creating the vast majority of the load. For instance, the most expensive search is <code>_ACCELERATE_DM_Splunk_SA_CIM_Network_Traffic_ACCELERATE_</code>, with the other datamodels all following. </p>
+<p>We can drilldown and look at the search head resource usage by clicking on the bottom table.</p>
+
+</html>
+    </panel>
+  </row>
+  <row depends="$debug$,$selected_host$">
+    <panel>
+      <title></title>
+      <input type="text" token="selected_span_1s" searchWhenChanged="true">
+        <label>selected_span_1s</label>
+        <default>1</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_10s">
+        <label>selected_span_10s</label>
+        <default>10</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_31s">
+        <label>selected_span_31s</label>
+        <default>31</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+      <input type="text" token="selected_span_60s">
+        <label>selected_span_60s</label>
+        <default>60</default>
+        <prefix>span=</prefix>
+        <suffix>s</suffix>
+      </input>
+    </panel>
+    <panel>
+      <title>Compute timespan</title>
+      <table>
+        <search>
+          <done>
+            <set token="form.selected_span_1s">$result.span_1s$</set>
+            <set token="form.selected_span_10s">$result.span_10s$</set>
+            <set token="form.selected_span_31s">$result.span_31s$</set>
+            <set token="form.selected_span_60s">$result.span_60s$</set>
+          </done>
+          <query>| makeresults 
+| addinfo 
+| eval 
+    duration_seconds=info_max_time-info_min_time,
+    resolution=$selected_resolution$,
+    span_1s=if(duration_seconds/resolution&lt;1,1,round(duration_seconds/resolution,0)),
+    span_10s=if(duration_seconds/resolution&lt;10,10,round(duration_seconds/resolution,0)),
+    span_31s=if(duration_seconds/resolution&lt;31,31,round(duration_seconds/resolution,0)),
+    span_60s=if(duration_seconds/resolution&lt;60,60,round(duration_seconds/resolution,0))   
+| fields span_*</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search load for indexers matching $selected_stack$ is originating from the following apps</title>
+      <chart>
+        <title>Clicking on a slice will select app in the details section below</title>
+        <search base="search_head_base">
+          <query>| chart $selected_limit$ sum(_sum_cpu) by app</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.005</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">390</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_search_head">*</set>
+          <set token="form.selected_user">*</set>
+          <set token="form.selected_app">$row.app$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Search load for indexers matching $selected_stack$ is originating from the following search heads</title>
+      <chart>
+        <title>Clicking on a slice will select the search head in the details section below</title>
+        <search base="search_head_base">
+          <query>| chart $selected_limit$ sum(_sum_cpu) by search_head</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.005</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">420</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_search_head">$row.search_head$</set>
+          <set token="form.selected_user">*</set>
+          <set token="form.selected_app">*</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search load for indexers matching $selected_stack$ is can be allocated to these search head and app pairings</title>
+      <table>
+        <title>Clicking on a row will select search head + app in the details section</title>
+        <search id="search_head_base">
+          <query>| tstats prestats=t sum(data.pct_cpu) as sum_cpu 
+    where index=customer_introspection $selected_stack$ 
+    by data.search_props.search_head data.search_props.app 
+| rename 
+    data.search_props.search_head as search_head, 
+    data.search_props.app as app 
+| stats sum(data.pct_cpu) as _sum_cpu 
+    by search_head app 
+| eventstats sum(_sum_cpu) as _total_cpu 
+| eval _pct_usage=round(100*(_sum_cpu/_total_cpu),0),
+    pct_usage=_pct_usage."%" 
+| sort - pct_usage 
+| lookup aws_inventory FQDN AS search_head output instance_type 
+| lookup aws_instance_types instance_type output instance_type_name CPU memGB 
+| table search_head app _pct_usage pct_usage instance_type CPU memGB _sum_cpu _total_cpu</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_app">$row.app$</set>
+          <set token="form.selected_search_head">$row.search_head$</set>
+          <set token="form.selected_user">*</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Details of search load breakdown, including timecharts </h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>The panels below are filtered with the following</title>
+      <input type="text" token="selected_search_head">
+        <label>Filter search head</label>
+        <default>*</default>
+        <prefix>data.search_props.search_head="</prefix>
+        <suffix>"</suffix>
+      </input>
+      <input type="text" token="selected_app">
+        <label>Filter apps</label>
+        <default>*</default>
+        <prefix>data.search_props.app="</prefix>
+        <suffix>"</suffix>
+      </input>
+      <input type="text" token="selected_user">
+        <label>Filter users</label>
+        <default>*</default>
+        <prefix>data.search_props.user="</prefix>
+        <suffix>"</suffix>
+      </input>
+      <input type="text" token="selected_limit">
+        <label>Select limit for charts</label>
+        <default>50</default>
+        <prefix>limit=</prefix>
+      </input>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Types of search load found on the indexers</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>CPU utilisation by provenance</title>
+      <chart>
+        <search base="category_base">
+          <query>| stats sum(sum_cpu) as sum_cpu 
+    by data.search_props.provenance</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">365</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
+      <table>
+        <search id="category_base">
+          <query>| tstats prestats=true sum(data.pct_cpu)
+    where $index_introspection$ 
+    $selected_user$ 
+    $selected_stack$ $selected_search_head$ 
+    data.pct_cpu=* 
+    $selected_app$ 
+    by _time $selected_span_10s$ data.search_props.provenance
+| eval data.search_props.provenance=if(substr('data.search_props.provenance',0,3)="UI:","Dashboard",'data.search_props.provenance') 
+| stats sum(data.pct_cpu) as sum_cpu by _time data.search_props.provenance</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>CPU utilisation by provenance over time</title>
+      <chart>
+        <search base="category_base">
+          <query>| timechart $selected_limit$ $selected_span_10s$ avg(sum_cpu) by data.search_props.provenance</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">302</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Ad hoc search load found on the indexers</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>CPU utilisation by provenance</title>
+      <chart>
+        <search base="adhoc_base">
+          <query>| stats sum(sum_cpu) as sum_cpu 
+    by data.search_props.provenance</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">359</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
+      <table>
+        <search id="adhoc_base">
+          <query>| tstats sum(data.pct_cpu) as sum_cpu 
+    where $customer_introspection$
+    $selected_user$ 
+    $selected_stack$ $selected_search_head$ 
+    data.pct_cpu=* 
+    $selected_app$ 
+    NOT TERM(data.search_props.label) NOT(data.search_props.provenance=scheduler) 
+    by _time $selected_span_10s$ data.search_props.provenance
+| eventstats sum(sum_cpu) as total by data.search_props.provenance</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>CPU utilisation by provenance over time</title>
+      <chart>
+        <search base="adhoc_base">
+          <query>| timechart $selected_limit$ $selected_span_10s$ avg(sum_cpu) by data.search_props.provenance</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">302</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>Scheduler search load found on the indexers</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Scheduler driven load for sh=$selected_search_head$ app=$selected_app$</title>
+      <chart>
+        <search base="scheduler_base">
+          <query>| stats sum(sum_cpu) as sum_cpu  by data.search_props.label</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">436</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
+      <table>
+        <search id="scheduler_base">
+          <query>| tstats sum(data.pct_cpu) as sum_cpu 
+    where $index_introspection$ data.pct_cpu=* $selected_stack$ $selected_search_head$ $selected_user$ $selected_app$ by _time span=5min data.search_props.label</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Scheduled searches and the total computation used</title>
+      <chart>
+        <search base="scheduler_base">
+          <query>| timechart $selected_limit$ $selected_span_10s$ avg(sum_cpu) by data.search_props.label</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">408</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <h1>User search load found on the indexers</h1>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>User driven load for sh=$selected_search_head$ app=$selected_app$</title>
+      <chart>
+        <search base="user_base">
+          <query>| stats sum(sum_cpu) as sum_cpu by user</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="height">391</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_user">$row.user$</set>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Base data for sh=$selected_search_head$ app=$selected_app$</title>
+      <table>
+        <search id="user_base">
+          <query>| tstats sum(data.pct_cpu) as sum_cpu 
+    where $index_introspection$ $selected_user$ $selected_stack$ $selected_search_head$ data.pct_cpu=* data.search_props.provenance=* * by _time $selected_span_10s$ data.search_props.user
+| rename data.search_props.user as user</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="form.selected_user">$row.user$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Users working on $selected_search_head$</title>
+      <chart>
+        <search base="user_base">
+          <query>| timechart $selected_limit$ $selected_span_10s$ avg(sum_cpu) by user</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Drill down to search head</title>
+        <search base="search_head_base">
+          <query>| noop</query>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank">rmorgan_search_head_resource_utilisation?form.selected_host=$row.search_head$&amp;form.time.earliest=$time.earliest$&amp;form.time.latest=$time.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
