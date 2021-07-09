@@ -1,14 +1,15 @@
 <form>
   <label>Measuring concurrency</label>
-  
   <init>
     <set token="index_splunkd">index=_internal</set>
-    <set token="index_introspection">index=_introspection</set>
+    <set token="index_internal">index=_internal</set>
     <set token="index_metrics">index=_internal</set>
+    <set token="index_audit">index=_audit</set>
+    <set token="index_introspection">index=_introspection</set>
     <set token="index_remote">index=_internal</set>
-  </init>  
+  </init>
   <fieldset submitButton="false"></fieldset>
-  <row>
+   <row>
     <panel>
       <html>
 <h1 id="measuring-search-concurrency-via-logs">
@@ -103,18 +104,19 @@ log_level: INFO
 <pre><code>06-17-2021 14:39:56.774 +0000 INFO  Metrics - group=search_pool, name=launcher_0, active=4, idle=1, processes_created=3, processes_reused_same_user=1, processes_reused_different_user=0, processes_reaped_with_old_config=5, processes_reaped_with_old_bundle=0, processes_reaped_ran_too_many_searches=0, processes_reaped_ran_too_long=0, processes_reaped_accumulated_time=0, processes_reaped_after_control=0, processes_reaped_surplus=0, dutycycle_launching=0.000, dutycycle_reaping=0.000, dutycycle_control=0.000, periodic_reaper_wakeups=5
 </code></pre>
 <p>This source contains the active searches at any point. It would be perfect for our purposes of measuring search concurrency if it was always present. For some reason it frequently stops being generated.</p>
-<p>https://jira.splunk.com/browse/SPL-207309</p>
+
 
 </html>
     </panel>
   </row>
+
   <row>
     <panel>
       <title>Select a host and a time range so see the different sources in action</title>
       <input type="time" token="time">
-        <label>Select timerange</label>
+        <label></label>
         <default>
-          <earliest>-24h@h</earliest>
+          <earliest>-60m@m</earliest>
           <latest>now</latest>
         </default>
       </input>
@@ -126,29 +128,9 @@ log_level: INFO
         <choice value="1000">break my browser (1000)</choice>
         <default>250</default>
       </input>
-      <input type="dropdown" token="selected_stack">
-        <label>Select stack</label>
-        <fieldForLabel>label</fieldForLabel>
-        <fieldForValue>stack</fieldForValue>
-        <search>
-          <query>| inputlookup aws_inventory where role="indexer" OR role="search-head" 
-| chart count by stack role
-| eval total=indexer+'search-head'
-| sort - total
-| head 800
-| eval label=stack." (".'search-head'."sh ".indexer."idx)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-        </search>
-      </input>
-      <input type="dropdown" token="selected_host">
+      <input type="text" token="selected_host">
         <label>Enter host</label>
-        <fieldForLabel>FQDN</fieldForLabel>
-        <fieldForValue>FQDN</fieldForValue>
-        <search>
-          <query>| inputlookup aws_inventory where stack="$selected_stack$" role="indexer" OR role="search-head" 
-| table FQDN</query>
-        </search>
+        <default>sh-i-0614310a40116fc59.skynet-search.splunkcloud.com</default>
       </input>
       <input type="text" token="selected_limit">
         <label>Enter limit</label>
@@ -219,9 +201,9 @@ log_level: INFO
       <title>metrics.log - group=search_concurrency - every 30 secs</title>
       <chart>
         <search>
-          <query>$index_merics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$
+          <query>$index_metrics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ 
 | eval user=if(searchmatch("system total"),"system_total",user)
-| timechart $selected_span_30s$ $selected_limit$ avg(active_hist_searches) by user</query>
+| timechart $selected_span_30s$ $selected_limit$ sum(active_hist_searches) by user</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
           <sampleRatio>1</sampleRatio>
@@ -266,10 +248,10 @@ log_level: INFO
       <title>tstats with PREFIX version</title>
       <chart>
         <search>
-          <query>| tstats prestats=true fillnull_value="system_total" avg(PREFIX(active_hist_searches=)) as active_hist_searches
-    where $index_merics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ by _time $selected_span_30s$ PREFIX(user=) 
+          <query>| tstats sum(PREFIX(active_hist_searches=)) as active_hist_searches fillnull_value="system_total" 
+    where $index_metrics$ TERM(group=search_concurrency) TERM(active_hist_searches=*) host=$selected_host$ by _time $selected_span_30s$ PREFIX(user=) 
 | rename user= as user 
-| timechart $selected_span_30s$ $selected_limit$ avg(PREFIX(active_hist_searches=)) by user</query>
+| timechart $selected_span_30s$ $selected_limit$ sum(active_hist_searches) by user</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
           <sampleRatio>1</sampleRatio>
@@ -325,8 +307,8 @@ log_level: INFO
       <title>metrics.log - group=search_pool - every 30 secs</title>
       <chart>
         <search>
-          <query>$index_merics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$
-| timechart  $selected_span_30s$ avg(active) as active</query>
+          <query>$index_metrics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$
+| timechart  $selected_span_30s$ sum(active)</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
@@ -341,8 +323,8 @@ log_level: INFO
       <title>tstats with PREFIX version</title>
       <chart>
         <search>
-          <query>| tstats prestats=true avg(PREFIX(active=)) as active where $index_merics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$ by _time $selected_span_30s$
-| timechart $selected_span_30s$ avg(PREFIX(active=)) as active</query>
+          <query>| tstats sum(PREFIX(active=)) as active where $index_metrics$ TERM(group=search_pool) TERM(active=*) host=$selected_host$ by _time $selected_span_30s$
+| timechart $selected_span_30s$ sum(active)</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
@@ -356,7 +338,7 @@ log_level: INFO
   </row>
   <row>
     <panel>
-      <title>remote_searches.log - continuous execution</title>
+      <title>remote_searches.log - group=search_pool - continuous execution</title>
       <chart>
         <search>
           <query>$index_remote$ host=$selected_host$ TERM(active_searches=*) 
