@@ -11,7 +11,6 @@
 <li>Install by copy and paste - Customers struggle to install apps, every dashboard is self-contained and can be installed in isolation. This means no datamodels, no macros, no saved searches.</li>
 <li>Any search head will do - Not all users have access to the cluster master or MC, these frequently don't connect all clusters. Pick a search head that connects to the most instances.</li>
 <li>Reserve engineer infrastructure - Rather than rely on the correct configuration of Splunk, try and reverse engineer what is an indexer, search head etc by the messages that they generate.</li>
-<li>Reserve engineer infrastructure - Rather than rely on the correct configuration of Splunk, try and reverse engineer what is an indexer, search head etc by the messages that they generate.</li>
 <li>Use minimum permissions - In my experience the REST API isn't available to all users and cannot be relied on. Instead only use the lower common denominator - search. Your user only needs permission to the _internal and _introspection indexes for this suite to work.</li>
 <li>Be fast as possible - I hate waiting for results, every dashboard has been aggressively optimised to use the least amount of computation. Typically, these dashboards will run a single search on load, after this any manipulation of the data on screen reuses the existing data sitting on the search head.</li>
 <li>Show case the power of Splunk - Use the cool features like annotation and selections, auto hiding and do computation via tokens</li>
